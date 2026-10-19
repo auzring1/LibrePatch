@@ -38,6 +38,9 @@ import (
 // MaxMessageBytes bounds every gRPC message (PROTOCOL §1).
 const MaxMessageBytes = 4 << 20
 
+// connReadBuffer is the per-connection read buffer of the agent listener (gRPC's default is 32 KiB).
+const connReadBuffer = 4 << 10
+
 // Gateway serves EnrollmentService and AgentChannelService.
 type Gateway struct {
 	agentv1.UnimplementedEnrollmentServiceServer
@@ -172,16 +175,14 @@ func (g *Gateway) checkIdentity(ctx context.Context, cs tls.ConnectionState) (*p
 	if err != nil {
 		return nil, fmt.Errorf("client certificate rejected: %w", err)
 	}
-	q := dbq.New(g.pool)
-	c, err := q.GetDeviceCert(ctx, ident.Serial)
+	c, err := dbq.New(g.pool).CheckDeviceCert(ctx, ident.Serial)
 	if err != nil {
 		return nil, errors.New("client certificate unknown")
 	}
-	if c.RevokedAt != nil || c.DeviceID != ident.DeviceID {
+	if c.CertRevokedAt != nil || c.CertDeviceID != ident.DeviceID {
 		return nil, errors.New("client certificate revoked")
 	}
-	d, err := q.GetDevice(ctx, ident.DeviceID)
-	if err != nil || d.Status != "active" {
+	if c.DeviceStatus != "active" {
 		return nil, errors.New("device is not active")
 	}
 	return ident, nil
@@ -266,6 +267,9 @@ func (g *Gateway) NewGRPCServer() *grpc.Server {
 		grpc.MaxRecvMsgSize(MaxMessageBytes),
 		grpc.MaxSendMsgSize(MaxMessageBytes),
 		grpc.MaxConcurrentStreams(16),
+		// Idle connections dominate: thousands of agents hold a stream open and say almost nothing. gRPC shares
+		// the write buffer between connections already; the 32 KiB read buffer each connection keeps is not.
+		grpc.ReadBufferSize(connReadBuffer),
 		grpc.ConnectionTimeout(15*time.Second),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 60 * time.Second, PermitWithoutStream: true}),
 		grpc.KeepaliveParams(keepalive.ServerParameters{Time: 2 * time.Minute, Timeout: 20 * time.Second}),

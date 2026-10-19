@@ -526,10 +526,28 @@ type FleetUpdate struct {
 	Devices    []FleetUpdateDevice `json:"devices"`
 }
 
+// fleetRow is one installed program on one device, as the Software updates page needs it.
+type fleetRow struct {
+	deviceID uuid.UUID
+	hostname string
+	scope    string
+	row      installRow
+}
+
+// fleetTargetedShare is the share of products with an update above which FleetUpdates reads every install row after
+// all: with that many products to fetch, PostgreSQL reads the whole table anyway, and the plain query has a plan that
+// runs in parallel. A variable so tests can exercise both ways.
+var fleetTargetedShare = 0.25
+
 // FleetUpdates lists, per package, the active devices that have an older version installed. Packages that are current
 // everywhere are left out. Most devices first.
+//
+// A fleet of 5,000 PCs reports about 600,000 install rows but only a few thousand distinct programs, and whether a
+// program has an update depends on the program, not the device. So the distinct programs are matched first (one row
+// each) and the device rows are read only for the products that have an update.
 func (s *Service) FleetUpdates(ctx context.Context, org uuid.UUID) ([]FleetUpdate, error) {
-	rows, err := dbq.New(s.Pool).ListFleetInstallRows(ctx, org)
+	q := dbq.New(s.Pool)
+	groups, err := q.ListFleetInstallGroups(ctx, org)
 	if err != nil {
 		return nil, err
 	}
@@ -537,12 +555,56 @@ func (s *Service) FleetUpdates(ctx context.Context, org uuid.UUID) ([]FleetUpdat
 	if err != nil {
 		return nil, err
 	}
+	var titles []uuid.UUID
+	seen, all := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
+	for _, g := range groups {
+		all[g.TitleID] = true
+		if seen[g.TitleID] {
+			continue
+		}
+		r := installRow{name: g.Name, version: g.Version, publisher: g.Publisher, itemKey: g.ItemKey, productCode: g.ProductCode, source: g.Source,
+			normalizedName: g.NormalizedName, versionKey: g.VersionKey}
+		if u.check(r) != nil {
+			seen[g.TitleID] = true
+			titles = append(titles, g.TitleID)
+		}
+	}
+	if len(titles) == 0 {
+		return []FleetUpdate{}, nil
+	}
+	// A product's rows are all read, including versions that are current: groupFleetUpdates checks every row again.
+	var rows []fleetRow
+	if float64(len(titles)) > fleetTargetedShare*float64(len(all)) {
+		sel, err := q.ListFleetInstallRows(ctx, org)
+		if err != nil {
+			return nil, err
+		}
+		rows = make([]fleetRow, len(sel))
+		for i, r := range sel {
+			rows[i] = fleetRow{r.DeviceID, r.Hostname, r.Scope, installRow{name: r.Name, version: r.Version, publisher: r.Publisher, itemKey: r.ItemKey,
+				productCode: r.ProductCode, source: r.Source, normalizedName: r.NormalizedName, versionKey: r.VersionKey}}
+		}
+	} else {
+		sel, err := q.ListFleetInstallRowsForTitles(ctx, dbq.ListFleetInstallRowsForTitlesParams{TitleIds: titles, OrgID: org})
+		if err != nil {
+			return nil, err
+		}
+		rows = make([]fleetRow, len(sel))
+		for i, r := range sel {
+			rows[i] = fleetRow{r.DeviceID, r.Hostname, r.Scope, installRow{name: r.Name, version: r.Version, publisher: r.Publisher, itemKey: r.ItemKey,
+				productCode: r.ProductCode, source: r.Source, normalizedName: r.NormalizedName, versionKey: r.VersionKey}}
+		}
+	}
+	return groupFleetUpdates(rows, u), nil
+}
+
+// groupFleetUpdates turns device rows (in page order) into one entry per package with an update.
+func groupFleetUpdates(rows []fleetRow, u *updater) []FleetUpdate {
 	byPkg := map[string]*FleetUpdate{}
 	seen := map[string]bool{}
 	var order []string
 	for _, r := range rows {
-		c := u.check(installRow{name: r.Name, version: r.Version, publisher: r.Publisher, itemKey: r.ItemKey, productCode: r.ProductCode, source: r.Source,
-			normalizedName: r.NormalizedName, versionKey: r.VersionKey})
+		c := u.check(r.row)
 		if c == nil {
 			continue
 		}
@@ -558,12 +620,12 @@ func (s *Service) FleetUpdates(ctx context.Context, org uuid.UUID) ([]FleetUpdat
 			order = append(order, key)
 		}
 		// One line per device, scope and installed version (a program can be listed by two registry views).
-		dk := key + "|" + r.DeviceID.String() + "|" + r.Scope + "|" + r.Version
+		dk := key + "|" + r.deviceID.String() + "|" + r.scope + "|" + r.row.version
 		if seen[dk] {
 			continue
 		}
 		seen[dk] = true
-		f.Devices = append(f.Devices, FleetUpdateDevice{DeviceID: r.DeviceID, Hostname: r.Hostname, InstalledVersion: r.Version, Scope: r.Scope, MatchedBy: c.matchedBy})
+		f.Devices = append(f.Devices, FleetUpdateDevice{DeviceID: r.deviceID, Hostname: r.hostname, InstalledVersion: r.row.version, Scope: r.scope, MatchedBy: c.matchedBy})
 	}
 	out := make([]FleetUpdate, 0, len(order))
 	for _, k := range order {
@@ -575,7 +637,7 @@ func (s *Service) FleetUpdates(ctx context.Context, org uuid.UUID) ([]FleetUpdat
 		}
 		return strings.ToLower(out[i].PackageName) < strings.ToLower(out[j].PackageName)
 	})
-	return out, nil
+	return out
 }
 
 // JobSpec describes an ad-hoc job (no deployment) for NewJob.

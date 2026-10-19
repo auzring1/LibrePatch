@@ -132,6 +132,26 @@ func (q *Queries) DeleteRule(ctx context.Context, arg DeleteRuleParams) (int64, 
 	return result.RowsAffected(), nil
 }
 
+const getActiveJobOfType = `-- name: GetActiveJobOfType :one
+SELECT id FROM jobs
+WHERE device_id = $1 AND type = $2::text
+  AND status IN ('queued', 'sent', 'accepted', 'waiting', 'running') AND expires_at > now()
+ORDER BY created_at DESC LIMIT 1
+`
+
+type GetActiveJobOfTypeParams struct {
+	DeviceID uuid.UUID
+	Type     string
+}
+
+// A request of this kind that has not finished: a second click joins it instead of queueing another.
+func (q *Queries) GetActiveJobOfType(ctx context.Context, arg GetActiveJobOfTypeParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getActiveJobOfType, arg.DeviceID, arg.Type)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getApproval = `-- name: GetApproval :one
 SELECT org_id, update_id, decision, source, rule_id, note, decided_by, decided_at FROM wu_approvals WHERE org_id = $1 AND update_id = $2
 `
@@ -1293,6 +1313,16 @@ func (q *Queries) LockDeviceForWU(ctx context.Context, id uuid.UUID) (uuid.UUID,
 	var org_id uuid.UUID
 	err := row.Scan(&org_id)
 	return org_id, err
+}
+
+const lockDeviceJobType = `-- name: LockDeviceJobType :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))
+`
+
+// Serialises requests of one kind for one device (two clicks at once must find each other).
+func (q *Queries) LockDeviceJobType(ctx context.Context, lockKey string) error {
+	_, err := q.db.Exec(ctx, lockDeviceJobType, lockKey)
+	return err
 }
 
 const pruneWuUpdates = `-- name: PruneWuUpdates :execrows

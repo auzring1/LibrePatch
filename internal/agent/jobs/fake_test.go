@@ -93,6 +93,7 @@ type fakePlatform struct {
 	wuc       *fakeWU
 	su        *fakeUpdater
 	rebootReq bool
+	rebootErr error // returned by Reboot after the call is recorded
 	reboots   []rebootCall
 	aborts    int
 }
@@ -113,9 +114,23 @@ type fakeWU struct {
 	hidden   map[string]bool
 	policy   *agentv1.WuPolicyInfo
 	opts     []wu.Options
+	// scanGate, when set, holds every Scan until it is closed (a slow Windows Update search); scanning is signalled
+	// when a Scan has started.
+	scanGate chan struct{}
+	scanning chan struct{}
 }
 
-func (f *fakeWU) Scan(_ context.Context, o wu.Options) ([]*agentv1.WuUpdate, error) {
+func (f *fakeWU) Scan(ctx context.Context, o wu.Options) ([]*agentv1.WuUpdate, error) {
+	if f.scanGate != nil {
+		select {
+		case f.scanning <- struct{}{}:
+		default:
+		}
+		select {
+		case <-f.scanGate:
+		case <-ctx.Done():
+		}
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.opts = append(f.opts, o)
@@ -193,7 +208,7 @@ func (f *fakePlatform) Reboot(d time.Duration, m string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.reboots = append(f.reboots, rebootCall{d, m})
-	return nil
+	return f.rebootErr
 }
 func (f *fakePlatform) AbortReboot() error { f.mu.Lock(); f.aborts++; f.mu.Unlock(); return nil }
 func (f *fakePlatform) RebootRequired() bool {

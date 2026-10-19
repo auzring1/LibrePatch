@@ -383,6 +383,64 @@ func (q *Queries) ListDeviceUsers(ctx context.Context, deviceID uuid.UUID) ([]De
 	return items, nil
 }
 
+const listFleetInstallGroups = `-- name: ListFleetInstallGroups :many
+SELECT g.title_id, st.normalized_name, g.source, g.item_key, g.name, g.version, g.version_key, g.publisher, g.product_code
+FROM (
+  SELECT si.title_id, si.source, si.item_key, si.name, si.version, si.version_key, si.publisher, si.product_code
+  FROM software_installs si
+  WHERE NOT si.system_component AND si.source NOT IN ('appx', 'portable')
+    AND EXISTS (SELECT 1 FROM devices d WHERE d.id = si.device_id AND d.org_id = $1::uuid AND d.status = 'active')
+  GROUP BY si.title_id, si.source, si.item_key, si.name, si.version, si.version_key, si.publisher, si.product_code
+) g
+JOIN software_titles st ON st.id = g.title_id
+`
+
+type ListFleetInstallGroupsRow struct {
+	TitleID        uuid.UUID
+	NormalizedName string
+	Source         string
+	ItemKey        string
+	Name           string
+	Version        string
+	VersionKey     []byte
+	Publisher      string
+	ProductCode    string
+}
+
+// The distinct programs installed on active devices, told apart only as far as matching them to a catalog or winget
+// package can tell them apart (not by device). One row per program instead of one per device and program: a fleet of
+// 5,000 PCs reports about 600,000 install rows but a few thousand distinct programs. Grouping by title id first keeps
+// the planner on a hash aggregate (grouping by the long text columns after the join made it sort 40 MB on disk).
+func (q *Queries) ListFleetInstallGroups(ctx context.Context, orgID uuid.UUID) ([]ListFleetInstallGroupsRow, error) {
+	rows, err := q.db.Query(ctx, listFleetInstallGroups, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFleetInstallGroupsRow{}
+	for rows.Next() {
+		var i ListFleetInstallGroupsRow
+		if err := rows.Scan(
+			&i.TitleID,
+			&i.NormalizedName,
+			&i.Source,
+			&i.ItemKey,
+			&i.Name,
+			&i.Version,
+			&i.VersionKey,
+			&i.Publisher,
+			&i.ProductCode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFleetInstallRows = `-- name: ListFleetInstallRows :many
 SELECT si.device_id, d.hostname, si.source, si.scope, si.user_sid, si.item_key, si.name, si.version, si.version_key,
        si.publisher, si.product_code, st.normalized_name
@@ -419,6 +477,71 @@ func (q *Queries) ListFleetInstallRows(ctx context.Context, orgID uuid.UUID) ([]
 	items := []ListFleetInstallRowsRow{}
 	for rows.Next() {
 		var i ListFleetInstallRowsRow
+		if err := rows.Scan(
+			&i.DeviceID,
+			&i.Hostname,
+			&i.Source,
+			&i.Scope,
+			&i.UserSid,
+			&i.ItemKey,
+			&i.Name,
+			&i.Version,
+			&i.VersionKey,
+			&i.Publisher,
+			&i.ProductCode,
+			&i.NormalizedName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFleetInstallRowsForTitles = `-- name: ListFleetInstallRowsForTitles :many
+SELECT si.device_id, d.hostname, si.source, si.scope, si.user_sid, si.item_key, si.name, si.version, si.version_key,
+       si.publisher, si.product_code, st.normalized_name
+FROM software_installs si
+JOIN software_titles st ON st.id = si.title_id
+JOIN devices d ON d.id = si.device_id
+WHERE si.title_id = ANY($1::uuid[])
+  AND d.org_id = $2::uuid AND d.status = 'active' AND NOT si.system_component AND si.source NOT IN ('appx', 'portable')
+ORDER BY lower(d.hostname), lower(si.name), si.scope, si.user_sid, si.item_key
+`
+
+type ListFleetInstallRowsForTitlesParams struct {
+	TitleIds []uuid.UUID
+	OrgID    uuid.UUID
+}
+
+type ListFleetInstallRowsForTitlesRow struct {
+	DeviceID       uuid.UUID
+	Hostname       string
+	Source         string
+	Scope          string
+	UserSid        string
+	ItemKey        string
+	Name           string
+	Version        string
+	VersionKey     []byte
+	Publisher      string
+	ProductCode    string
+	NormalizedName string
+}
+
+// ListFleetInstallRows restricted to some products (the ones with an update), in the same order.
+func (q *Queries) ListFleetInstallRowsForTitles(ctx context.Context, arg ListFleetInstallRowsForTitlesParams) ([]ListFleetInstallRowsForTitlesRow, error) {
+	rows, err := q.db.Query(ctx, listFleetInstallRowsForTitles, arg.TitleIds, arg.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFleetInstallRowsForTitlesRow{}
+	for rows.Next() {
+		var i ListFleetInstallRowsForTitlesRow
 		if err := rows.Scan(
 			&i.DeviceID,
 			&i.Hostname,
@@ -753,6 +876,72 @@ func (q *Queries) SearchSoftwareTitles(ctx context.Context, arg SearchSoftwareTi
 	items := []SearchSoftwareTitlesRow{}
 	for rows.Next() {
 		var i SearchSoftwareTitlesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayName,
+			&i.DisplayPublisher,
+			&i.DeviceCount,
+			&i.VersionCount,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchSoftwareTitlesNoSystem = `-- name: SearchSoftwareTitlesNoSystem :many
+SELECT st.id, st.display_name, st.display_publisher,
+       count(DISTINCT si.device_id)::int AS device_count,
+       count(DISTINCT si.version)::int AS version_count,
+       count(*) OVER ()::bigint AS total
+FROM software_titles st
+JOIN software_installs si ON si.title_id = st.id
+JOIN devices d ON d.id = si.device_id AND d.status = 'active'
+WHERE st.org_id = $1::uuid
+  AND NOT si.system_component
+  AND ($2::text = '' OR strpos(st.normalized_name, $2::text) > 0 OR strpos(st.normalized_publisher, $2::text) > 0)
+GROUP BY st.id
+ORDER BY device_count DESC, lower(st.display_name), st.id
+LIMIT $4::int OFFSET $3::int
+`
+
+type SearchSoftwareTitlesNoSystemParams struct {
+	OrgID     uuid.UUID
+	Q         string
+	RowOffset int32
+	RowLimit  int32
+}
+
+type SearchSoftwareTitlesNoSystemRow struct {
+	ID               uuid.UUID
+	DisplayName      string
+	DisplayPublisher string
+	DeviceCount      int32
+	VersionCount     int32
+	Total            int64
+}
+
+// SearchSoftwareTitles without system components (the page's default view). The condition is written out instead of
+// passed as a parameter so the planner can use software_installs_title_device, a partial index on that condition.
+func (q *Queries) SearchSoftwareTitlesNoSystem(ctx context.Context, arg SearchSoftwareTitlesNoSystemParams) ([]SearchSoftwareTitlesNoSystemRow, error) {
+	rows, err := q.db.Query(ctx, searchSoftwareTitlesNoSystem,
+		arg.OrgID,
+		arg.Q,
+		arg.RowOffset,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SearchSoftwareTitlesNoSystemRow{}
+	for rows.Next() {
+		var i SearchSoftwareTitlesNoSystemRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.DisplayName,

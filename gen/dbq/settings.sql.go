@@ -698,6 +698,28 @@ func (q *Queries) PruneReportRuns(ctx context.Context, startedAt time.Time) (int
 	return result.RowsAffected(), nil
 }
 
+const pruneSoftwareHistory = `-- name: PruneSoftwareHistory :execrows
+DELETE FROM software_history WHERE id IN (
+  SELECT h.id FROM software_history h JOIN devices d ON d.id = h.device_id
+  WHERE d.org_id = $1::uuid AND h.observed_at < $2::timestamptz
+  ORDER BY h.id LIMIT 20000)
+`
+
+type PruneSoftwareHistoryParams struct {
+	OrgID  uuid.UUID
+	Before time.Time
+}
+
+// One batch of an organization's software change history older than $2 (the caller repeats until a batch comes back
+// short, so the first run on a big table is many small statements, not one that hits the statement timeout).
+func (q *Queries) PruneSoftwareHistory(ctx context.Context, arg PruneSoftwareHistoryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneSoftwareHistory, arg.OrgID, arg.Before)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const rolloutTargetVersion = `-- name: RolloutTargetVersion :one
 SELECT r.version, r.created_at FROM agent_rollout o JOIN agent_releases r ON r.id = o.release_id
 WHERE o.org_id = $1 AND o.release_id IS NOT NULL

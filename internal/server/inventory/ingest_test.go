@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/auzring1/librepatch/gen/dbq"
 	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
 	"github.com/auzring1/librepatch/internal/shared/vercmp"
 	"github.com/auzring1/librepatch/internal/testutil/pgtest"
@@ -222,3 +223,47 @@ func TestUserScopedItemsAndUsers(t *testing.T) {
 }
 
 func versionKeyOf(v string) []byte { return vercmp.Key(v) }
+
+// The Software page has one query for the default view (system components left out, written out so a partial index
+// can serve it) and one for the view that includes them. With system components off both must answer the same.
+func TestSoftwareSearchWithoutSystemComponentsMatchesTheGeneralQuery(t *testing.T) {
+	db := pgtest.New(t)
+	ctx := context.Background()
+	s, dev := newDevice(t, db.Pool)
+	var org uuid.UUID
+	if err := db.Pool.QueryRow(ctx, "SELECT org_id FROM devices WHERE id=$1", dev).Scan(&org); err != nil {
+		t.Fatal(err)
+	}
+	sys := item(reg64, "KB1", "Update for Windows", "1.0")
+	sys.SystemComponent = true
+	items := []*agentv1.SoftwareItem{item(reg64, "A", "Acme Tool", "1.0"), item(reg64, "B", "Acme Tool", "2.0"), item(reg64, "C", "Other Program", "3.0"), sys}
+	if err := s.ApplySnapshot(ctx, dev, 1, items, false); err != nil {
+		t.Fatal(err)
+	}
+	q := dbq.New(db.Pool)
+	for _, filter := range []string{"", "acme", "nothing"} {
+		general, err := q.SearchSoftwareTitles(ctx, dbq.SearchSoftwareTitlesParams{OrgID: org, IncludeSystem: false, Q: filter, RowLimit: 50})
+		if err != nil {
+			t.Fatal(err)
+		}
+		plain, err := q.SearchSoftwareTitlesNoSystem(ctx, dbq.SearchSoftwareTitlesNoSystemParams{OrgID: org, Q: filter, RowLimit: 50})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(general) != len(plain) {
+			t.Fatalf("filter %q: %d rows vs %d", filter, len(general), len(plain))
+		}
+		for i := range general {
+			if dbq.SearchSoftwareTitlesNoSystemRow(general[i]) != plain[i] {
+				t.Fatalf("filter %q row %d: %+v vs %+v", filter, i, general[i], plain[i])
+			}
+		}
+		if filter == "" && (len(plain) != 2 || plain[0].DisplayName != "Acme Tool" || plain[0].VersionCount != 2) {
+			t.Fatalf("expected Acme Tool (2 versions) and Other Program, no system component: %+v", plain)
+		}
+	}
+	withSystem, _ := q.SearchSoftwareTitles(ctx, dbq.SearchSoftwareTitlesParams{OrgID: org, IncludeSystem: true, RowLimit: 50})
+	if len(withSystem) != 3 {
+		t.Fatalf("with system components: %+v", withSystem)
+	}
+}

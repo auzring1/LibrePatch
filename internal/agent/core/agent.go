@@ -50,6 +50,9 @@ const (
 	startupFastRetryFor = 10 * time.Minute
 	startupFastRetryMax = 15 * time.Second
 	healthyResetAfter   = 10 * time.Minute
+	// recvBuffer bounds the server messages (acknowledgements, resync requests) queued while the stream loop is
+	// busy; the receiver itself never waits for the loop to read a job offer.
+	recvBuffer = 256
 )
 
 // Agent is one running agent instance.
@@ -83,6 +86,9 @@ type Agent struct {
 	wuKick  chan struct{} // a new Windows Update snapshot is waiting to be sent
 	sentMu  sync.Mutex
 	sent    map[uint64]bool // outbox entries already sent on the current stream
+	// offerMu serializes job-offer handling: offers are processed on the receive path of the current stream, and the
+	// previous stream's receiver may still be finishing one while a new stream starts.
+	offerMu sync.Mutex
 	clMu    sync.Mutex
 	client  agentv1.AgentChannelServiceClient // current connection, for content downloads
 
@@ -437,6 +443,30 @@ func (a *Agent) session(ctx context.Context, id *store.Identity) (time.Duration,
 		a.Log.Warn("local clock differs from server", "offset", d.Round(time.Second))
 	}
 	a.acceptSigningCerts(ctx, stream, id, root, ack.JobSigningCertsDer)
+
+	// Read the stream from now on, before the first hardware and software inventory (which can take many seconds on
+	// a PC that has just started). Job offers are verified and handed to the job engine right here, so a command that
+	// arrives while the agent is busy with inventory is accepted at once; every other message waits for the loop below.
+	msgs := make(chan *agentv1.ConnectResponse, recvBuffer)
+	recvErr := make(chan error, 1)
+	go func() {
+		for {
+			m, err := stream.Recv()
+			if err != nil {
+				recvErr <- err
+				return
+			}
+			if offer := m.GetJobOffer(); offer != nil {
+				a.handleJobOffer(stream, id, root, offer)
+				continue
+			}
+			select {
+			case msgs <- m:
+			case <-sctx.Done():
+				return
+			}
+		}
+	}()
 	a.Log.Info("connected", "server", a.Cfg.Server, "device_id", id.DeviceID)
 	a.status("connected", "", id.DeviceID)
 	if a.Jobs != nil {
@@ -508,22 +538,6 @@ func (a *Agent) session(ctx context.Context, id *store.Identity) (time.Duration,
 		return a.now().Sub(start), 0, err
 	}
 
-	msgs := make(chan *agentv1.ConnectResponse)
-	recvErr := make(chan error, 1)
-	go func() {
-		for {
-			m, err := stream.Recv()
-			if err != nil {
-				recvErr <- err
-				return
-			}
-			select {
-			case msgs <- m:
-			case <-sctx.Done():
-				return
-			}
-		}
-	}()
 	for {
 		select {
 		case <-ctx.Done():
@@ -625,8 +639,6 @@ func (a *Agent) session(ctx context.Context, id *store.Identity) (time.Duration,
 						return a.now().Sub(start), 0, err
 					}
 				}
-			case *agentv1.ConnectResponse_JobOffer:
-				a.handleJobOffer(stream, id, root, msg.JobOffer)
 			}
 		}
 	}
@@ -728,6 +740,8 @@ func equalDERs(a, b [][]byte) bool {
 // for a job the engine already holds is not a replay: the server simply never
 // saw our acknowledgement, so the engine reports the current state again.
 func (a *Agent) handleJobOffer(stream agentv1.AgentChannelService_ConnectClient, id *store.Identity, root *x509.Certificate, se *agentv1.SignedEnvelope) {
+	a.offerMu.Lock()
+	defer a.offerMu.Unlock()
 	var certs []*x509.Certificate
 	for _, d := range id.SigningDER {
 		if c, err := x509.ParseCertificate(d); err == nil {

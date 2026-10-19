@@ -58,7 +58,8 @@ func (s *server) runRetention(w http.ResponseWriter, r *http.Request) {
 		internalError(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"jobs": res.Jobs, "compliance_snapshots": res.Snapshots, "notifications": res.Notifications, "devices": res.Devices})
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": res.Jobs, "compliance_snapshots": res.Snapshots, "notifications": res.Notifications, "devices": res.Devices,
+		"software_history": res.SoftwareHistory})
 }
 
 // POST /settings/reports/schedules/{id}/send-now

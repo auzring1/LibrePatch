@@ -467,7 +467,11 @@ func (p *winPlatform) Reboot(delay time.Duration, message string) error {
 	secs := uint32(delay / time.Second) // #nosec G115 -- bounded by the caller to 24 h
 	// SHTDN_REASON_MAJOR_OPERATINGSYSTEM | SHTDN_REASON_MINOR_UPGRADE | SHTDN_REASON_FLAG_PLANNED
 	const reason = 0x00020000 | 0x00000003 | 0x80000000
-	return windows.InitiateSystemShutdownEx(nil, msg, secs, false, true, reason)
+	err = windows.InitiateSystemShutdownEx(nil, msg, secs, false, true, reason)
+	if errors.Is(err, windows.ERROR_SHUTDOWN_IS_SCHEDULED) || errors.Is(err, windows.ERROR_SHUTDOWN_IN_PROGRESS) {
+		return ErrRebootScheduled
+	}
+	return err
 }
 
 // AbortReboot cancels a pending countdown. "No shutdown in progress" is not an error.

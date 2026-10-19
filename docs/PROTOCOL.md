@@ -114,6 +114,7 @@ ServerMessage (oneof):
 **Delivery semantics:**
 
 - **Agent to server is at-least-once.** Every result, delta and event carries a monotonically increasing per-agent `seq`, persisted in the bbolt outbox. The server processes it idempotently, keyed by `(device_id, seq)` for deltas and `(job_id, attempt)` for results, then sends `Ack{seq}`.
+- **A job offer is acted on when it arrives.** The agent reads the stream from the moment `HelloAck` has been handled, and verifies and accepts a `JobOffer` on the receive path, before (and while) it sends its first hardware and software reports. Other server messages are queued for the agent's loop. This is an agent-internal change; nothing on the wire differs, so older and newer agents and servers work together (D116).
 - **Server to agent:** a job stays `sent` until `JobAck`. On every `Hello`, the server re-offers all jobs for the device that are `sent`, not acked and not expired. The agent's ledger makes duplicate offers harmless.
 
 ## 5. Signed job envelope

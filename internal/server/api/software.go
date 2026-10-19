@@ -43,8 +43,18 @@ func (s *server) searchSoftware(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.q().SearchSoftwareTitles(r.Context(), dbq.SearchSoftwareTitlesParams{OrgID: principalFrom(r).OrgID,
-		IncludeSystem: r.URL.Query().Get("include_system") == "true", Q: q, RowLimit: limit, RowOffset: offset})
+	org := principalFrom(r).OrgID
+	var rows []dbq.SearchSoftwareTitlesRow
+	var err error
+	if r.URL.Query().Get("include_system") == "true" {
+		rows, err = s.q().SearchSoftwareTitles(r.Context(), dbq.SearchSoftwareTitlesParams{OrgID: org, IncludeSystem: true, Q: q, RowLimit: limit, RowOffset: offset})
+	} else {
+		var plain []dbq.SearchSoftwareTitlesNoSystemRow
+		plain, err = s.q().SearchSoftwareTitlesNoSystem(r.Context(), dbq.SearchSoftwareTitlesNoSystemParams{OrgID: org, Q: q, RowLimit: limit, RowOffset: offset})
+		for _, p := range plain {
+			rows = append(rows, dbq.SearchSoftwareTitlesRow(p))
+		}
+	}
 	if err != nil {
 		s.Log.Error("search software", "err", err)
 		internalError(w)

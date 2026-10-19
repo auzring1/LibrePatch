@@ -205,3 +205,75 @@ Not fixed (design or larger changes), for the owner to decide:
 * Windows Update snapshots and content downloads are not exercised, and the `wu_scan` jobs are no-ops.
 * The REST API is exercised only for tokens, job creation and the overview; the console's own load (SSE streams, device lists with 10,000 rows) is not tested.
 * The server-process and PostgreSQL samplers need the same host (`--server-pid`, `--pg-url`); the kernel counters in the script cover the whole host.
+
+## 10. After the performance pass (D116 to D118)
+
+Same sandbox as section 7 (4 vCPU, 15.7 GiB, PostgreSQL 16.15 with default settings, generator, server and database on one host, `scripts/loadtest.sh`, Go 1.27.2). Still **not a capacity statement**. `net.core.netdev_max_backlog` was 1000 for the first runs and 65536 from the storm runs on (section 7.3).
+
+### 10.1 Memory and delivery at 5,000 agents (steady, heartbeat 30 s unless stated)
+
+| | Before | After (read buffer 4 KiB) | After, 6 minute hold, heartbeat 5 min |
+|---|---:|---:|---:|
+| Result | pass | pass | pass |
+| Server RSS peak, hold phase | 1014 MB | 797 MB | 773 MB (ramp peak 760 MB: no growth over 6 minutes) |
+| Per connected agent | about 203 KB | about 159 KB | about 155 KB |
+| Server CPU, hold, average / peak (% of one core) | 25 / 134 | 23 / 60 | 17 / 92 |
+| Descriptors, hold peak | 5,055 | 5,051 | 5,057 |
+| Jobs created / completed / lost | 215 / 215 / 0 | 216 / 216 / 0 | 1,215 / 1,215 / 0 |
+| Job offer verified by the agent, p50 / p95 / p99 | 4.4 / 51 / 67 ms | 4.7 / 34 / 44 ms | 4.4 / 30 / 40 ms |
+| Job end to end (REST request to result acknowledged), p50 / p99 | 68 / 131 ms | 61 / 131 ms | 60 / 102 ms |
+
+One run each; the sandbox shares four cores between three processes, so differences of a few percent are noise. The memory difference (217 MB) is not.
+
+### 10.2 Reconnect storm, 5,000 agents (every connection dropped at once, real backoff)
+
+| | Before (`GetDeviceCert` + `GetDevice`, twice) | After (`CheckDeviceCert`) |
+|---|---:|---:|
+| Time until 50% / 90% / 99% / 100% connected | 11.3 / 11.8 / 12.0 / 12.0 s | 11.1 / 11.8 / 12.0 / 12.0 s |
+| PostgreSQL transactions per second during the storm, average / peak | 3,052 / 6,008 | 2,025 / 3,837 |
+| Server CPU during the storm, average / peak (% of one core) | 186 / 266 | 180 / 332 |
+| Server RSS peak | 780 MB | 766 MB |
+
+The storm is limited by TLS handshakes on the shared CPUs, so the recovery time did not move; the database work did. The "before" run reported FAIL only because of the loopback packet-drop artifact of section 7.3 (356 resets 30 s after the storm; `net.core.netdev_max_backlog` was raised before the second run), not because of the code.
+
+### 10.3 Console pages at 5,000 devices and 600,000 install rows
+
+Measured on the real server binary and a database seeded with SQL (5,000 devices, 400 products, 120 programs per device), PostgreSQL defaults, four requests each:
+
+| Request | Before | After |
+|---|---:|---:|
+| `GET /devices?limit=50` | 12 to 19 ms | unchanged |
+| `GET /devices/{id}` | 2 to 3 ms | unchanged |
+| `GET /reports/overview` | 25 to 28 ms | unchanged |
+| `GET /dashboard` | 30 to 39 ms | unchanged |
+| `GET /software?limit=50` (default view) | 0.95 to 0.99 s | 0.26 to 0.30 s |
+| `GET /software?limit=50&include_system=true` | about 1.0 s | unchanged |
+| `GET /software/updates`, nothing to update | 1.46 to 1.96 s | 0.33 to 0.38 s |
+| `GET /software/updates`, one product in ten has an update (2.7 MB answer) | 1.46 to 1.85 s | 0.62 to 0.67 s |
+| `GET /software/updates`, half of the products have an update (13 MB answer) | 1.7 to 2.0 s | 2.1 to 3.0 s |
+| `GET /software/updates`, every product has an update (26 MB answer) | 2.0 to 2.4 s | 2.7 to 3.3 s |
+
+The last two rows are slower than before: the pass that matches the distinct programs costs about 0.35 s, and then every row has to be read anyway. Their answer (one entry per device and program) is what takes the time; paging it needs an API and console change.
+
+### 10.4 Message sizes (protobuf, before gRPC framing and TLS)
+
+Heartbeat 35 B, job update 46 B, hello 163 B, hardware report 293 B, software delta of 3 items 775 B, a restart job 308 B, the first full software snapshot of 120 items 30.9 KB (once per connection history, or after a resync). Steady state sends almost nothing, so message compression was not added (it would also need server support in every older server).
+
+### 10.5 Restart latency, click to the agent's call to the operating system
+
+From `test/e2e/latency_test.go` (real server, real agent core, real PostgreSQL, Linux dev platform, 4 vCPU):
+
+| Situation | Before | After |
+|---|---:|---:|
+| Idle agent (10 clicks): API returns / job on the stream / OS call | 2.4 / 2.7 / 7.9 ms median (max 13 ms) | unchanged |
+| A 6 s Windows Update scan is running | 5.53 s | 0.034 s |
+| A 6 s hardware collection is running | 4.52 s | 0.024 s |
+| The agent has just connected and is still sending its first inventory | 5.98 s | 0.029 s |
+
+The Windows parts (the real Windows Update Agent, the BitLocker query, Windows' own countdown dialog) were not run; see the checklist.
+
+### 10.6 Still to do before trusting the number for your site
+
+* Run section 4.2 against the real stack (compose, the NAS, a real network) with the generator on another host.
+* A soak of hours, watching memory, descriptors and goroutines of the server (the 6 minute hold above shows no growth, which is not a soak).
+* 10,000 agents with the new build (section 7 was measured with the old one).

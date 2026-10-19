@@ -4,6 +4,7 @@ package selfupdate
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"github.com/auzring1/librepatch/internal/shared/brand"
@@ -187,7 +188,7 @@ func (w *Windows) ScheduleRollback(at time.Time, exe string) error {
 		return err
 	}
 	defer func() { _ = os.Remove(f) }()
-	out, err := exec.Command(schtasks(), "/Create", "/TN", taskName, "/XML", f, "/F").CombinedOutput() // #nosec G204 -- fixed arguments, path we wrote
+	out, err := runSchtasks("/Create", "/TN", taskName, "/XML", f, "/F")
 	if err != nil {
 		return fmt.Errorf("schtasks /Create: %v: %s", err, strings.TrimSpace(string(out)))
 	}
@@ -196,11 +197,21 @@ func (w *Windows) ScheduleRollback(at time.Time, exe string) error {
 
 // CancelRollback implements Platform.
 func (w *Windows) CancelRollback() error {
-	out, err := exec.Command(schtasks(), "/Delete", "/TN", taskName, "/F").CombinedOutput() // #nosec G204 -- fixed arguments
+	out, err := runSchtasks("/Delete", "/TN", taskName, "/F")
 	if err != nil && !strings.Contains(strings.ToLower(string(out)), "cannot find") && !strings.Contains(string(out), "does not exist") {
 		return fmt.Errorf("schtasks /Delete: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// schtasksTimeout bounds one call of schtasks.exe. CancelRollback runs on the connection path (a new version proves
+// itself by completing its first handshake), so a hung task scheduler must not hold the agent there.
+const schtasksTimeout = time.Minute
+
+func runSchtasks(args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), schtasksTimeout)
+	defer cancel()
+	return exec.CommandContext(ctx, schtasks(), args...).CombinedOutput() // #nosec G204 -- fixed arguments and a path this agent wrote
 }
 
 func schtasks() string {

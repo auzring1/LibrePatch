@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -265,5 +266,75 @@ func TestChecksExplainWhyThereIsNoUpdate(t *testing.T) {
 		if c.Status != "skipped" || !strings.Contains(c.Message, "winget list is not loaded") {
 			t.Fatalf("%+v", c)
 		}
+	}
+}
+
+// fleetUpdatesFull is the page as it was built before FleetUpdates read the device rows of only the products that have
+// an update: every install row of every active device, checked one by one.
+func (s *Service) fleetUpdatesFull(ctx context.Context, org uuid.UUID) ([]FleetUpdate, error) {
+	all, err := dbq.New(s.Pool).ListFleetInstallRows(ctx, org)
+	if err != nil {
+		return nil, err
+	}
+	u, err := s.newUpdater(ctx, org)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]fleetRow, len(all))
+	for i, r := range all {
+		rows[i] = fleetRow{r.DeviceID, r.Hostname, r.Scope, installRow{name: r.Name, version: r.Version, publisher: r.Publisher, itemKey: r.ItemKey,
+			productCode: r.ProductCode, source: r.Source, normalizedName: r.NormalizedName, versionKey: r.VersionKey}}
+	}
+	return groupFleetUpdates(rows, u), nil
+}
+
+// FleetUpdates must give exactly the page that checking every install row gives.
+func TestFleetUpdatesEqualsCheckingEveryInstallRow(t *testing.T) {
+	f := newFixture(t)
+	f.useIndex()
+	ctx := context.Background()
+	var devs []uuid.UUID
+	for _, h := range []string{"alpha", "bravo", "charlie", "delta", "echo", "Foxtrot"} {
+		devs = append(devs, f.device(h, "amd64"))
+	}
+	for i, d := range devs {
+		ver7z := []string{"24.08", "26.04", "23.01"}[i%3]
+		f.program(d, "reg64", "7-Zip", "7-Zip "+ver7z+" (x64 edition)", "Igor Pavlov", "", ver7z)
+		f.program(d, "reg64", "Google Chrome", "Google Chrome", "Google LLC", "", []string{"154.0.8037.98", "155.0.8059.40"}[i%2])
+		f.program(d, "reg64", "HSC", "Hospital Scheduling Client", "Contoso Health", "", "1.0")
+	}
+	// The same program in another registry view, as a per-user install, and rows that are never updated by an installer.
+	f.program(devs[0], "reg32", "7-Zip", "7-Zip 24.08 (x64 edition)", "Igor Pavlov", "", "24.08")
+	f.exec(`INSERT INTO software_installs (device_id, source, scope, user_sid, item_key, title_id, name, version, version_key, publisher, product_code, first_seen_at, last_seen_at)
+		SELECT device_id, 'hku', 'user', 'S-1-5-21-1', item_key, title_id, name, version, version_key, publisher, product_code, now(), now()
+		FROM software_installs WHERE device_id = $1 AND source = 'reg64' AND name LIKE 'Google Chrome'`, devs[1])
+	f.program(devs[2], "appx", "Microsoft.Foo", "Foo Store App", "Microsoft", "", "1.0")
+	f.program(devs[3], "portable", "tool", "Tool", "Somebody", "", "1.0")
+	f.exec(`UPDATE software_installs SET system_component = true WHERE device_id = $1 AND name LIKE '7-Zip%'`, devs[4])
+	revoked := f.device("revoked-pc", "amd64")
+	f.program(revoked, "reg64", "7-Zip", "7-Zip 20.00 (x64 edition)", "Igor Pavlov", "", "20.00")
+	f.exec(`UPDATE devices SET status = 'revoked' WHERE id = $1`, revoked)
+
+	want, err := f.svc.fleetUpdatesFull(ctx, f.org)
+	if err != nil || len(want) != 2 {
+		t.Fatalf("full read: %+v %v", want, err)
+	}
+	defer func(v float64) { fleetTargetedShare = v }(fleetTargetedShare)
+	for _, share := range []float64{2, -1} { // read only the products with an update, then read everything
+		fleetTargetedShare = share
+		got, err := f.svc.FleetUpdates(ctx, f.org)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("FleetUpdates (share %v) differs from checking every row:\n got %+v\nwant %+v", share, got, want)
+		}
+	}
+	total := 0
+	for _, u := range want {
+		total += len(u.Devices)
+	}
+	if total < 6 {
+		t.Fatalf("the data should produce several update rows, got %d: %+v", total, want)
 	}
 }

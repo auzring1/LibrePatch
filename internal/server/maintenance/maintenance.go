@@ -1,5 +1,5 @@
 // Package maintenance applies the retention and clean-up settings (Settings > Data and retention, Device defaults):
-// old finished jobs, old compliance snapshots and notification deliveries are deleted, and revoked devices that have
+// old finished jobs, software change history, compliance snapshots and notification deliveries are deleted, and revoked devices that have
 // not been seen for the configured time are removed. It runs once a day and writes what it did to the audit log. The
 // audit log itself is append-only and is never pruned.
 package maintenance
@@ -45,7 +45,7 @@ func (s *Service) log() *slog.Logger {
 
 // Result says what a run removed.
 type Result struct {
-	Jobs, Snapshots, Notifications, Devices int64
+	Jobs, Snapshots, Notifications, Devices, SoftwareHistory int64
 }
 
 // Run applies every retention setting once for the organization.
@@ -60,6 +60,13 @@ func (s *Service) Run(ctx context.Context, org uuid.UUID) (Result, error) {
 			return res, err
 		}
 		res.Jobs = n
+	}
+	if days := data.Int("software_history_days"); days > 0 {
+		n, err := s.pruneSoftwareHistory(ctx, org, now.AddDate(0, 0, -days))
+		res.SoftwareHistory = n
+		if err != nil {
+			return res, err
+		}
 	}
 	if days := data.Int("compliance_history_days"); days > 0 {
 		n, err := q.PruneComplianceSnapshots(ctx, dashboard.Date(now.AddDate(0, 0, -days)))
@@ -87,7 +94,8 @@ func (s *Service) Run(ctx context.Context, org uuid.UUID) (Result, error) {
 		err := store.Tx(ctx, s.Pool, func(tx pgx.Tx, _ *dbq.Queries) error {
 			_, err := audit.Write(ctx, tx, audit.Entry{OrgID: &org, ActorType: audit.ActorSystem, ActorID: "maintenance", Action: "maintenance.retention",
 				TargetType: "settings", TargetIDs: []string{"data"}, Outcome: audit.Success,
-				Details: map[string]any{"jobs": res.Jobs, "compliance_snapshots": res.Snapshots, "notifications": res.Notifications, "devices": res.Devices}}, now)
+				Details: map[string]any{"jobs": res.Jobs, "compliance_snapshots": res.Snapshots, "notifications": res.Notifications, "devices": res.Devices,
+					"software_history": res.SoftwareHistory}}, now)
 			return err
 		})
 		if err != nil {
@@ -95,6 +103,21 @@ func (s *Service) Run(ctx context.Context, org uuid.UUID) (Result, error) {
 		}
 	}
 	return res, nil
+}
+
+// pruneSoftwareHistory deletes the organization's software change history older than before, 20,000 rows at a time
+// (at most 250 batches, so a run always ends; the rest follows the next day).
+func (s *Service) pruneSoftwareHistory(ctx context.Context, org uuid.UUID, before time.Time) (int64, error) {
+	q := dbq.New(s.Pool)
+	var total int64
+	for range 250 {
+		n, err := q.PruneSoftwareHistory(ctx, dbq.PruneSoftwareHistoryParams{OrgID: org, Before: before})
+		total += n
+		if err != nil || n < 20000 {
+			return total, err
+		}
+	}
+	return total, nil
 }
 
 // deleteStale removes revoked or retired devices not seen since before cutoff (never an active one).

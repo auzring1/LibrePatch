@@ -24,6 +24,10 @@ var ErrNoSession = errors.New("jobs: user has no active session")
 // ErrUnsupported means this platform cannot do the requested operation.
 var ErrUnsupported = errors.New("jobs: not supported on this platform")
 
+// ErrRebootScheduled means Windows already has a restart countdown running (a second click on Restart, or an
+// administrator's own "shutdown"). It is not a failure: the restart the caller wants is on its way.
+var ErrRebootScheduled = errors.New("jobs: a restart is already scheduled")
+
 // Signature is the result of an Authenticode check.
 type Signature struct {
 	Signed     bool

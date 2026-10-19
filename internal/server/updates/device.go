@@ -38,12 +38,38 @@ func (s *Service) device(ctx context.Context, org, id uuid.UUID) (dbq.Device, er
 }
 
 func (s *Service) enqueue(ctx context.Context, a Actor, d dbq.Device, spec deploy.JobSpec, action string, details map[string]any, attempts []uuid.UUID) (uuid.UUID, error) {
+	return s.enqueueOnce(ctx, a, d, spec, action, details, attempts, false)
+}
+
+// enqueueOnce is enqueue; with once set, a request of the same kind that has not finished yet is returned instead of
+// a second one (a double click on Restart must restart the computer once). The click is still audited.
+func (s *Service) enqueueOnce(ctx context.Context, a Actor, d dbq.Device, spec deploy.JobSpec, action string, details map[string]any, attempts []uuid.UUID, once bool) (uuid.UUID, error) {
 	job, err := s.Deploy.NewJob(a.Org, d.ID, spec)
 	if err != nil {
 		return uuid.Nil, err
 	}
 	now := s.now()
+	joined := uuid.Nil
 	err = store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
+		if details == nil {
+			details = map[string]any{}
+		}
+		details["hostname"] = d.Hostname
+		if once {
+			if err := q.LockDeviceJobType(ctx, spec.DBType+":"+d.ID.String()); err != nil {
+				return err
+			}
+			switch id, err := q.GetActiveJobOfType(ctx, dbq.GetActiveJobOfTypeParams{DeviceID: d.ID, Type: spec.DBType}); {
+			case err == nil:
+				joined = id
+				details["joined_existing_job"] = id.String()
+				_, err := audit.Write(ctx, tx, audit.Entry{OrgID: &a.Org, ActorType: audit.ActorUser, ActorID: a.User.String(), ActorIP: a.IP, Action: action,
+					TargetType: "device", TargetIDs: []string{d.ID.String()}, Outcome: audit.Success, Details: details}, now)
+				return err
+			case !store.IsNoRows(err):
+				return err
+			}
+		}
 		if err := q.InsertJob(ctx, job); err != nil {
 			return err
 		}
@@ -52,16 +78,15 @@ func (s *Service) enqueue(ctx context.Context, a Actor, d dbq.Device, spec deplo
 				return err
 			}
 		}
-		if details == nil {
-			details = map[string]any{}
-		}
-		details["hostname"] = d.Hostname
 		_, err := audit.Write(ctx, tx, audit.Entry{OrgID: &a.Org, ActorType: audit.ActorUser, ActorID: a.User.String(), ActorIP: a.IP, Action: action,
 			TargetType: "device", TargetIDs: []string{d.ID.String()}, Outcome: audit.Success, Details: details}, now)
 		return err
 	})
 	if err != nil {
 		return uuid.Nil, err
+	}
+	if joined != uuid.Nil {
+		return joined, nil
 	}
 	s.Deploy.Publish(a.Org, "job.updated", d.ID, job.ID, uuid.Nil)
 	s.Deploy.DispatchAsync(d.ID)
@@ -211,9 +236,9 @@ func (s *Service) RebootDevice(ctx context.Context, a Actor, device uuid.UUID, m
 	}
 	reason = clean(strings.TrimSpace(reason), 200)
 	now := s.now()
-	return s.enqueue(ctx, a, d, deploy.JobSpec{Type: agentv1.JobType_JOB_TYPE_REBOOT, DBType: "reboot", Title: "Restart the computer", NotBefore: now, Expires: now.Add(15 * time.Minute),
+	return s.enqueueOnce(ctx, a, d, deploy.JobSpec{Type: agentv1.JobType_JOB_TYPE_REBOOT, DBType: "reboot", Title: "Restart the computer", NotBefore: now, Expires: now.Add(15 * time.Minute),
 		Body: &agentv1.RebootBody{Reason: reason, Reboot: &agentv1.RebootPolicy{Allow: agentv1.RebootAllow_REBOOT_ALLOW_NOW, NotifyMinutes: uint32(minutes)}}}, // #nosec G115 -- 1..1440
-		"device.reboot", map[string]any{"minutes": minutes, "reason": reason}, nil)
+		"device.reboot", map[string]any{"minutes": minutes, "reason": reason}, nil, true)
 }
 
 // InstallUpdate installs one update on the chosen devices (or on every active device that misses

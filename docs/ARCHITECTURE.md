@@ -139,6 +139,8 @@ internal/agent/
   conn/       gRPC client, keepalive, backoff+jitter reconnect, HelloAck clock offset
   store/      bbolt: config, job queue, result outbox, executed-job ledger, inventory snapshots + revision
   jobs/       envelope verification, local policy ceiling, scheduler (not_before, maintenance window, active hours), executor
+              two loops (D116): one runs jobs one at a time, one runs restart requests and the restart countdown, so a
+              restart never waits behind a scan or an inventory; it does wait for an installer or update it would interrupt
   inventory/  collectors (hardware, os, software/registry, msi, appx, portable, users), differ, change watchers
   engine/     installer engine: fetch → verify → stage → run (per-type arg builders) → detect → result
   userctx/    session resolution, token, environment, CreateProcessAsUser, anonymous-pipe IPC, helper side

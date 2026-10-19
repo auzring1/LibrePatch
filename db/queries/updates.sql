@@ -270,3 +270,14 @@ LIMIT 20000;
 
 -- name: ListDeviceUpdateIDs :many
 SELECT update_id, revision FROM device_updates WHERE device_id = $1 AND state = ANY(@states::text[]);
+
+-- name: LockDeviceJobType :exec
+-- Serialises requests of one kind for one device (two clicks at once must find each other).
+SELECT pg_advisory_xact_lock(hashtextextended(@lock_key::text, 0));
+
+-- name: GetActiveJobOfType :one
+-- A request of this kind that has not finished: a second click joins it instead of queueing another.
+SELECT id FROM jobs
+WHERE device_id = @device_id AND type = @type::text
+  AND status IN ('queued', 'sent', 'accepted', 'waiting', 'running') AND expires_at > now()
+ORDER BY created_at DESC LIMIT 1;

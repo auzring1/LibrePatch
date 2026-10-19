@@ -32,6 +32,7 @@ type Record struct {
 	NextRun   int64  `json:"next_run"` // unix seconds; 0 = as soon as eligible
 	NotBefore int64  `json:"not_before"`
 	Expires   int64  `json:"expires"`
+	Accepted  int64  `json:"accepted,omitempty"` // when the agent took the job (unix seconds), for the "waited" figure in the log
 	Started   int64  `json:"started,omitempty"`
 	Finished  int64  `json:"finished,omitempty"`
 	Result    []byte `json:"result,omitempty"` // serialized JobResult

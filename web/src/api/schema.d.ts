@@ -5327,7 +5327,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Restart an online device after a countdown that signed-in users can see (requires updates:write; audited) */
+        /**
+         * Restart an online device after a countdown that signed-in users can see (requires updates:write; audited)
+         * @description While an earlier restart request for the same device has not finished, the answer is that request's job (the second click is audited but queues nothing), so clicking twice restarts the computer once.
+         */
         post: {
             parameters: {
                 query?: never;

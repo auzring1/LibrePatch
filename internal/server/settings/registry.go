@@ -304,6 +304,8 @@ var data = Section{
 	Fields: []Field{
 		{Key: "job_history_days", Label: "Keep finished jobs for", Kind: Int, Default: 365, Min: 0, Max: 3650, Unit: "days", Effect: Live,
 			Help: "Finished, failed and cancelled jobs older than this are deleted. 0 keeps them forever. Jobs still in progress and the audit log are never touched."},
+		{Key: "software_history_days", Label: "Keep software change history for", Kind: Int, Default: 730, Min: 0, Max: 3650, Unit: "days", Effect: Live,
+			Help: "The record of programs added, removed or updated on each device (the History tab). Older entries are deleted. 0 keeps them forever. The software currently installed is never touched."},
 		{Key: "compliance_history_days", Label: "Keep compliance history for", Kind: Int, Default: 400, Min: 30, Max: 1095, Unit: "days", Effect: Live,
 			Help: "How far back the dashboard's compliance chart can go. Older daily snapshots are deleted."},
 		{Key: "notification_log_days", Label: "Keep the notification log for", Kind: Int, Default: 90, Min: 7, Max: 730, Unit: "days", Effect: Live,

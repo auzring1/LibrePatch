@@ -463,6 +463,22 @@ read and cross-compiled (`GOOS=windows go build/vet`), not run.
 
 Not changed, and why: see the review report (`docs/CODE-REVIEW-D115.md`).
 
+## 9m. Performance pass (D116 to D118): what it touches
+
+No protocol, key, certificate or permission changed. These are the changes that sit near a security control, and the evidence for each.
+
+| Change | Why it does not weaken a control | Evidence |
+|---|---|---|
+| **Job offers are verified on the receive path** instead of in the stream loop | The same `envelope.Verifier` runs, with the same replay ledger, and every rejection still sends a `SecurityEvent`. The only change is where it is called from. `offerMu` makes two offers (or an offer from the previous stream's receiver) run one after the other, so the ledger check and its record cannot interleave. Nothing the server sends other than a job offer is handled on the receive path | `TestRestartLatencyWhileHardwareIsCollected`, `TestRestartLatencyRightAfterTheAgentConnects`, the envelope tests under `-race` |
+| **Restart requests run on their own loop** | The job is still verified, validated (`ValidateWU`), checked against the local policy ceiling (`reboot`) and persisted before it runs; only the loop that runs it differs. The restart plan is guarded by a mutex because both loops use it. A restart still waits for a job it would interrupt | `TestRestartIsNotHeldBackByARunningScan`, `TestRestartWaitsForARunningInstaller` |
+| **A second restart request joins the running countdown** (agent) and **returns the unfinished restart job** (server) | The server request still needs `updates:write`, is rate limited like every API call and is audited each time (the second entry carries `joined_existing_job`). Windows' `ERROR_SHUTDOWN_IS_SCHEDULED` / `ERROR_SHUTDOWN_IN_PROGRESS` is the only error treated as "already on its way" | `TestRestartClickedTwiceIsOneJob`, `TestSecondRestartRequestDoesNotRestartTheComputerTwice` |
+| **`CheckDeviceCert`** replaces two reads in the certificate check | The check still runs on every TLS handshake, every agent stream and every renewal, with no cache: the certificate must be known, not revoked, belong to the device named in it, and the device must be `active`. A device row that no longer exists now answers "unknown certificate" instead of "device is not active"; both refuse | `TestEndToEnd` (revoked device cannot open a stream), `TestCertificateRenewal` |
+| **Smaller per-connection read buffer** | Message size limits (4 MiB), TLS 1.3 and the keepalive policy are untouched | `TestEndToEnd`, `TestAgentSelfUpdateEndToEnd` (content download over the stream) |
+| **Retention of `software_history`** (setting, default 730 days) | Deletes inventory history only, per organization, in batches. The audit log and the installed-software table are never pruned. The run is itself an audit entry (`maintenance.retention`) | `TestPruneSoftwareHistoryBatchesAndKeepsRecentAndOtherOrganizations` |
+| **`schtasks.exe` calls time out after a minute** | Same arguments and paths as before; only a time limit is added | compiled and vetted for Windows only |
+
+Not changed on purpose: no cache for revocation, no new listener, no new secret. `govulncheck` could not run in the sandbox that produced this change (the vulnerability database host was blocked), so the dependency check still has to run in CI.
+
 ## 10. Vulnerability disclosure
 Reports go through GitHub private vulnerability reporting (Security tab, "Report a vulnerability"); the full policy is in the
 repository's [SECURITY.md](../SECURITY.md). LibrePatch has a single maintainer, so response times there are goals, not guarantees.

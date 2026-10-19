@@ -348,9 +348,9 @@ export function DataStatusCard() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["settings", "data-status"], queryFn: () => api<DataStatus>("GET", "/settings/data/status"), refetchInterval: 60_000 });
   const run = useMutation({
-    mutationFn: () => api<{ jobs: number; compliance_snapshots: number; notifications: number; devices: number }>("POST", "/settings/data/run-retention", {}),
+    mutationFn: () => api<{ jobs: number; compliance_snapshots: number; notifications: number; devices: number; software_history?: number }>("POST", "/settings/data/run-retention", {}),
     onSuccess: (r) => {
-      toast.success(`Removed ${r.jobs} job${r.jobs === 1 ? "" : "s"}, ${r.compliance_snapshots} compliance snapshots, ${r.notifications} notification entries and ${r.devices} stale device${r.devices === 1 ? "" : "s"}.`);
+      toast.success(`Removed ${r.jobs} job${r.jobs === 1 ? "" : "s"}, ${r.compliance_snapshots} compliance snapshots, ${r.software_history ?? 0} software history entries, ${r.notifications} notification entries and ${r.devices} stale device${r.devices === 1 ? "" : "s"}.`);
       void qc.invalidateQueries({ queryKey: ["settings", "data-status"] });
     },
     onError: (e) => toast.error(errorMessage(e)),

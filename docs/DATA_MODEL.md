@@ -63,6 +63,8 @@ software_installs(device_id, source, scope[machine|user], user_sid ('' for machi
                   install_location, uninstall_string, quiet_uninstall_string, product_code,
                   system_component bool, first_seen_at, last_seen_at,
                   primary key(device_id, source, scope, user_sid, item_key))
+                  -- indexes: (device_id), (title_id, version_key), and (title_id, device_id) INCLUDE (version)
+                  --          WHERE NOT system_component (migration 00021: serves the Software page's counts)
 software_history(id bigint, device_id, title_id, name, scope, user_sid, change[added|removed|version],
                  old_version, new_version, observed_at)
 device_users(device_id, sid, username, domain, profile_path, last_logon_at, loaded, is_admin)

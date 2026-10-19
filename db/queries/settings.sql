@@ -49,6 +49,14 @@ SELECT id, hostname, agent_version FROM devices WHERE org_id = $1 AND status = '
 -- name: PruneFinishedJobs :execrows
 DELETE FROM jobs WHERE org_id = $1 AND status IN ('succeeded', 'succeeded_reboot', 'failed', 'expired', 'cancelled', 'rejected') AND COALESCE(finished_at, created_at) < $2;
 
+-- name: PruneSoftwareHistory :execrows
+-- One batch of an organization's software change history older than $2 (the caller repeats until a batch comes back
+-- short, so the first run on a big table is many small statements, not one that hits the statement timeout).
+DELETE FROM software_history WHERE id IN (
+  SELECT h.id FROM software_history h JOIN devices d ON d.id = h.device_id
+  WHERE d.org_id = @org_id::uuid AND h.observed_at < @before::timestamptz
+  ORDER BY h.id LIMIT 20000);
+
 -- name: ListDeviceCustomValues :many
 SELECT field_key, value FROM device_custom_values WHERE device_id = $1 ORDER BY field_key;
 

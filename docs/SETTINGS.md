@@ -177,6 +177,7 @@ Permission: `settings:data`. How long history is kept. The audit log is append-o
 | Setting | Type | Default | Limits | Effect | What it does |
 |---|---|---|---|---|---|
 | **Keep finished jobs for** (`job_history_days`) | int | `365` | 0 to 3650 days | in effect | Finished, failed and cancelled jobs older than this are deleted. 0 keeps them forever. Jobs still in progress and the audit log are never touched. |
+| **Keep software change history for** (`software_history_days`) | int | `730` | 0 to 3650 days | in effect | The record of programs added, removed or updated on each device (the History tab). Older entries are deleted. 0 keeps them forever. The software currently installed is never touched. |
 | **Keep compliance history for** (`compliance_history_days`) | int | `400` | 30 to 1095 days | in effect | How far back the dashboard's compliance chart can go. Older daily snapshots are deleted. |
 | **Keep the notification log for** (`notification_log_days`) | int | `90` | 7 to 730 days | in effect | Sent and failed e-mails and webhook deliveries, with the error if there was one. |
 
