@@ -186,6 +186,9 @@ software_policies(id, org_id, name, kind[keep_updated|baseline], package_id, gro
                   unverified_confirmed, maint_window jsonb, enabled, use_rings bool, require_approval bool,
                   created_by, created_at, updated_at, unique(org_id, name))
 policy_attempts(policy_id, device_id, version, deployment_id, failures, created_at, pk(policy_id, device_id))
+catalog_overlays(id, org_id, label, kind[upload|url], url, public_key, enabled, priority, doc_name, doc_version, doc_issued_at, document jsonb,
+                 entries, fetched_at, checked_at, status[new|ok|error], last_error, etag, created_by, unique(org_id, label))
+                 -- catalog_packages.verified_by_overlay = label of the overlay that vouches for the package ('' = none)
 software_approvals(org_id, package_id, version, decision[approved|declined], note, decided_by, decided_at, pk(org_id, package_id, version))
 software_holds(id, org_id, policy_id, version, ring_id -> wu_rings, reason, created_at, released_at, released_by,
                unique open hold per (policy_id, version, ring_id))

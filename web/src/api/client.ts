@@ -15,6 +15,7 @@ export type Group = components["schemas"]["Group"];
 export type GroupMembers = components["schemas"]["GroupMembers"];
 export type Pkg = components["schemas"]["Package"];
 export type PackageDetail = components["schemas"]["PackageDetail"];
+export type OverlaySource = components["schemas"]["OverlaySource"];
 export type Installer = components["schemas"]["Installer"];
 export type PackageOverride = components["schemas"]["PackageOverride"];
 export type Detection = components["schemas"]["Detection"];

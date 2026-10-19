@@ -5,6 +5,7 @@ import { Alert, Button, Group, Modal, Select, Stack, Text, TextInput } from "@ma
 import { api, errorMessage, uploadContent, type CustomPackage, type ImportResult, type Pkg } from "../api/client";
 import { useSession } from "../api/session";
 import { PRODUCT_NAME } from "../brand.generated";
+import { OverlaysCard } from "../components/OverlaysCard";
 import { DataTable, EmptyState, Icons, Page, PageHeader, StatGrid, StatTile, StatusPill, TileSkeleton, toast, type Column } from "../ui";
 import { ServerSearch, ServerSearchScope } from "../ui/PageBits";
 
@@ -30,7 +31,7 @@ function SourcePill({ p }: { p: Pkg }) {
 function VerifiedPill({ p }: { p: Pkg }) {
   if (p.source !== "winget") return null;
   return p.verified ? (
-    <StatusPill kind="success" size="sm" title={p.verified_source === "organization" ? "Marked as verified by an administrator after testing" : `Passed the ${PRODUCT_NAME} VM test matrix`}>
+    <StatusPill kind="success" size="sm" title={p.verified_source === "organization" ? "Marked as verified by an administrator after testing" : p.verified_source === "overlay" ? `Vouched for by the overlay “${p.verified_by ?? ""}”` : `Passed the ${PRODUCT_NAME} VM test matrix`}>
       Verified
     </StatusPill>
   ) : (
@@ -186,6 +187,7 @@ export function CatalogPage() {
           }
         />
       </ServerSearchScope>
+      <OverlaysCard />
       {importing && <ImportModal onClose={() => setImporting(false)} onDone={(r) => (setImporting(false), nav(`/catalog/${r.package_id}`))} />}
       {custom && <CustomModal onClose={() => setCustom(false)} onDone={(r) => (setCustom(false), nav(`/catalog/${r.package_id}`))} />}
     </Page>

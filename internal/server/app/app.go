@@ -136,6 +136,10 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 		a.AgentDL.Dir = filepath.Join(cfg.ContentDir, ".agent-downloads")
 	}
 	a.Deploy.Overlay = a.Catalog.Overlay
+	// The signed catalog overlays an administrator added (D122) are read back into memory and applied to the catalog.
+	if err := a.Catalog.LoadOverlays(ctx); err != nil {
+		log.Error("catalog overlays could not be loaded", "err", err)
+	}
 	a.Releases = &agentrel.Service{Pool: pool, Deploy: a.Deploy, Content: a.Catalog.Content, Events: a.Events, Log: log.With("component", "agentrel")}
 	if extra, err := release.ParseKeys(cfg.ReleasePublicKeys); err == nil && len(extra) > 0 {
 		a.Releases.Keys = append(release.TrustedKeys(), extra...)
@@ -405,6 +409,9 @@ func (a *App) housekeeping(ctx context.Context) {
 			a.Sched.Tick(ctx)
 			if n%5 == 0 {
 				a.Policies.Tick(ctx)
+			}
+			if n%60 == 7 {
+				a.Catalog.RefreshDueOverlays(ctx) // asks each overlay URL at most every 12 hours
 			}
 			n++
 			if n%60 == 1 {

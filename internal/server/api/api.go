@@ -231,6 +231,13 @@ func (s *server) routes(r chi.Router) {
 	r.With(s.require(auth.PermCatalogOverride)).Put("/catalog/packages/{id}/overrides", s.putOverrides)
 	r.With(s.require(auth.PermCatalogOverride)).Put("/catalog/packages/{id}/verification", s.setPackageVerification)
 	r.With(s.require(auth.PermCatalogWrite)).Delete("/catalog/packages/{id}", s.deletePackage)
+	r.With(s.require(auth.PermCatalogRead)).Get("/catalog/overlays", s.listOverlays)
+	r.With(s.require(auth.PermCatalogOverride)).Post("/catalog/overlays", s.addOverlay)
+	r.With(s.require(auth.PermCatalogOverride)).Put("/catalog/overlays/{id}", s.updateOverlay)
+	r.With(s.require(auth.PermCatalogOverride)).Post("/catalog/overlays/{id}/upload", s.uploadOverlay)
+	r.With(s.require(auth.PermCatalogOverride)).Post("/catalog/overlays/{id}/refresh", s.refreshOverlay)
+	r.With(s.require(auth.PermCatalogOverride)).Delete("/catalog/overlays/{id}", s.deleteOverlay)
+	r.With(s.require(auth.PermCatalogOverride)).Get("/catalog/overlay-template", s.overlayTemplate)
 	r.With(s.require(auth.PermCatalogRead)).Get("/settings", s.getSettings)
 	r.With(s.require(auth.PermSettingsWrite)).Put("/settings", s.putSettings)
 

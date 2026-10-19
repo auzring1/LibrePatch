@@ -447,10 +447,10 @@ func (u *updater) assess(r installRow) (*candidate, *UpdateCheck) {
 	}
 	c := &candidate{pkgName: fr.m.Name, identifier: fr.m.ID, wingetID: fr.m.ID, latest: fr.m.LatestVersion, deployable: true, matchedBy: fr.m.By}
 	if ov := u.s.overlay(); ov != nil {
-		if e, ok := ov.Entry(fr.m.ID); ok && e.SelfUpdating {
+		if e, ok := ov.EntryFor(u.m.org, fr.m.ID); ok && e.SelfUpdating {
 			c.selfUpdating, c.deployable, c.reason = true, false, "updates itself; left to the vendor's updater"
 		}
-		c.verified = ov.Verified(fr.m.ID, "")
+		c.verified, _ = ov.VerifiedFor(u.m.org, fr.m.ID, "")
 	}
 	return c, nil
 }

@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { generateKeyPairSync, sign as edSign } from "node:crypto";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -554,6 +555,31 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   const staged = pols.items.find((p: { name: string }) => p.name === "Staged Acme Tool");
   expect(staged.use_rings).toBe(true);
   expect(staged.require_approval).toBe(true);
+
+  // --- A signed catalog overlay, made here with Node's Ed25519 and accepted by the server's Go verifier ---
+  await mainNav(page).getByRole("link", { name: "Catalog", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Overlays" })).toBeVisible();
+  const ovKeys = generateKeyPairSync("ed25519");
+  const ovPub = ovKeys.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("hex");
+  const ovDoc = JSON.stringify({ format: "librepatch-overlay/1", name: "E2E overlay", version: 1, packages: [{ identifier: "7zip.7zip", self_updating: false, verified: true, verified_note: "Tested by the e2e run", silent_args: ["/S"] }] });
+  const ovSig = edSign(null, Buffer.concat([Buffer.from("librepatch/overlay/v1\0"), Buffer.from(ovDoc)]), ovKeys.privateKey).toString("base64");
+  const ovBundle = JSON.stringify({ format: "librepatch-overlay-bundle/1", overlay: JSON.parse(ovDoc), key_id: "e2e", signature: ovSig });
+  await page.getByRole("button", { name: "Add overlay" }).click();
+  const od = page.getByRole("dialog");
+  await od.locator('input[type="file"]').setInputFiles({ name: "e2e.lpov", mimeType: "application/json", buffer: Buffer.from(ovBundle) });
+  await od.getByLabel(/^Public key/).fill("00".repeat(32)); // the wrong key first: refused with a clear message
+  await od.getByRole("button", { name: "Add overlay" }).click();
+  await expect(od.getByText(/signature does not match/i)).toBeVisible();
+  await od.getByLabel(/^Public key/).fill(ovPub);
+  await od.getByRole("button", { name: "Add overlay" }).click();
+  await expect(page.getByRole("table", { name: "Overlays" }).getByText("E2E overlay").first()).toBeVisible();
+  const ovList = await (await page.request.get("/api/v1/catalog/overlays")).json();
+  expect(ovList.items).toHaveLength(1);
+  expect(ovList.items[0]).toMatchObject({ label: "E2E overlay", entries: 1, verified_entries: 1, status: "ok", kind: "upload" });
+  const ovTpl = await page.request.get("/api/v1/catalog/overlay-template");
+  expect(ovTpl.status()).toBe(200);
+  expect((await ovTpl.json()).format).toBe("librepatch-overlay/1");
+  await shot(page, "22b-overlays");
 
   await mainNav(page).getByRole("link", { name: "Reports", exact: true }).click();
   await expect(page.getByRole("heading", { name: /^(.* · )?Reports$/ })).toBeVisible();

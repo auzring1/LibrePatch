@@ -2459,6 +2459,125 @@ paths:
         "204": { description: Saved }
         "404": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+  /catalog/overlays:
+    get:
+      tags: [catalog]
+      summary: Signed catalog overlay sources, highest priority first (requires catalog:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, builtin_entries]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/OverlaySource" } }
+                  builtin_entries: { type: integer }
+    post:
+      tags: [catalog]
+      summary: Add an overlay from an uploaded signed file or from a URL, under its author's public key (requires catalog:override; audited as catalog.overlay_add)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [public_key]
+              properties:
+                label: { type: string, maxLength: 100, description: Defaults to the name inside the document }
+                public_key: { type: string, description: 64 hexadecimal characters }
+                url: { type: string, description: Fetch the signed file from here (http or https) }
+                bundle: { type: string, description: The text of the signed .lpov file, when it is uploaded }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OverlaySource" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /catalog/overlays/{id}:
+    put:
+      tags: [catalog]
+      summary: Rename an overlay source, switch it on or off, change its priority or address (requires catalog:override; audited as catalog.overlay_update)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [label, enabled, priority]
+              properties:
+                label: { type: string, maxLength: 100 }
+                enabled: { type: boolean }
+                priority: { type: integer, minimum: 1, maximum: 1000 }
+                url: { type: string }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OverlaySource" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [catalog]
+      summary: Remove an overlay source (requires catalog:override; audited as catalog.overlay_delete)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "204": { description: Removed }
+        "404": { $ref: "#/components/responses/Error" }
+  /catalog/overlays/{id}/upload:
+    post:
+      tags: [catalog]
+      summary: Load a newer signed file into a source; an older document than the source has is refused (requires catalog:override; audited as catalog.overlay_replace)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [bundle]
+              properties:
+                bundle: { type: string }
+      responses:
+        "200":
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OverlayChange" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /catalog/overlays/{id}/refresh:
+    post:
+      tags: [catalog]
+      summary: Ask a URL source for a newer document now (requires catalog:override; audited as catalog.overlay_refresh)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200":
+          description: Checked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OverlayChange" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /catalog/overlay-template:
+    get:
+      tags: [catalog]
+      summary: An unsigned overlay document built from this organization's own overrides and verified marks, to edit and sign (requires catalog:override)
+      responses:
+        "200":
+          description: JSON document
+          content:
+            application/json:
+              schema: { type: object }
   /catalog/import:
     post:
       tags: [catalog]
@@ -3649,7 +3768,8 @@ components:
         license: { type: string }
         description: { type: string }
         verified: { type: boolean, description: Counts as verified - it passed the VM test matrix or an administrator marked it after testing it }
-        verified_source: { type: string, enum: ["", tests, organization], description: Why the package counts as verified }
+        verified_source: { type: string, enum: ["", tests, organization, overlay], description: Why the package counts as verified }
+        verified_by: { type: string, description: The overlay that vouches for the package, when verified_source is overlay }
         self_updating: { type: boolean }
         imported_at: { type: string, format: date-time }
         version_count: { type: integer }
@@ -3709,6 +3829,46 @@ components:
             version: { type: string }
         effective_user_scope_policy: { type: string }
         effective_user_scope_policy_source: { type: string }
+        overlay:
+          description: What a signed catalog overlay says about the package (null when none does)
+          type: object
+          nullable: true
+          properties:
+            source: { type: string }
+            note: { type: string }
+            self_updating: { type: boolean, nullable: true }
+            verified: { type: boolean }
+            verified_note: { type: string }
+            silent_args: { type: array, items: { type: string } }
+            detection_rules: { type: integer }
+    OverlayChange:
+      type: object
+      required: [changed, version, entries]
+      properties:
+        changed: { type: boolean }
+        version: { type: integer, format: int64 }
+        entries: { type: integer }
+    OverlaySource:
+      type: object
+      required: [id, label, kind, url, public_key, key_id, enabled, priority, doc_name, doc_version, doc_issued_at, entries, verified_entries, status, last_error]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        kind: { type: string, enum: [upload, url] }
+        url: { type: string }
+        public_key: { type: string, description: The hex Ed25519 public key the document must be signed with }
+        key_id: { type: string }
+        enabled: { type: boolean }
+        priority: { type: integer, minimum: 1, maximum: 1000, description: A lower number wins when two overlays name the same package }
+        doc_name: { type: string }
+        doc_version: { type: integer, format: int64 }
+        doc_issued_at: { type: string }
+        entries: { type: integer }
+        verified_entries: { type: integer }
+        fetched_at: { type: string, format: date-time, nullable: true }
+        checked_at: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [new, ok, error] }
+        last_error: { type: string }
     ImportResult:
       type: object
       required: [package_id, version_id, identifier, version, installers, deployable]

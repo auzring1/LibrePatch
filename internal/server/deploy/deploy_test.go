@@ -16,6 +16,7 @@ import (
 
 	"github.com/auzring1/librepatch/gen/dbq"
 	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
+	"github.com/auzring1/librepatch/internal/server/catalog"
 	"github.com/auzring1/librepatch/internal/server/pki"
 	"github.com/auzring1/librepatch/internal/shared/envelope"
 	"github.com/auzring1/librepatch/internal/shared/vercmp"
@@ -763,5 +764,45 @@ func TestUninstallSoftwareRefusesSystemComponentsAndUnknownRows(t *testing.T) {
 	// Another organization's device is not reachable.
 	if _, err := f.svc.UninstallSoftware(context.Background(), uuid.New(), f.user, d, "x", []SoftwareRef{{Source: "reg64", Scope: "machine", ItemKey: "AcmeTool"}}); !errors.Is(err, ErrNotActive) {
 		t.Fatalf("cross-org: %v", err)
+	}
+}
+
+// A signed overlay's silent arguments and detection rules reach the signed job, under the administrator's own override
+// (D122).
+func TestOverlaySilentArgumentsReachTheSignedJob(t *testing.T) {
+	f := newFixture(t)
+	f.catalog(false)
+	dev := f.device("pc", "amd64")
+	f.rec.setOnline(dev)
+	o := catalog.LoadOverlay()
+	o.SetOrg(f.org, map[string]catalog.OverlayEntry{"custom.acmetool": {Identifier: "Custom.AcmeTool", Source: "Clinic IT", SilentArgs: []string{"/quiet", "/norestart"},
+		ExtraDetection: []catalog.Detection{{Kind: "registry", Key: `HKLM\SOFTWARE\Acme`}}}})
+	f.svc.Overlay = o
+
+	argsOf := func(plan *Plan) ([]string, int) {
+		jobs := f.jobs(plan.DeploymentID)
+		if len(jobs) != 1 {
+			t.Fatalf("jobs: %d", len(jobs))
+		}
+		b := envOf(t, jobs[0]).GetInstall()
+		return b.Installer.Args, len(b.Detection)
+	}
+	plan, err := f.create(Request{Action: "install", Version: "2.0", Scope: "machine", DeviceIDs: []uuid.UUID{dev}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, det := argsOf(plan)
+	if len(args) != 2 || args[0] != "/quiet" || det < 1 {
+		t.Fatalf("the overlay's arguments and detection must be in the job: %v, %d rules", args, det)
+	}
+
+	// The administrator's own silent arguments win over the overlay's.
+	f.exec("INSERT INTO package_overrides (org_id, package_id, silent_args) VALUES ($1,$2,$3)", f.org, f.pkg.ID, []string{"/mine"})
+	plan, err = f.create(Request{Action: "install", Version: "2.0", Scope: "machine", DeviceIDs: []uuid.UUID{dev}, Name: "again"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if args, _ := argsOf(plan); len(args) != 1 || args[0] != "/mine" {
+		t.Fatalf("the administrator's override must win: %v", args)
 	}
 }

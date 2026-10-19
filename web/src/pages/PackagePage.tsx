@@ -84,6 +84,7 @@ export function PackagePage() {
       {d && (
         <>
           {d.package.source === "winget" && <VerificationCard detail={d} />}
+          {d.overlay && <OverlayInfo overlay={d.overlay} />}
           <Card title="Details" actions={<PackageBadges p={d.package} />}>
             <div className="lp-block">
               {d.package.description && <p style={{ margin: 0 }}>{d.package.description}</p>}
@@ -156,9 +157,12 @@ function VerificationCard({ detail }: { detail: PackageDetail }) {
 
   if (p.verified) {
     const byTeam = p.verified_source === "organization";
+    const byOverlay = p.verified_source === "overlay";
     return (
-      <Alert color="green" title={byTeam ? "Verified by your organization" : `Verified: passed the ${PRODUCT_NAME} VM test matrix`} icon={<Icons.Success size={18} aria-hidden />}>
-        {byTeam
+      <Alert color="green" title={byTeam ? "Verified by your organization" : byOverlay ? `Verified by the overlay “${p.verified_by ?? ""}”` : `Verified: passed the ${PRODUCT_NAME} VM test matrix`} icon={<Icons.Success size={18} aria-hidden />}>
+        {byOverlay
+          ? `${detail.overlay?.verified_note || "The author of the overlay tested this package."} It deploys without the confirmation.`
+          : byTeam
           ? `${v?.by || "An administrator"} marked this package as verified${v?.at ? ` on ${dateTime(v.at)}` : ""}${v?.version ? `, after testing version ${v.version}` : ""}. It deploys without the confirmation.${newest && v?.version && newest !== v.version ? ` The newest imported version is ${newest}, which was not tested at that time.` : ""}`
           : "It deploys without the confirmation."}
         {canMark && byTeam && (
@@ -329,5 +333,27 @@ function Overrides({ detail }: { detail: PackageDetail }) {
         )}
       </div>
     </Card>
+  );
+}
+
+/** What a signed overlay says about the package: where each piece of knowledge comes from. */
+function OverlayInfo({ overlay: o }: { overlay: NonNullable<PackageDetail["overlay"]> }) {
+  const lines: string[] = [];
+  if (o.silent_args && o.silent_args.length > 0) lines.push(`Silent arguments: ${o.silent_args.join(" ")} (your own override of the arguments wins over this)`);
+  if (o.detection_rules) lines.push(`${o.detection_rules} detection rule${o.detection_rules === 1 ? "" : "s"}, used together with the package's own`);
+  if (o.self_updating !== null && o.self_updating !== undefined) lines.push(o.self_updating ? "Updates itself" : "Does not update itself");
+  return (
+    <Alert color="blue" title={`From the overlay “${o.source}”`} icon={<Icons.NavCatalog size={18} aria-hidden />}>
+      {o.note && <p style={{ margin: "0 0 var(--lp-space-2)" }}>{o.note}</p>}
+      {lines.length > 0 ? (
+        <ul style={{ margin: 0, paddingLeft: "var(--lp-space-4)" }}>
+          {lines.map((l) => (
+            <li key={l}>{l}</li>
+          ))}
+        </ul>
+      ) : (
+        !o.note && "Nothing that changes how this package is deployed."
+      )}
+    </Alert>
   );
 }

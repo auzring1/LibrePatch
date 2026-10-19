@@ -5867,6 +5867,273 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/catalog/overlays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Signed catalog overlay sources, highest priority first (requires catalog:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["OverlaySource"][];
+                            builtin_entries: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Add an overlay from an uploaded signed file or from a URL, under its author's public key (requires catalog:override; audited as catalog.overlay_add) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Defaults to the name inside the document */
+                        label?: string;
+                        /** @description 64 hexadecimal characters */
+                        public_key: string;
+                        /** @description Fetch the signed file from here (http or https) */
+                        url?: string;
+                        /** @description The text of the signed .lpov file */
+                        bundle?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Added */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OverlaySource"];
+                    };
+                };
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalog/overlays/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename an overlay source, switch it on or off, change its priority or address (requires catalog:override; audited as catalog.overlay_update) */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        label: string;
+                        enabled: boolean;
+                        priority: number;
+                        url?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Saved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OverlaySource"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        post?: never;
+        /** Remove an overlay source (requires catalog:override; audited as catalog.overlay_delete) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalog/overlays/{id}/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Load a newer signed file into a source; an older document than the source has is refused (requires catalog:override; audited as catalog.overlay_replace) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        bundle: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OverlayChange"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalog/overlays/{id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask a URL source for a newer document now (requires catalog:override; audited as catalog.overlay_refresh) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Checked */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OverlayChange"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalog/overlay-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An unsigned overlay document built from this organization's own overrides and verified marks, to edit and sign (requires catalog:override) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description JSON document */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/catalog/import": {
         parameters: {
             query?: never;
@@ -7375,7 +7642,9 @@ export interface components {
              * @description Why the package counts as verified
              * @enum {string}
              */
-            verified_source?: "" | "tests" | "organization";
+            verified_source?: "" | "tests" | "organization" | "overlay";
+            /** @description The overlay that vouches for the package */
+            verified_by?: string;
             self_updating: boolean;
             /** Format: date-time */
             imported_at?: string;
@@ -7436,6 +7705,49 @@ export interface components {
             } | null;
             effective_user_scope_policy: string;
             effective_user_scope_policy_source?: string;
+            /** @description What a signed catalog overlay says about the package (null when none does) */
+            overlay?: {
+                source?: string;
+                note?: string;
+                self_updating?: boolean | null;
+                verified?: boolean;
+                verified_note?: string;
+                silent_args?: string[];
+                detection_rules?: number;
+            } | null;
+        };
+        OverlayChange: {
+            changed: boolean;
+            /** Format: int64 */
+            version: number;
+            entries: number;
+        };
+        OverlaySource: {
+            /** Format: uuid */
+            id: string;
+            label: string;
+            /** @enum {string} */
+            kind: "upload" | "url";
+            url: string;
+            /** @description The hex Ed25519 public key the document must be signed with */
+            public_key: string;
+            key_id: string;
+            enabled: boolean;
+            /** @description A lower number wins when two overlays name the same package */
+            priority: number;
+            doc_name: string;
+            /** Format: int64 */
+            doc_version: number;
+            doc_issued_at: string;
+            entries: number;
+            verified_entries: number;
+            /** Format: date-time */
+            fetched_at?: string | null;
+            /** Format: date-time */
+            checked_at?: string | null;
+            /** @enum {string} */
+            status: "new" | "ok" | "error";
+            last_error: string;
         };
         ImportResult: {
             /** Format: uuid */

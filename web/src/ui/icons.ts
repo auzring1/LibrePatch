@@ -80,6 +80,8 @@ export {
   IconPlus as Plus,
   IconPower as Restart,
   IconRefresh as NavAgentUpdates,
+  IconRefresh as Refresh,
+  IconUpload as Upload,
   IconRestore as Restore,
   IconRocket as NavDeployments,
   IconSearch as Search,

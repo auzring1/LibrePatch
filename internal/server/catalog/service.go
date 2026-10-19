@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"sort"
 	"strings"
@@ -27,6 +28,8 @@ type Service struct {
 	Content *Store
 	Overlay *Overlay
 	Now     func() time.Time
+	// HTTP fetches overlay sources; nil uses a client that refuses addresses on this server itself (tests replace it).
+	HTTP *http.Client
 }
 
 // ErrInvalid wraps validation problems in administrator input.
@@ -90,10 +93,7 @@ func (s *Service) Import(ctx context.Context, org, user uuid.UUID, identifier, v
 func (s *Service) store(ctx context.Context, org, user uuid.UUID, p *Parsed) (*ImportResult, error) {
 	res := &ImportResult{Identifier: p.Identifier, Version: p.Version, Installers: len(p.Installers)}
 	err := store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
-		self := false
-		if e, ok := s.overlay().Entry(p.Identifier); ok {
-			self = e.SelfUpdating
-		}
+		self, vouch, tests := s.overlayState(org, p.Identifier)
 		pkgID, err := q.UpsertCatalogPackage(ctx, dbq.UpsertCatalogPackageParams{ID: uuid.New(), OrgID: org, Source: "winget",
 			Identifier: p.Identifier, Name: p.Name, Publisher: p.Publisher, Homepage: p.Homepage, License: p.License,
 			Description: p.Summary, SelfUpdating: self, ImportedBy: &user})
@@ -128,8 +128,7 @@ func (s *Service) store(ctx context.Context, org, user uuid.UUID, p *Parsed) (*I
 			}
 		}
 		res.PackageID, res.VersionID = pkgID, verID
-		verified := s.overlay().Verified(p.Identifier, "")
-		return q.SetPackageVerified(ctx, dbq.SetPackageVerifiedParams{OrgID: org, ID: pkgID, Verified: verified})
+		return q.SetPackageOverlayState(ctx, dbq.SetPackageOverlayStateParams{OrgID: org, ID: pkgID, SelfUpdating: self, Overlay: vouch, TestsPassed: tests})
 	})
 	if err != nil {
 		return nil, err
@@ -534,7 +533,7 @@ func (s *Service) SetOrgVerified(ctx context.Context, org, user, pkgID uuid.UUID
 	if vs, err := q.ListPackageVersions(ctx, pkg.ID); err == nil && len(vs) > 0 {
 		ch.Version = vs[0].Version
 	}
-	ch.AfterVerified = verified || ch.TestsPassed
+	ch.AfterVerified = verified || ch.TestsPassed || pkg.VerifiedByOverlay != ""
 	err = q.SetPackageOrgVerified(ctx, dbq.SetPackageOrgVerifiedParams{OrgID: org, ID: pkg.ID, ByOrg: verified, TestsPassed: ch.TestsPassed, By: user,
 		At: time.Now().UTC(), Version: ch.Version})
 	if err != nil {

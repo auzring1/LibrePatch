@@ -8,6 +8,8 @@
 //	librepatch-release tosign --manifest manifest.json --out tosign.bin     (the exact bytes a KMS must sign: domain prefix + manifest)
 //	librepatch-release sign-bytes --key release.key --in tosign.bin --out sig.bin   (stand-in for the KMS, throw-away keys only)
 //	librepatch-release verify --bundle agent-1.2.3.lprel --exe agent.exe --pub release.pub
+//	librepatch-release overlay-sign --key overlay.key --in overlay.json --out clinic.lpov     sign a catalog overlay (docs/RUNBOOK.md, catalog overlays)
+//	librepatch-release overlay-verify --bundle clinic.lpov --pub overlay.pub                  check one and print what it contains
 //
 // The private key never leaves the signer: with a cloud KMS use `manifest`, sign the bytes
 // with "librepatch/release/v1\x00" prepended, then `attach`. This tool is not part of the shipped
@@ -19,6 +21,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -27,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/auzring1/librepatch/internal/shared/overlay"
 	"github.com/auzring1/librepatch/internal/shared/release"
 )
 
@@ -51,6 +55,10 @@ func main() {
 		err = signBytes(os.Args[2:])
 	case "verify":
 		err = verify(os.Args[2:])
+	case "overlay-sign":
+		err = overlaySign(os.Args[2:])
+	case "overlay-verify":
+		err = overlayVerify(os.Args[2:])
 	default:
 		usage()
 		err = fmt.Errorf("unknown command %q", os.Args[1])
@@ -62,7 +70,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, "usage: librepatch-release keygen|sign|manifest|attach|tosign|sign-bytes|verify (see the package comment)\n")
+	fmt.Fprint(os.Stderr, "usage: librepatch-release keygen|sign|manifest|attach|tosign|sign-bytes|verify|overlay-sign|overlay-verify (see the package comment)\n")
 }
 
 func keygen(args []string) error {
@@ -345,5 +353,77 @@ func verify(args []string) error {
 		}
 	}
 	fmt.Printf("OK: %s %s %s/%s sha256 %s\n", release.Product, m.Version, m.OS, m.Arch, m.SHA256)
+	return nil
+}
+
+// overlaySign signs a catalog overlay document. The key is any Ed25519 key made with keygen; use a separate one for
+// overlays, never the agent release key.
+func overlaySign(args []string) error {
+	fl := flag.NewFlagSet("overlay-sign", flag.ContinueOnError)
+	keyPath := fl.String("key", "", "private key file (from keygen)")
+	in := fl.String("in", "", "the overlay document (JSON)")
+	out := fl.String("out", "", "the signed file to write (.lpov)")
+	if err := fl.Parse(args); err != nil {
+		return err
+	}
+	if *keyPath == "" || *in == "" || *out == "" {
+		return errors.New("--key, --in and --out are required")
+	}
+	priv, err := readKey(*keyPath)
+	if err != nil {
+		return err
+	}
+	doc, err := os.ReadFile(*in) // #nosec G304 -- operator-chosen path
+	if err != nil {
+		return err
+	}
+	b, err := overlay.Sign(priv, doc)
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(b, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(*out, append(data, '\n'), 0o644); err != nil { // #nosec G306 -- a signed public document
+		return err
+	}
+	fmt.Printf("signed %s\nkey id: %s\npublic key hex (enter this in the console): %s\n", *out, b.KeyID, hex.EncodeToString(priv.Public().(ed25519.PublicKey)))
+	return nil
+}
+
+func overlayVerify(args []string) error {
+	fl := flag.NewFlagSet("overlay-verify", flag.ContinueOnError)
+	bundle := fl.String("bundle", "", "the signed overlay file (.lpov)")
+	pubArg := fl.String("pub", "", "the public key, as a file or as hex")
+	if err := fl.Parse(args); err != nil {
+		return err
+	}
+	if *bundle == "" || *pubArg == "" {
+		return errors.New("--bundle and --pub are required")
+	}
+	pubText := *pubArg
+	if b, err := os.ReadFile(*pubArg); err == nil { // #nosec G304 -- operator-chosen path
+		pubText = string(b)
+	}
+	pub, err := overlay.ParsePublicKey(pubText)
+	if err != nil {
+		return err
+	}
+	raw, err := os.ReadFile(*bundle) // #nosec G304 -- operator-chosen path
+	if err != nil {
+		return err
+	}
+	doc, _, err := overlay.Verify(raw, pub)
+	if err != nil {
+		return err
+	}
+	verified := 0
+	for _, p := range doc.Packages {
+		if p.Verified {
+			verified++
+		}
+	}
+	fmt.Printf("OK: %q version %d, %d packages (%d marked verified), key id %s\n", doc.Name, doc.Version, len(doc.Packages), verified, overlay.KeyID(pub))
 	return nil
 }

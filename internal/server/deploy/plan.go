@@ -186,6 +186,13 @@ func (s *Service) Create(ctx context.Context, org uuid.UUID, r Request) (*Plan, 
 	if ov != nil && ov.Excluded {
 		return nil, ErrExcluded
 	}
+	// What a signed overlay knows about the package (silent arguments, detection rules) sits under the administrator's own
+	// override (D122).
+	if o := s.overlay(); o != nil {
+		if e, ok := o.EntryFor(org, pkg.Identifier); ok {
+			ov = catalog.MergeOverride(ov, e)
+		}
+	}
 	// A self-updating app (Chrome, Edge, Zoom, ...) is left to its vendor's updater unless an
 	// administrator chose to enforce versions (docs/ARCHITECTURE.md §7.7).
 	selfManaged := pkg.SelfUpdating && (ov == nil || ov.SelfUpdatePolicy != "enforce")

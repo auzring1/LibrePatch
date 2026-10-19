@@ -142,24 +142,49 @@ type CatalogInstaller struct {
 	Unsupported     string
 }
 
+type CatalogOverlay struct {
+	ID          uuid.UUID
+	OrgID       uuid.UUID
+	Label       string
+	Kind        string
+	Url         string
+	PublicKey   string
+	Enabled     bool
+	Priority    int32
+	DocName     string
+	DocVersion  int64
+	DocIssuedAt string
+	Document    []byte
+	Entries     int32
+	FetchedAt   *time.Time
+	CheckedAt   *time.Time
+	Status      string
+	LastError   string
+	Etag        string
+	CreatedBy   *uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type CatalogPackage struct {
-	ID              uuid.UUID
-	OrgID           uuid.UUID
-	Source          string
-	Identifier      string
-	Name            string
-	Publisher       string
-	Homepage        string
-	License         string
-	Description     string
-	Verified        bool
-	SelfUpdating    bool
-	ImportedAt      time.Time
-	ImportedBy      *uuid.UUID
-	VerifiedByOrg   bool
-	VerifiedBy      *uuid.UUID
-	VerifiedAt      *time.Time
-	VerifiedVersion string
+	ID                uuid.UUID
+	OrgID             uuid.UUID
+	Source            string
+	Identifier        string
+	Name              string
+	Publisher         string
+	Homepage          string
+	License           string
+	Description       string
+	Verified          bool
+	SelfUpdating      bool
+	ImportedAt        time.Time
+	ImportedBy        *uuid.UUID
+	VerifiedByOrg     bool
+	VerifiedBy        *uuid.UUID
+	VerifiedAt        *time.Time
+	VerifiedVersion   string
+	VerifiedByOverlay string
 }
 
 type CatalogVersion struct {
