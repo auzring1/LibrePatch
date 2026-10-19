@@ -98,7 +98,6 @@ a.lp-tile:hover, button.lp-tile:hover { border-color: var(--lp-border-strong); b
 .lp-nav__sub { margin: 2px 0 var(--lp-space-1) var(--lp-space-5); padding-left: var(--lp-space-2); border-left: 1px solid var(--lp-border); }
 .lp-nav__link--sub { font-size: var(--lp-text-sm); padding-top: 0.35rem; padding-bottom: 0.35rem; }
 .lp-nav__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lp-nav__foot { margin-top: var(--lp-space-4); padding-top: var(--lp-space-3); border-top: 1px solid var(--lp-border); }
 .lp-shell[data-rail="true"] { --lp-nav-w: 64px; }
 .lp-shell[data-rail="true"] .lp-nav { padding-left: var(--lp-space-2); padding-right: var(--lp-space-2); }
 .lp-shell[data-rail="true"] .lp-nav__link { justify-content: center; padding-left: 0; padding-right: 0; }
@@ -280,5 +279,4 @@ tr:hover .lp-dt__actions, tr:focus-within .lp-dt__actions, .lp-dt__actions:focus
 .lp-bell__count[data-severity="critical"] { background: var(--lp-danger-bg); color: var(--lp-danger-fg); border-color: var(--lp-danger-border); }
 .lp-note__title { font-weight: var(--lp-weight-medium); white-space: normal; }
 .lp-note__meta { font-size: var(--lp-text-xs); color: var(--lp-text-muted); white-space: normal; }
-.lp-nav__rail-toggle { width: 100%; border: 0; background: transparent; font: inherit; font-weight: var(--lp-weight-medium); text-align: left; cursor: pointer; }
 @media (max-width: 62em) { .lp-sitebtn__label { display: none; } .lp-sitebtn { padding: 0 var(--lp-space-2); } }

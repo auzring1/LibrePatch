@@ -495,10 +495,11 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await expect(mainNav(page).getByRole("link", { name: "Groups", exact: true })).toBeHidden();
   await endpoints.click();
   await expect(mainNav(page).getByRole("link", { name: "Groups", exact: true })).toBeVisible();
-  await page.getByTestId("nav-rail-toggle").click();
+  // The one switch for the sidebar is in the top bar (there used to be a second one at the bottom of the sidebar).
+  await expect(page.getByTestId("nav-rail-toggle")).toHaveCount(0);
+  await page.getByTestId("topbar-nav-toggle").click();
   await expect(page.locator(".lp-shell")).toHaveAttribute("data-rail", "true");
   await shot(page, "24-nav-rail");
-  // The same switch sits in the top bar, so people do not have to look for it at the bottom of the sidebar.
   await page.getByTestId("topbar-nav-toggle").click();
   await expect(page.locator(".lp-shell")).not.toHaveAttribute("data-rail", "true");
   await page.getByTestId("topbar-nav-toggle").click();
@@ -506,7 +507,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await savedOnTheAccount(page, true);
   await page.reload();
   await expect(page.locator(".lp-shell")).toHaveAttribute("data-rail", "true"); // remembered on the account
-  await page.getByTestId("nav-rail-toggle").click();
+  await page.getByTestId("topbar-nav-toggle").click();
   await expect(page.locator(".lp-shell")).not.toHaveAttribute("data-rail", "true");
   await savedOnTheAccount(page, false);
   await page.goto("/devices?state=offline");
