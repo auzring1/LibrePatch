@@ -225,7 +225,7 @@ func (e *Engine) install(ctx context.Context, r *Record, env *agentv1.JobEnvelop
 }
 
 // installPortable copies a single portable executable into the machine-wide
-// legacy "LibrePatch" portable directory (the folder name is kept, see RENAME-PLAN.md B2).
+// legacy "LibrePatch" portable directory (the folder name is kept so that existing installs keep finding their portable programs).
 func (e *Engine) installPortable(b *agentv1.InstallBody, file string) (string, error) {
 	root := e.P.Env(installer.Machine, "", "PROGRAMFILES")
 	if root == "" {
