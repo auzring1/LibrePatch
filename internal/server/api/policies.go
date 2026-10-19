@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/auzring1/librepatch/gen/dbq"
 	"github.com/auzring1/librepatch/internal/server/dashboard"
 	"github.com/auzring1/librepatch/internal/server/policies"
@@ -217,4 +219,54 @@ func (s *server) complianceCSV(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	cw.Flush()
+}
+
+// softwareApprovals: GET /software/approvals — versions waiting for a decision, recent decisions and open holds.
+func (s *server) softwareApprovals(w http.ResponseWriter, r *http.Request) {
+	if !s.polSvc(w) {
+		return
+	}
+	q, err := s.Policies.Queue(r.Context(), principalFrom(r).OrgID)
+	if err != nil {
+		s.polError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, q)
+}
+
+// decideSoftware: POST /software/approvals — approve or decline one version of a package, or put it back to waiting.
+func (s *server) decideSoftware(w http.ResponseWriter, r *http.Request) {
+	if !s.polSvc(w) {
+		return
+	}
+	var in struct {
+		PackageID uuid.UUID `json:"package_id"`
+		Version   string    `json:"version"`
+		Decision  string    `json:"decision"`
+		Note      string    `json:"note"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := s.Policies.Decide(r.Context(), s.polActor(r), in.PackageID, in.Version, in.Decision, in.Note); err != nil {
+		s.polError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// releaseSoftwareHold: POST /software/holds/{id}/release
+func (s *server) releaseSoftwareHold(w http.ResponseWriter, r *http.Request) {
+	if !s.polSvc(w) {
+		return
+	}
+	id, ok := idParam(w, r)
+	if !ok {
+		return
+	}
+	if err := s.Policies.ReleaseHold(r.Context(), s.polActor(r), id); err != nil {
+		s.polError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

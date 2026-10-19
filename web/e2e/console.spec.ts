@@ -533,6 +533,27 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await pd.getByRole("button", { name: "Save policy" }).click();
   await expect(page.getByRole("table", { name: "Software policies" }).getByText("Keep Acme Tool current")).toBeVisible();
   await shot(page, "22-policies");
+  // A policy that rolls out in stages through the update rings and waits for approval of each new version.
+  await page.getByRole("button", { name: "Add policy" }).click();
+  const sd = page.getByRole("dialog");
+  await sd.getByLabel(/^Name/).fill("Staged Acme Tool");
+  await sd.getByLabel(/^Package/).click();
+  await page.getByRole("option", { name: "Acme Tool" }).click();
+  await sd.getByLabel(/^Groups/).click();
+  await page.getByRole("option").first().click();
+  await sd.getByText("Add policy").click(); // close the dropdown
+  await sd.getByLabel(/Roll new versions out in stages/).check();
+  await sd.getByLabel(/Wait for my approval of each new version/).check();
+  await sd.getByRole("button", { name: "Save policy" }).click();
+  await expect(page.getByRole("table", { name: "Software policies" }).getByText("Staged Acme Tool")).toBeVisible();
+  const queue = await page.request.get("/api/v1/software/approvals");
+  expect(queue.status()).toBe(200);
+  const qj = await queue.json();
+  expect(Object.keys(qj).sort()).toEqual(["holds", "pending", "recent"]);
+  const pols = await (await page.request.get("/api/v1/policies")).json();
+  const staged = pols.items.find((p: { name: string }) => p.name === "Staged Acme Tool");
+  expect(staged.use_rings).toBe(true);
+  expect(staged.require_approval).toBe(true);
 
   await mainNav(page).getByRole("link", { name: "Reports", exact: true }).click();
   await expect(page.getByRole("heading", { name: /^(.* · )?Reports$/ })).toBeVisible();

@@ -26,7 +26,8 @@ const (
 // Events are the things that can notify someone or call a webhook.
 var Events = []Option{
 	{"failed_install", "An install or update failed on a device"},
-	{"update_held", "An update was held because a ring missed its success threshold"},
+	{"update_held", "An update or software version was held because a ring missed its success threshold"},
+	{"software_approval_needed", "A new software version is waiting for your approval"},
 	{"device_offline", "A device has not reported for a while"},
 	{"agent_out_of_date", "A device runs an older agent than the target release"},
 	{"restart_pending_long", "A device has needed a restart for too long"},
@@ -59,8 +60,10 @@ func EventReference() []EventDoc {
 	return []EventDoc{
 		doc("failed_install", "A job that installs, updates or removes software or a Windows update ends in failure.",
 			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "job": map[string]any{"id": "…", "title": "Install 7-Zip 24.08", "reason": "exit code 1603"}}),
-		doc("update_held", "A ring missed its success threshold, so the update is held back from later rings.",
+		doc("update_held", "A ring missed its success threshold, so the Windows update or software version is held back from later rings.",
 			map[string]any{"update": map[string]any{"id": "…", "title": "2026-01 Cumulative Update (KB5099999)"}, "ring": "Pilot", "reason": "3 of 10 devices failed"}),
+		doc("software_approval_needed", "A new version of a package that a software policy keeps updated is waiting for an administrator's approval (sent once per package and version).",
+			map[string]any{"package": map[string]any{"name": "7-Zip"}, "version": "24.09"}),
 		doc("device_offline", "A device has not reported for at least the configured number of hours (sent once per outage).",
 			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "hours_offline": 30}),
 		doc("agent_out_of_date", "A device reports an agent version older than the rollout's target release (sent once per device and release).",
@@ -188,6 +191,7 @@ var notifications = Section{
 			Default: []any{
 				ruleDefault("failed_install", false, 0),
 				ruleDefault("update_held", false, 0),
+				ruleDefault("software_approval_needed", false, 0),
 				ruleDefault("device_offline", false, 24),
 				ruleDefault("agent_out_of_date", false, 7),
 				ruleDefault("restart_pending_long", false, 7),

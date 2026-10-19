@@ -4895,6 +4895,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/software/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Software versions waiting for approval, recent decisions and open ring holds (requires deployments:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SoftwareApprovals"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Approve or decline one version of a package, or put it back to waiting (requires deployments:write; audited) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        package_id: string;
+                        version: string;
+                        /** @enum {string} */
+                        decision: "approved" | "declined" | "reset";
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Recorded */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/software/holds/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release a ring hold so the version moves on to the next ring (requires policies:write; audited) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Released */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/reports/overview": {
         parameters: {
             query?: never;
@@ -6895,10 +7000,85 @@ export interface components {
             unverified_confirmed: boolean;
             window?: components["schemas"]["MaintenanceWindow"];
             enabled: boolean;
+            /** @description Roll new versions out through the update rings (keep-updated policies only) */
+            use_rings?: boolean;
+            /** @description A new version waits for an administrator's approval before it goes out */
+            require_approval?: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: int64 */
             devices_attempted: number;
+            /** @description The state of the newest version; set only for a policy that uses rings or approval */
+            rollout?: components["schemas"]["SoftwareRollout"] | null;
+        };
+        SoftwareRollout: {
+            version: string;
+            /** Format: date-time */
+            imported_at: string;
+            /** @enum {string} */
+            approval: "not_required" | "pending" | "approved" | "declined";
+            /** Format: date-time */
+            approved_at?: string;
+            /**
+             * @description Why nothing goes out right now
+             * @enum {string}
+             */
+            blocked?: "excluded" | "self_updating" | "no_version" | "delay" | "pending_approval" | "declined";
+            /**
+             * Format: date-time
+             * @description The earliest moment the first ring may install
+             */
+            available_at?: string;
+            /** @description Devices that still need the version */
+            waiting: number;
+            stages: {
+                name: string;
+                /** @description False for the devices that are in no ring */
+                ring: boolean;
+                devices: number;
+                waiting: number;
+                installed: number;
+                failed: number;
+                /** @enum {string} */
+                state: "waiting" | "running" | "passed" | "done" | "held";
+                /** Format: uuid */
+                hold_id?: string;
+                reason?: string;
+            }[];
+        };
+        SoftwareApprovalItem: {
+            /** Format: uuid */
+            package_id: string;
+            package_name: string;
+            version: string;
+            /** @enum {string} */
+            decision: "pending" | "approved" | "declined";
+            note: string;
+            /** Format: date-time */
+            imported_at?: string;
+            /** Format: date-time */
+            decided_at?: string;
+            decided_by: string;
+            policies: string[];
+            devices: number;
+        };
+        SoftwareHold: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            policy_id: string;
+            policy: string;
+            package_name: string;
+            version: string;
+            ring: string;
+            reason: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        SoftwareApprovals: {
+            pending: components["schemas"]["SoftwareApprovalItem"][];
+            recent: components["schemas"]["SoftwareApprovalItem"][];
+            holds: components["schemas"]["SoftwareHold"][];
         };
         SoftwarePolicyInput: {
             name: string;
@@ -6911,6 +7091,10 @@ export interface components {
             only_new_devices?: boolean;
             unverified_confirmed?: boolean;
             window?: components["schemas"]["MaintenanceWindow"];
+            /** @description Roll new versions out through the update rings (keep-updated policies only) */
+            use_rings?: boolean;
+            /** @description A new version waits for an administrator's approval */
+            require_approval?: boolean;
             enabled?: boolean;
         };
         ComplianceRow: {

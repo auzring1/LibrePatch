@@ -520,6 +520,16 @@ type Site struct {
 	CreatedAt time.Time
 }
 
+type SoftwareApproval struct {
+	OrgID     uuid.UUID
+	PackageID uuid.UUID
+	Version   string
+	Decision  string
+	Note      string
+	DecidedBy *uuid.UUID
+	DecidedAt time.Time
+}
+
 type SoftwareHistory struct {
 	ID         int64
 	DeviceID   uuid.UUID
@@ -531,6 +541,18 @@ type SoftwareHistory struct {
 	OldVersion string
 	NewVersion string
 	ObservedAt time.Time
+}
+
+type SoftwareHold struct {
+	ID         uuid.UUID
+	OrgID      uuid.UUID
+	PolicyID   uuid.UUID
+	Version    string
+	RingID     uuid.UUID
+	Reason     string
+	CreatedAt  time.Time
+	ReleasedAt *time.Time
+	ReleasedBy *uuid.UUID
 }
 
 type SoftwareInstall struct {
@@ -569,6 +591,8 @@ type SoftwarePolicy struct {
 	CreatedBy           *uuid.UUID
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+	UseRings            bool
+	RequireApproval     bool
 }
 
 type SoftwareTitle struct {

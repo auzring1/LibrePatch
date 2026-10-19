@@ -162,6 +162,12 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 			Text: "The update \"" + title + "\" was held because ring " + ring + " missed its success threshold: " + reason,
 			Data: map[string]any{"update": map[string]any{"title": title}, "ring": ring, "reason": reason}})
 	}
+	a.Policies.OnHold = a.Updates.OnHold
+	a.Policies.OnApprovalNeeded = func(ctx context.Context, org uuid.UUID, pkg, version string) {
+		a.Notify.Emit(ctx, org, notify.Event{Name: "software_approval_needed", Key: "approval:" + pkg + ":" + version, Subject: pkg + " " + version + " is waiting for approval",
+			Text: "A new version of " + pkg + " (" + version + ") is available and a software policy needs your approval before it is rolled out.",
+			Data: map[string]any{"package": map[string]any{"name": pkg}, "version": version}})
+	}
 	a.Deploy.AfterTerminal = func(ctx context.Context, j dbq.Job, status string, u *agentv1.JobUpdate) {
 		if status == "failed" {
 			host := ""

@@ -2066,6 +2066,45 @@ paths:
       responses:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/Error" }
+  /software/approvals:
+    get:
+      tags: [policies]
+      summary: Software versions waiting for approval, recent decisions and open ring holds (requires deployments:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SoftwareApprovals" }
+    post:
+      tags: [policies]
+      summary: Approve or decline one version of a package, or put it back to waiting (requires deployments:write; audited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [package_id, version, decision]
+              properties:
+                package_id: { type: string, format: uuid }
+                version: { type: string }
+                decision: { type: string, enum: [approved, declined, reset] }
+                note: { type: string, maxLength: 1000 }
+      responses:
+        "204": { description: Recorded }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /software/holds/{id}/release:
+    post:
+      tags: [policies]
+      summary: Release a ring hold so the version moves on to the next ring (requires policies:write; audited)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "204": { description: Released }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /reports/overview:
     get:
       tags: [reports]
@@ -3265,8 +3304,70 @@ components:
         unverified_confirmed: { type: boolean }
         window: { $ref: "#/components/schemas/MaintenanceWindow" }
         enabled: { type: boolean }
+        use_rings: { type: boolean, description: Roll new versions out through the update rings (keep-updated policies only) }
+        require_approval: { type: boolean, description: A new version waits for an administrator's approval before it goes out }
         created_at: { type: string, format: date-time }
         devices_attempted: { type: integer, format: int64 }
+        rollout: { allOf: [{ $ref: "#/components/schemas/SoftwareRollout" }], nullable: true, description: The state of the newest version; set only for a policy that uses rings or approval }
+    SoftwareRollout:
+      type: object
+      required: [version, imported_at, approval, waiting, stages]
+      properties:
+        version: { type: string }
+        imported_at: { type: string, format: date-time }
+        approval: { type: string, enum: [not_required, pending, approved, declined] }
+        approved_at: { type: string, format: date-time }
+        blocked: { type: string, enum: [excluded, self_updating, no_version, delay, pending_approval, declined], description: Why nothing goes out right now }
+        available_at: { type: string, format: date-time, description: The earliest moment the first ring may install }
+        waiting: { type: integer, description: Devices that still need the version }
+        stages:
+          type: array
+          items:
+            type: object
+            required: [name, ring, devices, waiting, installed, failed, state]
+            properties:
+              name: { type: string }
+              ring: { type: boolean, description: False for the devices that are in no ring }
+              devices: { type: integer }
+              waiting: { type: integer }
+              installed: { type: integer }
+              failed: { type: integer }
+              state: { type: string, enum: [waiting, running, passed, done, held] }
+              hold_id: { type: string, format: uuid }
+              reason: { type: string }
+    SoftwareApprovalItem:
+      type: object
+      required: [package_id, package_name, version, decision, note, decided_by, policies, devices]
+      properties:
+        package_id: { type: string, format: uuid }
+        package_name: { type: string }
+        version: { type: string }
+        decision: { type: string, enum: [pending, approved, declined] }
+        note: { type: string }
+        imported_at: { type: string, format: date-time }
+        decided_at: { type: string, format: date-time }
+        decided_by: { type: string }
+        policies: { type: array, items: { type: string } }
+        devices: { type: integer }
+    SoftwareHold:
+      type: object
+      required: [id, policy_id, policy, package_name, version, ring, reason, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        policy_id: { type: string, format: uuid }
+        policy: { type: string }
+        package_name: { type: string }
+        version: { type: string }
+        ring: { type: string }
+        reason: { type: string }
+        created_at: { type: string, format: date-time }
+    SoftwareApprovals:
+      type: object
+      required: [pending, recent, holds]
+      properties:
+        pending: { type: array, items: { $ref: "#/components/schemas/SoftwareApprovalItem" } }
+        recent: { type: array, items: { $ref: "#/components/schemas/SoftwareApprovalItem" } }
+        holds: { type: array, items: { $ref: "#/components/schemas/SoftwareHold" } }
     SoftwarePolicyInput:
       type: object
       additionalProperties: false
@@ -3280,6 +3381,8 @@ components:
         only_new_devices: { type: boolean }
         unverified_confirmed: { type: boolean }
         window: { $ref: "#/components/schemas/MaintenanceWindow" }
+        use_rings: { type: boolean, description: Roll new versions out through the update rings (keep-updated policies only) }
+        require_approval: { type: boolean, description: A new version waits for an administrator's approval }
         enabled: { type: boolean }
     ComplianceRow:
       type: object

@@ -183,8 +183,12 @@ api_tokens(id, org_id, user_id, name, prefix, token_hash (sha256, unique), scope
 webauthn_credentials(id, user_id, credential_id unique, record (library JSON), sign_count, name, created_at, last_used_at)
 webauthn_ceremonies(id, user_id, kind[register|login], data, expires_at)             -- single use, 5 minutes
 software_policies(id, org_id, name, kind[keep_updated|baseline], package_id, group_ids[], delay_days, only_new_devices,
-                  unverified_confirmed, maint_window jsonb, enabled, created_by, created_at, updated_at, unique(org_id, name))
+                  unverified_confirmed, maint_window jsonb, enabled, use_rings bool, require_approval bool,
+                  created_by, created_at, updated_at, unique(org_id, name))
 policy_attempts(policy_id, device_id, version, deployment_id, failures, created_at, pk(policy_id, device_id))
+software_approvals(org_id, package_id, version, decision[approved|declined], note, decided_by, decided_at, pk(org_id, package_id, version))
+software_holds(id, org_id, policy_id, version, ring_id -> wu_rings, reason, created_at, released_at, released_by,
+               unique open hold per (policy_id, version, ring_id))
 ```
 Invariants: at most one open `agent_update` job per device (the planner excludes devices with one); a release that is the rollout target cannot be deleted; the organization always keeps at least one active organization-wide administrator (enforced on disable, delete and role removal); a site cannot be deleted while it has devices or enrollment tokens.
 

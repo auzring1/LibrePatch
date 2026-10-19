@@ -1,10 +1,10 @@
 -- name: InsertSoftwarePolicy :exec
-INSERT INTO software_policies (id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
+INSERT INTO software_policies (id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, use_rings, require_approval)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
 
 -- name: UpdateSoftwarePolicy :execrows
 UPDATE software_policies SET name = $3, kind = $4, package_id = $5, group_ids = $6, delay_days = $7, only_new_devices = $8,
-    unverified_confirmed = $9, maint_window = $10, enabled = $11, updated_at = now()
+    unverified_confirmed = $9, maint_window = $10, enabled = $11, use_rings = $12, require_approval = $13, updated_at = now()
 WHERE id = $1 AND org_id = $2;
 
 -- name: DeleteSoftwarePolicy :execrows
@@ -97,3 +97,48 @@ SELECT count(*) FILTER (WHERE status = 'active')::bigint AS active,
        count(*) FILTER (WHERE status = 'active' AND online)::bigint AS online,
        count(*) FILTER (WHERE status = 'active' AND last_seen_at < @stale_before::timestamptz)::bigint AS stale
 FROM devices WHERE org_id = @org_id;
+
+
+-- ---- approvals and rings (D121) ----
+
+-- name: GetSoftwareApproval :one
+SELECT * FROM software_approvals WHERE org_id = $1 AND package_id = $2 AND version = $3;
+
+-- name: UpsertSoftwareApproval :exec
+INSERT INTO software_approvals (org_id, package_id, version, decision, note, decided_by, decided_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (org_id, package_id, version) DO UPDATE SET decision = EXCLUDED.decision, note = EXCLUDED.note,
+    decided_by = EXCLUDED.decided_by, decided_at = EXCLUDED.decided_at;
+
+-- name: DeleteSoftwareApproval :execrows
+DELETE FROM software_approvals WHERE org_id = $1 AND package_id = $2 AND version = $3;
+
+-- name: ListRecentSoftwareApprovals :many
+SELECT a.package_id, k.name AS package_name, a.version, a.decision, a.note, a.decided_at, COALESCE(u.display_name, '') AS decided_by_name
+FROM software_approvals a JOIN catalog_packages k ON k.id = a.package_id LEFT JOIN users u ON u.id = a.decided_by
+WHERE a.org_id = $1 AND a.decided_at >= $2 ORDER BY a.decided_at DESC LIMIT 50;
+
+-- name: ListPolicyAttemptsForVersion :many
+SELECT device_id, deployment_id, failures, created_at FROM policy_attempts WHERE policy_id = $1 AND version = $2;
+
+-- name: InsertSoftwareHold :execrows
+INSERT INTO software_holds (id, org_id, policy_id, version, ring_id, reason)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (policy_id, version, ring_id) WHERE released_at IS NULL DO NOTHING;
+
+-- name: ListSoftwareHoldsForVersion :many
+SELECT id, ring_id, released_at FROM software_holds WHERE policy_id = $1 AND version = $2;
+
+-- name: GetSoftwareHold :one
+SELECT h.*, p.name AS policy_name FROM software_holds h JOIN software_policies p ON p.id = h.policy_id WHERE h.id = $1 AND h.org_id = $2;
+
+-- name: ReleaseSoftwareHold :execrows
+UPDATE software_holds SET released_at = now(), released_by = $3 WHERE id = $1 AND org_id = $2 AND released_at IS NULL;
+
+-- name: ListOpenSoftwareHolds :many
+SELECT h.id, h.policy_id, p.name AS policy_name, k.name AS package_name, h.version, r.name AS ring_name, h.reason, h.created_at
+FROM software_holds h
+JOIN software_policies p ON p.id = h.policy_id
+JOIN catalog_packages k ON k.id = p.package_id
+JOIN wu_rings r ON r.id = h.ring_id
+WHERE h.org_id = $1 AND h.released_at IS NULL ORDER BY h.created_at DESC;
