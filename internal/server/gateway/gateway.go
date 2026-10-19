@@ -32,6 +32,7 @@ import (
 	"github.com/auzring1/librepatch/internal/server/inventory"
 	"github.com/auzring1/librepatch/internal/server/kek"
 	"github.com/auzring1/librepatch/internal/server/pki"
+	"github.com/auzring1/librepatch/internal/server/settings"
 	"github.com/auzring1/librepatch/internal/server/updates"
 )
 
@@ -70,6 +71,7 @@ type Gateway struct {
 	updates     *updates.Service
 	content     *catalog.Store
 	fetching    *fetchLimiter
+	settings    *settings.Service
 }
 
 // Options configure a Gateway.
@@ -87,6 +89,8 @@ type Options struct {
 	Content *catalog.Store
 	// Updates stores Windows Update snapshots from devices.
 	Updates *updates.Service
+	// Settings is read for the organization's device defaults (nil: the built-in defaults).
+	Settings *settings.Service
 }
 
 // New creates a gateway; call RefreshCertificate before Serve.
@@ -109,7 +113,7 @@ func New(o Options) *Gateway {
 		hbDevice:  auth.NewLimiter(30, time.Minute, 30),
 		secDevice: auth.NewLimiter(6, time.Minute, 6),
 		inv:       &inventory.Service{Pool: o.Pool, Now: now},
-		deploy:    o.Deploy, updates: o.Updates, content: o.Content, fetching: newFetchLimiter(2),
+		deploy:    o.Deploy, updates: o.Updates, content: o.Content, settings: o.Settings, fetching: newFetchLimiter(2),
 	}
 }
 

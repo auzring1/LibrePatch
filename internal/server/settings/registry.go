@@ -240,10 +240,12 @@ var DeviceColumns = []Option{
 
 var devices = Section{
 	ID: "devices", Label: "Device defaults", Perm: PermDevices,
-	Description: "When a device counts as offline or stale, how devices are named, extra fields you want to record, and which columns the device list starts with.",
+	Description: "When a device counts as offline or stale, whether queued file deletions count as a pending restart, how devices are named, extra fields you want to record, and which columns the device list starts with.",
 	Fields: []Field{
 		{Key: "offline_hours", Label: "Offline after", Kind: Int, Default: 24, Min: 1, Max: 720, Unit: "hours", Effect: Live,
 			Help: "A device that has not reported for this long is listed as needing attention on the dashboard."},
+		{Key: "queued_deletes_need_restart", Label: "Queued file deletions count as a pending restart", Kind: Bool, Default: false, Effect: Live,
+			Help: "Installers and updaters (Edge, Firefox, Office, antivirus) queue leftover files for deletion at the next restart, and queue new ones again within hours, so counting them makes PCs show \"restart pending\" several times a day. Off (recommended): they are listed on the device page but do not mark it as needing a restart, change compliance or trigger a restart. Takes effect as each device next reports, within about 30 minutes. Renames and replacements queued for the next restart always count."},
 		{Key: "stale_cleanup_days", Label: "Delete revoked devices after", Kind: Int, Default: 0, Min: 0, Max: 3650, Unit: "days", Effect: Live,
 			Help: "Revoked or retired devices not seen for this long are deleted, with everything stored about them (the audit log keeps the record). 0 keeps them forever. Active devices are never deleted by this."},
 		{Key: "naming_pattern", Label: "Expected device name pattern", Kind: Regex, Default: "", Max: 200, Placeholder: "^(PC|LT)-[0-9]{4}$", Effect: Live,

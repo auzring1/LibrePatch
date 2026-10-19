@@ -170,6 +170,19 @@ func renewDue(ident *pki.DeviceIdentity, lifetime time.Duration, now time.Time) 
 	return ident.Cert.NotAfter.Sub(now) < lifetime/3
 }
 
+// restartPending is what the console, the filters and the compliance report call "restart pending": what the agent
+// says Windows needs, plus files queued for deletion at the next boot when the organization's device defaults say they
+// count. Those are housekeeping by installers and updaters and recur daily, so by default they do not.
+func (g *Gateway) restartPending(ctx context.Context, org uuid.UUID, pending, queuedDeletes bool) bool {
+	if pending {
+		return true
+	}
+	if !queuedDeletes || g.settings == nil {
+		return false
+	}
+	return g.settings.Peek(ctx, org, "devices").Bool("queued_deletes_need_restart")
+}
+
 func (g *Gateway) handle(ctx context.Context, c *conn, dev dbq.Device, m *agentv1.ConnectRequest) error {
 	q := dbq.New(g.pool)
 	now := g.now()
@@ -182,7 +195,7 @@ func (g *Gateway) handle(ctx context.Context, c *conn, dev dbq.Device, m *agentv
 		}
 		hb := msg.Heartbeat
 		if err := q.UpdateDeviceHeartbeat(ctx, dbq.UpdateDeviceHeartbeatParams{ID: dev.ID, LastSeenAt: &now,
-			UptimeS: clampI64(hb.UptimeS), PendingReboot: hb.PendingReboot, LoggedOnUser: cleanField(hb.LoggedOnUser, 256)}); err != nil {
+			UptimeS: clampI64(hb.UptimeS), PendingReboot: g.restartPending(ctx, dev.OrgID, hb.PendingReboot, hb.QueuedFileDeletes), LoggedOnUser: cleanField(hb.LoggedOnUser, 256)}); err != nil {
 			return err
 		}
 		g.events.Publish(dev.OrgID, events.Event{Type: events.DeviceUpdated, DeviceID: dev.ID})
@@ -215,7 +228,7 @@ func (g *Gateway) handle(ctx context.Context, c *conn, dev dbq.Device, m *agentv
 		if _, err := q.UpdateDeviceHardware(ctx, dbq.UpdateDeviceHardwareParams{ID: dev.ID, Hardware: j,
 			HardwareRev: clampI64(inv.Rev), HardwareUpdatedAt: &now, Hostname: cleanField(hw.Hostname, 255),
 			OsCaption: cleanField(hw.OsCaption, 256), OsBuild: osBuild, Arch: cleanField(hw.Arch, 32),
-			Serial: cleanField(hw.Serial, 128), PendingReboot: hw.PendingReboot}); err != nil {
+			Serial: cleanField(hw.Serial, 128), PendingReboot: g.restartPending(ctx, dev.OrgID, hw.PendingReboot, hw.QueuedFileDeleteCount > 0)}); err != nil {
 			return err
 		}
 		if err := c.send(&agentv1.ConnectResponse{Msg: &agentv1.ConnectResponse_Ack{Ack: &agentv1.Ack{Seq: inv.Seq}}}); err != nil {

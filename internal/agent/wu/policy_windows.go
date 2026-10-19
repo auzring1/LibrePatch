@@ -9,6 +9,7 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 
 	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
+	"github.com/auzring1/librepatch/internal/agent/rebootstate"
 )
 
 const (
@@ -93,23 +94,6 @@ func (c *wuaClient) Policy() *agentv1.WuPolicyInfo {
 // String is only used in logs.
 func (c *wuaClient) String() string { return fmt.Sprintf("wua(%s)", "com") }
 
-// PendingReboot reports the standard markers that Windows needs a restart: Windows Update, the
-// component store, and pending file renames.
-func PendingReboot() bool {
-	for _, p := range []string{
-		`SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending`,
-		`SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired`,
-	} {
-		if k, ok := hklm(p); ok {
-			_ = k.Close()
-			return true
-		}
-	}
-	if k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Control\Session Manager`, registry.QUERY_VALUE); err == nil {
-		defer k.Close()
-		if v, _, err := k.GetStringsValue("PendingFileRenameOperations"); err == nil && len(v) > 0 {
-			return true
-		}
-	}
-	return false
-}
+// PendingReboot reports whether Windows needs a restart: Windows Update, the component store, a pending file rename
+// or a pending computer rename. Files merely queued for deletion do not count (see package rebootstate).
+func PendingReboot() bool { return rebootstate.Check().Pending() }

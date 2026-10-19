@@ -363,7 +363,7 @@ func (a *App) startGateway() error {
 	}
 	ctx := a.runCtx
 	gw := gateway.New(gateway.Options{Config: a.Cfg, Pool: a.Pool, Sealer: a.Sealer, Authority: a.Authority(),
-		Events: a.Events, Hub: a.Hub, Log: a.Log.With("component", "gateway"), Deploy: a.Deploy, Updates: a.Updates, Content: a.Catalog.Content})
+		Events: a.Events, Hub: a.Hub, Log: a.Log.With("component", "gateway"), Deploy: a.Deploy, Updates: a.Updates, Content: a.Catalog.Content, Settings: a.Settings})
 	if err := gw.RefreshCertificate(ctx); err != nil {
 		return fmt.Errorf("gateway certificate: %w", err)
 	}

@@ -889,8 +889,12 @@ type HardwareInventory struct {
 	PendingRebootReasons []string               `protobuf:"bytes,24,rep,name=pending_reboot_reasons,json=pendingRebootReasons,proto3" json:"pending_reboot_reasons,omitempty"`
 	Timezone             string                 `protobuf:"bytes,25,opt,name=timezone,proto3" json:"timezone,omitempty"`
 	BootTime             int64                  `protobuf:"varint,26,opt,name=boot_time,json=bootTime,proto3" json:"boot_time,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Files queued for deletion at the next boot (PendingFileRenameOperations). Housekeeping by installers and
+	// updaters: reported, but never part of pending_reboot (the server may count them, by setting).
+	QueuedFileDeleteCount uint32   `protobuf:"varint,27,opt,name=queued_file_delete_count,json=queuedFileDeleteCount,proto3" json:"queued_file_delete_count,omitempty"`
+	QueuedFileDeletes     []string `protobuf:"bytes,28,rep,name=queued_file_deletes,json=queuedFileDeletes,proto3" json:"queued_file_deletes,omitempty"` // the first few, for display
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *HardwareInventory) Reset() {
@@ -1103,6 +1107,20 @@ func (x *HardwareInventory) GetBootTime() int64 {
 		return x.BootTime
 	}
 	return 0
+}
+
+func (x *HardwareInventory) GetQueuedFileDeleteCount() uint32 {
+	if x != nil {
+		return x.QueuedFileDeleteCount
+	}
+	return 0
+}
+
+func (x *HardwareInventory) GetQueuedFileDeletes() []string {
+	if x != nil {
+		return x.QueuedFileDeletes
+	}
+	return nil
 }
 
 type Disk struct {
@@ -1670,7 +1688,7 @@ const file_librepatch_agent_v1_inventory_proto_rawDesc = "" +
 	"\x06loaded\x18\x06 \x01(\bR\x06loaded\x12\x19\n" +
 	"\bis_admin\x18\a \x01(\bR\aisAdmin\"G\n" +
 	"\x0eUsersInventory\x125\n" +
-	"\x05users\x18\x01 \x03(\v2\x1f.librepatch.agent.v1.DeviceUserR\x05users\"\xfb\x06\n" +
+	"\x05users\x18\x01 \x03(\v2\x1f.librepatch.agent.v1.DeviceUserR\x05users\"\xe4\a\n" +
 	"\x11HardwareInventory\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x12\n" +
 	"\x04fqdn\x18\x02 \x01(\tR\x04fqdn\x12\x16\n" +
@@ -1704,7 +1722,9 @@ const file_librepatch_agent_v1_inventory_proto_rawDesc = "" +
 	"\x0epending_reboot\x18\x17 \x01(\bR\rpendingReboot\x124\n" +
 	"\x16pending_reboot_reasons\x18\x18 \x03(\tR\x14pendingRebootReasons\x12\x1a\n" +
 	"\btimezone\x18\x19 \x01(\tR\btimezone\x12\x1b\n" +
-	"\tboot_time\x18\x1a \x01(\x03R\bbootTime\"\x98\x01\n" +
+	"\tboot_time\x18\x1a \x01(\x03R\bbootTime\x127\n" +
+	"\x18queued_file_delete_count\x18\x1b \x01(\rR\x15queuedFileDeleteCount\x12.\n" +
+	"\x13queued_file_deletes\x18\x1c \x03(\tR\x11queuedFileDeletes\"\x98\x01\n" +
 	"\x04Disk\x12\x14\n" +
 	"\x05mount\x18\x01 \x01(\tR\x05mount\x12\x1e\n" +
 	"\n" +

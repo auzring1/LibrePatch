@@ -7483,6 +7483,10 @@ export interface components {
             last_logged_on_user?: string;
             pending_reboot?: boolean;
             pending_reboot_reasons?: string[];
+            /** @description Files queued for deletion at the next restart (installer leftovers). Listed on the device page; counted as a pending restart only when the device defaults say so */
+            queued_file_delete_count?: number;
+            /** @description The first few of them */
+            queued_file_deletes?: string[];
             timezone?: string;
             boot_time?: string;
         };

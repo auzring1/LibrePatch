@@ -3879,6 +3879,8 @@ components:
         last_logged_on_user: { type: string }
         pending_reboot: { type: boolean }
         pending_reboot_reasons: { type: array, items: { type: string } }
+        queued_file_delete_count: { type: integer, description: "Files queued for deletion at the next restart (installer leftovers). Listed on the device page; counted as a pending restart only when the device defaults say so" }
+        queued_file_deletes: { type: array, items: { type: string }, description: The first few of them }
         timezone: { type: string }
         boot_time: { type: string }
     InstallCommands:

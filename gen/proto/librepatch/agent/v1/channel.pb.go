@@ -733,6 +733,7 @@ type Heartbeat struct {
 	PendingReboot        bool                   `protobuf:"varint,2,opt,name=pending_reboot,json=pendingReboot,proto3" json:"pending_reboot,omitempty"`
 	SystemDriveFreeBytes uint64                 `protobuf:"varint,3,opt,name=system_drive_free_bytes,json=systemDriveFreeBytes,proto3" json:"system_drive_free_bytes,omitempty"`
 	LoggedOnUser         string                 `protobuf:"bytes,4,opt,name=logged_on_user,json=loggedOnUser,proto3" json:"logged_on_user,omitempty"`
+	QueuedFileDeletes    bool                   `protobuf:"varint,5,opt,name=queued_file_deletes,json=queuedFileDeletes,proto3" json:"queued_file_deletes,omitempty"` // files are queued for deletion at the next boot (see HardwareInventory)
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -793,6 +794,13 @@ func (x *Heartbeat) GetLoggedOnUser() string {
 		return x.LoggedOnUser
 	}
 	return ""
+}
+
+func (x *Heartbeat) GetQueuedFileDeletes() bool {
+	if x != nil {
+		return x.QueuedFileDeletes
+	}
+	return false
 }
 
 type Ack struct {
@@ -1525,12 +1533,13 @@ const file_librepatch_agent_v1_channel_proto_rawDesc = "" +
 	"\x06key_id\x18\x01 \x01(\fR\x05keyId\x12\x1d\n" +
 	"\n" +
 	"revoked_at\x18\x02 \x01(\x03R\trevokedAt\x12\x1c\n" +
-	"\tsignature\x18\x03 \x01(\fR\tsignature\"\xaa\x01\n" +
+	"\tsignature\x18\x03 \x01(\fR\tsignature\"\xda\x01\n" +
 	"\tHeartbeat\x12\x19\n" +
 	"\buptime_s\x18\x01 \x01(\x04R\auptimeS\x12%\n" +
 	"\x0epending_reboot\x18\x02 \x01(\bR\rpendingReboot\x125\n" +
 	"\x17system_drive_free_bytes\x18\x03 \x01(\x04R\x14systemDriveFreeBytes\x12$\n" +
-	"\x0elogged_on_user\x18\x04 \x01(\tR\floggedOnUser\"\x17\n" +
+	"\x0elogged_on_user\x18\x04 \x01(\tR\floggedOnUser\x12.\n" +
+	"\x13queued_file_deletes\x18\x05 \x01(\bR\x11queuedFileDeletes\"\x17\n" +
 	"\x03Ack\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\"P\n" +
 	"\rResyncRequest\x12?\n" +

@@ -75,6 +75,7 @@ message Heartbeat {
   bool pending_reboot = 2;
   uint64 system_drive_free_bytes = 3;
   string logged_on_user = 4;
+  bool queued_file_deletes = 5; // files are queued for deletion at the next boot (see HardwareInventory)
 }
 
 message Ack {

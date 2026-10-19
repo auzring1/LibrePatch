@@ -1040,7 +1040,7 @@ func (a *Agent) sendHeartbeat(ctx context.Context, stream agentv1.AgentChannelSe
 	if err != nil || hb == nil {
 		return nil
 	}
-	changed := a.lastHB == nil || a.lastHB.PendingReboot != hb.PendingReboot || a.lastHB.LoggedOnUser != hb.LoggedOnUser
+	changed := a.lastHB == nil || a.lastHB.PendingReboot != hb.PendingReboot || a.lastHB.QueuedFileDeletes != hb.QueuedFileDeletes || a.lastHB.LoggedOnUser != hb.LoggedOnUser
 	if !force && !changed && a.now().Sub(a.lastHBSent) < fullHeartbeatEvery {
 		return nil
 	}

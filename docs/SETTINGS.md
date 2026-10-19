@@ -124,11 +124,12 @@ Permission: `settings:updates`. Starting values for new update rings and auto-ap
 
 ## Device defaults
 
-Permission: `settings:devices`. When a device counts as offline or stale, how devices are named, extra fields you want to record, and which columns the device list starts with.
+Permission: `settings:devices`. When a device counts as offline or stale, whether queued file deletions count as a pending restart, how devices are named, extra fields you want to record, and which columns the device list starts with.
 
 | Setting | Type | Default | Limits | Effect | What it does |
 |---|---|---|---|---|---|
 | **Offline after** (`offline_hours`) | int | `24` | 1 to 720 hours | in effect | A device that has not reported for this long is listed as needing attention on the dashboard. |
+| **Queued file deletions count as a pending restart** (`queued_deletes_need_restart`) | bool | `false` |  | in effect | Installers and updaters (Edge, Firefox, Office, antivirus) queue leftover files for deletion at the next restart, and queue new ones again within hours, so counting them makes PCs show "restart pending" several times a day. Off (recommended): they are listed on the device page but do not mark it as needing a restart, change compliance or trigger a restart. Takes effect as each device next reports, within about 30 minutes. Renames and replacements queued for the next restart always count. |
 | **Delete revoked devices after** (`stale_cleanup_days`) | int | `0` | 0 to 3650 days | in effect | Revoked or retired devices not seen for this long are deleted, with everything stored about them (the audit log keeps the record). 0 keeps them forever. Active devices are never deleted by this. |
 | **Expected device name pattern** (`naming_pattern`) | regex | empty | up to 200 characters | in effect | A regular expression. Devices whose name does not match are flagged in the device list. Empty turns the check off. |
 | **Custom device fields** (`custom_fields`) | list | empty | up to 20 entries | in effect | Extra information to record about each device, such as an asset tag or owner. Values are edited on the device page and shown in the device list. |

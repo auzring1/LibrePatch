@@ -62,7 +62,7 @@ Statuses: ✅ designed in, 🔜 later phase (number given), ⚠ residual risk.
 | ID | Threat | Mitigation | Phase |
 |---|---|---|---|
 | T-DEV-1 | Device impersonates another device | Device ID taken from the verified certificate; never trusted from message fields | 1 ✅ |
-| T-DEV-2 | Malicious inventory (XSS, CSV injection, SQL-looking strings, huge payloads) | Everything from agents is untrusted input: size limits, parameterized SQL, React escaping plus strict CSP, CSV formula escaping (`= + - @ \t \r` get a `'` prefix), schema validation | 1–2 ✅ |
+| T-DEV-2 | Malicious inventory (XSS, CSV injection, SQL-looking strings, huge payloads) | Everything from agents is untrusted input: size limits, parameterized SQL, React escaping plus strict CSP, CSV formula escaping (`= + - @ \t \r` get a `'` prefix), schema validation; file paths an agent lists as queued for deletion are capped (16 per report, 1,024 characters each) and shown as plain text (D119) | 1–2 ✅ |
 | T-DEV-3 | Resource exhaustion (flooding messages, inventory churn) | Per-device token-bucket rate limits, message size caps, max rows, connection limit per device certificate (1) | 1–2 ✅ |
 | T-DEV-4 | Content scraping (download other tenants' or other devices' uploads) | Content served only if referenced by an active job for that device | 3 ✅ |
 | T-DEV-5 | Stolen device key reused elsewhere | Key held in TPM/non-exportable CNG; one stream per certificate; admin revocation is immediate; a new connection from the same certificate supersedes the old stream and logs a warning (no alert) | 1 ✅ |

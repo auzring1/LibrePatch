@@ -128,6 +128,10 @@ message HardwareInventory {
   repeated string pending_reboot_reasons = 24;
   string timezone = 25;
   int64 boot_time = 26;
+  // Files queued for deletion at the next boot (PendingFileRenameOperations). Housekeeping by installers and
+  // updaters: reported, but never part of pending_reboot (the server may count them, by setting).
+  uint32 queued_file_delete_count = 27;
+  repeated string queued_file_deletes = 28; // the first few, for display
 }
 
 message Disk {
