@@ -44,7 +44,7 @@ func walk(t *testing.T, fn func(rel string, data []byte)) {
 			return nil
 		}
 		switch rel {
-		case "go.sum", "web/package-lock.json", "RENAME-PLAN.md":
+		case "go.sum", "web/package-lock.json":
 			return nil
 		}
 		switch filepath.Ext(rel) {
