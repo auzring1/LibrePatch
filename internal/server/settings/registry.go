@@ -29,6 +29,10 @@ var Events = []Option{
 	{"update_held", "An update was held because a ring missed its success threshold"},
 	{"device_offline", "A device has not reported for a while"},
 	{"agent_out_of_date", "A device runs an older agent than the target release"},
+	{"restart_pending_long", "A device has needed a restart for too long"},
+	{"low_disk", "The system drive of a device is nearly full"},
+	{"bitlocker_off", "A disk on a device is not protected by BitLocker"},
+	{"os_end_of_support", "A device runs an operating system that is out of support or about to be"},
 }
 
 // EventDoc documents an event for the integrations page: when it fires and the shape of its payload.
@@ -61,6 +65,14 @@ func EventReference() []EventDoc {
 			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "hours_offline": 30}),
 		doc("agent_out_of_date", "A device reports an agent version older than the rollout's target release (sent once per device and release).",
 			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "agent_version": "1.2.0", "target_version": "1.3.0"}),
+		doc("restart_pending_long", "A device that is online needs a restart and has not restarted for at least the configured number of days (sent at most once a week per device).",
+			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "days_without_restart": 12}),
+		doc("low_disk", "The system drive of an online device has less than the configured number of gigabytes free (sent at most once a week per device).",
+			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "free_gb": 4.2}),
+		doc("bitlocker_off", "A disk on a device reports that BitLocker is off (sent at most once a month per device).",
+			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "disks": "C:"}),
+		doc("os_end_of_support", "A device runs an operating system whose support has ended, or ends within the configured number of days (sent once per device and operating system release).",
+			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "os": "Windows 11 24H2", "end_of_support": "2026-10-13", "days_left": -6}),
 		doc("test", "An administrator pressed 'Send test' on a webhook.", map[string]any{"message": "This is a test delivery."}),
 	}
 }
@@ -178,6 +190,10 @@ var notifications = Section{
 				ruleDefault("update_held", false, 0),
 				ruleDefault("device_offline", false, 24),
 				ruleDefault("agent_out_of_date", false, 7),
+				ruleDefault("restart_pending_long", false, 7),
+				ruleDefault("low_disk", false, 10),
+				ruleDefault("bitlocker_off", false, 0),
+				ruleDefault("os_end_of_support", false, 90),
 			},
 			Fields: []Field{
 				{Key: "event", Label: "Event", Kind: Enum, Required: true, Options: Events, Default: "failed_install", Effect: Live, Help: "What happened."},
@@ -186,7 +202,7 @@ var notifications = Section{
 				{Key: "webhook", Label: "To webhooks", Kind: Bool, Default: true, Effect: Live, Help: "Call every enabled webhook that listens for this event."},
 				{Key: "recipients", Label: "Recipients", Kind: Emails, Default: []any{}, Max: 20, Effect: Live, Placeholder: "oncall@example.org", Help: "E-mail addresses. Required when the rule sends e-mail."},
 				{Key: "threshold", Label: "Threshold", Kind: Int, Default: 0, Min: 0, Max: 720, Effect: Live,
-					Help: "Device offline: hours without a report. Agent out of date: days after a release before devices count as late. Other events ignore it."},
+					Help: "Device offline: hours without a report. Agent out of date: days after a release before devices count as late. Restart pending too long: days without a restart. Low disk: gigabytes free on the system drive. Operating system end of support: days before the end to warn (0 warns only once support has ended). Other events ignore it."},
 				{Key: "quiet_hours", Label: "Hold during quiet hours", Kind: Bool, Default: true, Effect: Live, Help: "Wait for the end of quiet hours instead of sending at once."},
 			}},
 	},

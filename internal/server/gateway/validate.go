@@ -53,6 +53,16 @@ func validateHardware(hw *agentv1.HardwareInventory) error {
 	return nil
 }
 
+// freeBytes is the system drive's free space from a heartbeat. Zero means "not reported" (an older agent, or a drive
+// that could not be read), which is stored as unknown rather than as a full disk.
+func freeBytes(hb *agentv1.Heartbeat) *int64 {
+	if hb.SystemDriveFreeBytes == 0 {
+		return nil
+	}
+	v := clampI64(hb.SystemDriveFreeBytes)
+	return &v
+}
+
 func clampI64(v uint64) int64 {
 	if v > math.MaxInt64 {
 		return math.MaxInt64

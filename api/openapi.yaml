@@ -2100,6 +2100,31 @@ paths:
           content:
             text/csv:
               schema: { type: string }
+  /reports/lifecycle:
+    get:
+      tags: [reports]
+      summary: Which devices run an operating system that is out of support or soon will be (requires reports:read)
+      description: The end-of-support dates are a built-in table (data_as_of says when it was reviewed), not a lookup on the internet.
+      parameters:
+        - { name: warn_days, in: query, required: false, schema: { type: integer, minimum: 0, maximum: 3650, default: 180 }, description: How many days before the end of support a device counts as ending soon }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LifecycleReport" }
+  /reports/lifecycle.csv:
+    get:
+      tags: [reports]
+      summary: The operating system lifecycle report as CSV (requires inventory:export; audited)
+      parameters:
+        - { name: warn_days, in: query, required: false, schema: { type: integer, minimum: 0, maximum: 3650, default: 180 } }
+      responses:
+        "200":
+          description: CSV
+          content:
+            text/csv:
+              schema: { type: string }
   /reports/compliance.html:
     get:
       tags: [reports]
@@ -3274,6 +3299,38 @@ components:
         failed_updates: { type: integer }
         reboot_pending: { type: boolean }
         state: { type: string, enum: [compliant, non_compliant, unknown] }
+    LifecycleRow:
+      type: object
+      required: [device_id, hostname, os, version, build, edition, product, release, end_of_support, days_left, status, note, last_seen_at]
+      properties:
+        device_id: { type: string, format: uuid }
+        hostname: { type: string }
+        os: { type: string, description: The product name the device reports, example Windows 11 Pro }
+        version: { type: string, description: The feature version the device reports, example 24H2 }
+        build: { type: integer }
+        edition: { type: string, description: The Windows edition id, example Professional }
+        product: { type: string, description: The operating system the table matched, example Windows 11 }
+        release: { type: string }
+        end_of_support: { type: string, format: date, nullable: true }
+        days_left: { type: integer, nullable: true, description: Negative once support has ended; null when the end date is not known }
+        status: { type: string, enum: [supported, ending_soon, unsupported, unknown] }
+        note: { type: string }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+    LifecycleReport:
+      type: object
+      required: [data_as_of, warn_days, items, summary]
+      properties:
+        data_as_of: { type: string, format: date }
+        warn_days: { type: integer }
+        items: { type: array, items: { $ref: "#/components/schemas/LifecycleRow" } }
+        summary:
+          type: object
+          required: [supported, ending_soon, unsupported, unknown]
+          properties:
+            supported: { type: integer }
+            ending_soon: { type: integer }
+            unsupported: { type: integer }
+            unknown: { type: integer }
     ReportOverview:
       type: object
       required: [devices, compliance, jobs_30d, generated]

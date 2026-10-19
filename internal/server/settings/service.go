@@ -232,6 +232,9 @@ func dropUnknown(fields []Field, in map[string]any) map[string]any {
 						items = append(items, dropUnknown(f.Fields, m))
 					}
 				}
+				if f.Fixed {
+					items = addMissingBuiltIns(f, items)
+				}
 				v = items
 			}
 		}
@@ -253,6 +256,30 @@ func dropUnknown(fields []Field, in map[string]any) map[string]any {
 		out[f.Key] = v
 	}
 	return out
+}
+
+// addMissingBuiltIns gives a fixed list the built-in items that did not exist when the document was saved (a new
+// notification event, say), with their default values, so an installation keeps loading and saving its settings after
+// an upgrade instead of failing on "must keep all of its built-in items".
+func addMissingBuiltIns(f Field, items []any) []any {
+	have := map[string]bool{}
+	for _, e := range items {
+		if m, ok := e.(map[string]any); ok {
+			key, _ := m[f.ItemKey].(string)
+			have[key] = true
+		}
+	}
+	defaults, _ := f.Default.([]any)
+	for _, d := range defaults {
+		m, ok := d.(map[string]any)
+		if !ok {
+			continue
+		}
+		if key, _ := m[f.ItemKey].(string); !have[key] {
+			items = append(items, deepCopy(m))
+		}
+	}
+	return items
 }
 
 // migrate upgrades a stored document to the current schema. There is one version so far.

@@ -73,3 +73,15 @@ func TestValidateHardwareBoundsQueuedFiles(t *testing.T) {
 		t.Fatal("a 1025 character path accepted")
 	}
 }
+
+func TestFreeBytesIsUnknownUntilReported(t *testing.T) {
+	if freeBytes(&agentv1.Heartbeat{}) != nil {
+		t.Fatal("zero must be stored as unknown, not as a full disk")
+	}
+	if v := freeBytes(&agentv1.Heartbeat{SystemDriveFreeBytes: 5 << 30}); v == nil || *v != 5<<30 {
+		t.Fatalf("got %v", v)
+	}
+	if v := freeBytes(&agentv1.Heartbeat{SystemDriveFreeBytes: ^uint64(0)}); v == nil || *v <= 0 {
+		t.Fatalf("an out-of-range value must be clamped, got %v", v)
+	}
+}

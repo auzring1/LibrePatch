@@ -42,7 +42,7 @@ enrollment_tokens(id, org_id, site_id, token_hash, max_uses, used_count, expires
                   require_approval bool, default_group_ids uuid[], created_by, revoked_at)
 devices(id, org_id, site_id, status[pending|active|revoked|retired], hostname, fqdn, domain,
         os_caption, os_build, os_ubr, arch, serial, manufacturer, model, chassis,
-        cpu, ram_bytes, uptime_s, pending_reboot, bitlocker jsonb, last_user, ips inet[],
+        cpu, ram_bytes, uptime_s, pending_reboot, system_drive_free_bytes, bitlocker jsonb, last_user, ips inet[],
         agent_version, enrolled_at, approved_by, last_seen_at, online bool,
         inventory_rev bigint, hw_rev bigint, local_policy jsonb)
 device_certs(serial numeric pk, device_id, public_key_sha256, not_before, not_after,

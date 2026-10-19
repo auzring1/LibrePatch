@@ -51,6 +51,8 @@ export type AgentRolloutStatus = components["schemas"]["AgentRolloutStatus"];
 export type SoftwarePolicy = components["schemas"]["SoftwarePolicy"];
 export type ComplianceRow = components["schemas"]["ComplianceRow"];
 export type ReportOverview = components["schemas"]["ReportOverview"];
+export type LifecycleRow = components["schemas"]["LifecycleRow"];
+export type LifecycleReport = components["schemas"]["LifecycleReport"];
 export type JobDetail = components["schemas"]["JobDetail"];
 export type Dashboard = components["schemas"]["Dashboard"];
 

@@ -10,6 +10,7 @@ no account and no telemetry.
   no catalog to maintain; installs and updates from winget manifests or your own uploaded installers, with hash checks,
   maintenance windows and a verified/unverified safety step.
 - **Windows Updates:** approval, update rings, maintenance windows, reboot policy and compliance reports.
+- **Alerts and lifecycle:** e-mail or webhook alerts for offline PCs, failed installs, restarts that wait too long, low disk space, BitLocker off and operating systems nearing end of support, plus a report of devices that are out of support.
 - **Agent self-update** with a pilot group and automatic rollback.
 - **Security first:** mutual TLS, jobs signed by the server and verified on the PC, mandatory two-factor sign-in with
   security-key support, role-based access (optionally per site), scoped API tokens and a hash-chained audit log.

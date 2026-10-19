@@ -195,7 +195,8 @@ func (g *Gateway) handle(ctx context.Context, c *conn, dev dbq.Device, m *agentv
 		}
 		hb := msg.Heartbeat
 		if err := q.UpdateDeviceHeartbeat(ctx, dbq.UpdateDeviceHeartbeatParams{ID: dev.ID, LastSeenAt: &now,
-			UptimeS: clampI64(hb.UptimeS), PendingReboot: g.restartPending(ctx, dev.OrgID, hb.PendingReboot, hb.QueuedFileDeletes), LoggedOnUser: cleanField(hb.LoggedOnUser, 256)}); err != nil {
+			UptimeS: clampI64(hb.UptimeS), PendingReboot: g.restartPending(ctx, dev.OrgID, hb.PendingReboot, hb.QueuedFileDeletes), LoggedOnUser: cleanField(hb.LoggedOnUser, 256),
+			SystemDriveFreeBytes: freeBytes(hb)}); err != nil {
 			return err
 		}
 		g.events.Publish(dev.OrgID, events.Event{Type: events.DeviceUpdated, DeviceID: dev.ID})

@@ -5005,6 +5005,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reports/lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which devices run an operating system that is out of support or soon will be (requires reports:read)
+         * @description The end-of-support dates are a built-in table (data_as_of says when it was reviewed), not a lookup on the internet.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description How many days before the end of support a device counts as ending soon */
+                    warn_days?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LifecycleReport"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports/lifecycle.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The operating system lifecycle report as CSV (requires inventory:export; audited) */
+        get: {
+            parameters: {
+                query?: {
+                    warn_days?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description CSV */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/csv": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/reports/compliance.html": {
         parameters: {
             query?: never;
@@ -6853,6 +6933,42 @@ export interface components {
             reboot_pending: boolean;
             /** @enum {string} */
             state: "compliant" | "non_compliant" | "unknown";
+        };
+        LifecycleRow: {
+            /** Format: uuid */
+            device_id: string;
+            hostname: string;
+            /** @description The product name the device reports */
+            os: string;
+            /** @description The feature version the device reports */
+            version: string;
+            build: number;
+            /** @description The Windows edition id */
+            edition: string;
+            /** @description The operating system the table matched */
+            product: string;
+            release: string;
+            /** Format: date */
+            end_of_support: string | null;
+            /** @description Negative once support has ended; null when the end date is not known */
+            days_left: number | null;
+            /** @enum {string} */
+            status: "supported" | "ending_soon" | "unsupported" | "unknown";
+            note: string;
+            /** Format: date-time */
+            last_seen_at: string | null;
+        };
+        LifecycleReport: {
+            /** Format: date */
+            data_as_of: string;
+            warn_days: number;
+            items: components["schemas"]["LifecycleRow"][];
+            summary: {
+                supported: number;
+                ending_soon: number;
+                unsupported: number;
+                unknown: number;
+            };
         };
         ReportOverview: {
             devices: {

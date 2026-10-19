@@ -141,6 +141,24 @@ I stop for review after each phase.
 - ~~Offline-verifiable license keys~~ *(built, then removed when the project became open source, D100; was: `internal/shared/license`, `internal/server/licensing`, `cmd/librepatch-license`, the License page; see DECISIONS D85-D88 and SECURITY §9g. Default policy: 25-device evaluation, 30-day grace, the cap blocks only new enrollments. The business model, O8, is still open.)*
 - Final documentation pass.
 
+### Phase 7: Closing the gap to Action1 and Patch My PC *(chosen by the owner after a feature comparison; built one item at a time, each with its own decision in DECISIONS.md)*
+The aim is the feature set of the commercial tools, free and self-hosted. The owner chose the items below and dropped the rest of the comparison (compliance trend, update roll-back, deployment preview, syslog forwarding, a PowerShell module, a self-service app portal).
+
+| Order | Item | Agent release? | Notes |
+|---|---|---|---|
+| 1 | **Alert rules**: more events for the existing notification rules (restart pending too long, low disk space, BitLocker off, operating system near or past end of support) | No (a low-disk value needs the heartbeat the agent already sends) | The rule, mail, webhook and quiet-hours machinery exists (D95); this adds events. |
+| 2 | **Lifecycle report**: which devices run an operating system that is, or soon will be, out of support | No | Built-in table of Windows and Windows Server end-of-support dates, dated and meant to be reviewed at each release. |
+| 3 | **Software update rings with approval** | No | Reuses the Windows-update ring engine (D60) for third-party software. |
+| 4 | **Overlay catalog** | No | A signed file maintained by the owner: correct silent arguments, detection rules and a "verified" mark for the apps the fleet really runs; winget stays the base (D41, D98, D99). Optional vendor "latest version" readers for apps where winget lags. |
+| 5 | **Vulnerability / CVE view** | No | CISA KEV, NVD and Microsoft's own Windows security data; matching installed software to CVE products is the hard part. |
+| 6 | **Optional close-the-app or restart prompts for software updates** | Yes | Off by default: updates stay silent. Per deployment: skip if the app is open, ask the user to close it, or close it. A restart is offered only when the installer says it needs one. |
+| 7 | **Wake-on-LAN and read-only remote views** (services, processes, event log) | Yes | Wake a device through another online agent on its subnet. No remote desktop. |
+| 8 | **Peer cache** | Yes | The content source interface exists (ARCHITECTURE §7); every source stays untrusted, so the hash check still decides. |
+| 9 | **Script library and run-script** | Yes | Highest risk: needs a design note first (separate permission, an opt-in on each agent that the server cannot raise as in D17, optional four-eyes approval, signed jobs, capped output and timeouts, full audit). |
+| 10 | **Single sign-on (OIDC)** | No | Entra ID first; groups mapped to roles; a local break-glass administrator stays; whether the identity provider's MFA satisfies D73 is a setting. |
+
+Agent releases are batched: items 6 to 9 share one.
+
 ## 5. Biggest risks I see up front
 
 1. **Server compromise means fleet compromise.** This is inherent in any RMM-style product. The mitigations are in SECURITY.md §6: an agent-side policy limit the server can't raise, vendor-signed agent updates, four-eyes approval for large deployments, and HSM/PKCS#11 support for the signing key later.

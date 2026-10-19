@@ -621,6 +621,43 @@ func (q *Queries) ListStaleDevices(ctx context.Context, arg ListStaleDevicesPara
 	return items, nil
 }
 
+const lowDiskDevices = `-- name: LowDiskDevices :many
+SELECT id, hostname, system_drive_free_bytes::bigint AS free_bytes FROM devices
+WHERE org_id = $1 AND status = 'active' AND online AND system_drive_free_bytes IS NOT NULL AND system_drive_free_bytes < $2
+ORDER BY system_drive_free_bytes LIMIT 500
+`
+
+type LowDiskDevicesParams struct {
+	OrgID                uuid.UUID
+	SystemDriveFreeBytes *int64
+}
+
+type LowDiskDevicesRow struct {
+	ID        uuid.UUID
+	Hostname  string
+	FreeBytes int64
+}
+
+func (q *Queries) LowDiskDevices(ctx context.Context, arg LowDiskDevicesParams) ([]LowDiskDevicesRow, error) {
+	rows, err := q.db.Query(ctx, lowDiskDevices, arg.OrgID, arg.SystemDriveFreeBytes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LowDiskDevicesRow{}
+	for rows.Next() {
+		var i LowDiskDevicesRow
+		if err := rows.Scan(&i.ID, &i.Hostname, &i.FreeBytes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const offlineDevicesSince = `-- name: OfflineDevicesSince :many
 SELECT id, hostname, last_seen_at FROM devices
 WHERE org_id = $1 AND status = 'active' AND NOT online AND last_seen_at < $2 ORDER BY last_seen_at LIMIT 500
@@ -720,6 +757,43 @@ func (q *Queries) PruneSoftwareHistory(ctx context.Context, arg PruneSoftwareHis
 	return result.RowsAffected(), nil
 }
 
+const restartPendingDevices = `-- name: RestartPendingDevices :many
+SELECT id, hostname, uptime_s FROM devices
+WHERE org_id = $1 AND status = 'active' AND online AND pending_reboot AND uptime_s >= $2 ORDER BY uptime_s DESC LIMIT 500
+`
+
+type RestartPendingDevicesParams struct {
+	OrgID   uuid.UUID
+	UptimeS int64
+}
+
+type RestartPendingDevicesRow struct {
+	ID       uuid.UUID
+	Hostname string
+	UptimeS  int64
+}
+
+// Online devices that need a restart and have not restarted for at least $2 seconds (uptime as of the last heartbeat).
+func (q *Queries) RestartPendingDevices(ctx context.Context, arg RestartPendingDevicesParams) ([]RestartPendingDevicesRow, error) {
+	rows, err := q.db.Query(ctx, restartPendingDevices, arg.OrgID, arg.UptimeS)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RestartPendingDevicesRow{}
+	for rows.Next() {
+		var i RestartPendingDevicesRow
+		if err := rows.Scan(&i.ID, &i.Hostname, &i.UptimeS); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const rolloutTargetVersion = `-- name: RolloutTargetVersion :one
 SELECT r.version, r.created_at FROM agent_rollout o JOIN agent_releases r ON r.id = o.release_id
 WHERE o.org_id = $1 AND o.release_id IS NOT NULL
@@ -735,6 +809,42 @@ func (q *Queries) RolloutTargetVersion(ctx context.Context, orgID uuid.UUID) (Ro
 	var i RolloutTargetVersionRow
 	err := row.Scan(&i.Version, &i.CreatedAt)
 	return i, err
+}
+
+const unprotectedDiskDevices = `-- name: UnprotectedDiskDevices :many
+SELECT d.id, d.hostname,
+       (SELECT COALESCE(string_agg(k->>'mount', ', ' ORDER BY k->>'mount'), '')
+          FROM jsonb_array_elements(COALESCE(d.hardware->'disks', '[]'::jsonb)) k WHERE k->>'bitlocker' = 'unprotected')::text AS mounts
+FROM devices d
+WHERE d.org_id = $1 AND d.status = 'active'
+  AND EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(d.hardware->'disks', '[]'::jsonb)) k WHERE k->>'bitlocker' = 'unprotected')
+ORDER BY d.hostname LIMIT 500
+`
+
+type UnprotectedDiskDevicesRow struct {
+	ID       uuid.UUID
+	Hostname string
+	Mounts   string
+}
+
+func (q *Queries) UnprotectedDiskDevices(ctx context.Context, orgID uuid.UUID) ([]UnprotectedDiskDevicesRow, error) {
+	rows, err := q.db.Query(ctx, unprotectedDiskDevices, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UnprotectedDiskDevicesRow{}
+	for rows.Next() {
+		var i UnprotectedDiskDevicesRow
+		if err := rows.Scan(&i.ID, &i.Hostname, &i.Mounts); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateSettingsSection = `-- name: UpdateSettingsSection :execrows

@@ -537,6 +537,16 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await mainNav(page).getByRole("link", { name: "Reports", exact: true }).click();
   await expect(page.getByRole("heading", { name: /^(.* · )?Reports$/ })).toBeVisible();
   await expect(page.getByText("Patch compliant")).toBeVisible();
+  // The operating-system support report: its summary and its table are there, and the API answers with the data date.
+  await expect(page.getByRole("heading", { name: "Operating system support" })).toBeVisible();
+  const lifecycle = await page.request.get("/api/v1/reports/lifecycle");
+  expect(lifecycle.status()).toBe(200);
+  const lc = await lifecycle.json();
+  expect(lc.data_as_of).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(Object.keys(lc.summary).sort()).toEqual(["ending_soon", "supported", "unknown", "unsupported"]);
+  const lcCsv = await page.request.get("/api/v1/reports/lifecycle.csv");
+  expect(lcCsv.status()).toBe(200);
+  expect(await lcCsv.text()).toContain("hostname,status,operating_system");
   await shot(page, "23-reports");
 
   // --- Settings: sections, search, validation, unsaved changes, secrets, export ---

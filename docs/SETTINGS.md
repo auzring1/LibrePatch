@@ -78,18 +78,18 @@ Permission: `settings:notifications`. E-mail delivery, quiet hours and which eve
 | **Quiet hours begin** (`quiet_start`) | time | `22:00` |  | in effect | Local time in the time zone below. |
 | **Quiet hours end** (`quiet_end`) | time | `07:00` |  | in effect | Local time in the time zone below. May be earlier than the start (overnight). |
 | **Quiet hours time zone** (`quiet_time_zone`) | timezone | `UTC` |  | in effect | Time zone of the quiet hours. |
-| **Event rules** (`rules`) | list | 4 built-in item(s) |  | in effect | One rule per event. Recipients are the people who get the e-mail; the threshold depends on the event. |
+| **Event rules** (`rules`) | list | 8 built-in item(s) |  | in effect | One rule per event. Recipients are the people who get the e-mail; the threshold depends on the event. |
 
 **Each item of “Event rules”:**
 
 | Setting | Type | Default | Limits | Effect | What it does |
 |---|---|---|---|---|---|
-| **Event** (`event`) | enum | `failed_install` | failed_install, update_held, device_offline, agent_out_of_date | in effect | What happened. |
+| **Event** (`event`) | enum | `failed_install` | failed_install, update_held, device_offline, agent_out_of_date, restart_pending_long, low_disk, bitlocker_off, os_end_of_support | in effect | What happened. |
 | **Notify** (`enabled`) | bool | `false` |  | in effect | Turn the rule on. |
 | **By e-mail** (`email`) | bool | `true` |  | in effect | Send an e-mail to the recipients. |
 | **To webhooks** (`webhook`) | bool | `true` |  | in effect | Call every enabled webhook that listens for this event. |
 | **Recipients** (`recipients`) | emails | empty | up to 20 entries | in effect | E-mail addresses. Required when the rule sends e-mail. |
-| **Threshold** (`threshold`) | int | `0` | 0 to 720 | in effect | Device offline: hours without a report. Agent out of date: days after a release before devices count as late. Other events ignore it. |
+| **Threshold** (`threshold`) | int | `0` | 0 to 720 | in effect | Device offline: hours without a report. Agent out of date: days after a release before devices count as late. Restart pending too long: days without a restart. Low disk: gigabytes free on the system drive. Operating system end of support: days before the end to warn (0 warns only once support has ended). Other events ignore it. |
 | **Hold during quiet hours** (`quiet_hours`) | bool | `true` |  | in effect | Wait for the end of quiet hours instead of sending at once. |
 
 ## Update defaults
@@ -200,7 +200,7 @@ Permission: `settings:integrations`. Outgoing webhooks and the reference for wha
 | **URL** (`url`) | url | empty | up to 500 characters | in effect | Where to POST. Use https; plain http is only for receivers on a trusted internal network. |
 | **Signing secret** (`secret`) | secret | none | up to 200 characters | in effect | Used to sign each delivery. Stored encrypted and never shown again; leave empty to keep the saved one. |
 | **Remove the saved secret** (`clear_secret`) | bool | `false` |  | in effect | Deliveries are then sent unsigned. |
-| **Events** (`events`) | multi | `failed_install, update_held` | failed_install, update_held, device_offline, agent_out_of_date | in effect | Which events to send. Rules under Notifications decide whether an event is sent at all. |
+| **Events** (`events`) | multi | `failed_install, update_held` | failed_install, update_held, device_offline, agent_out_of_date, restart_pending_long, low_disk, bitlocker_off, os_end_of_support | in effect | Which events to send. Rules under Notifications decide whether an event is sent at all. |
 
 ## Pages that are not schema-driven
 
