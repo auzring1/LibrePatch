@@ -45,6 +45,7 @@ import (
 	"github.com/auzring1/librepatch/internal/server/settings"
 	"github.com/auzring1/librepatch/internal/server/store"
 	"github.com/auzring1/librepatch/internal/server/updates"
+	"github.com/auzring1/librepatch/internal/server/vulns"
 	"github.com/auzring1/librepatch/internal/server/webui"
 	"github.com/auzring1/librepatch/internal/server/wingetindex"
 	"github.com/auzring1/librepatch/internal/shared/release"
@@ -64,6 +65,7 @@ type App struct {
 	Updates   *updates.Service
 	Releases  *agentrel.Service
 	Policies  *policies.Service
+	Vulns     *vulns.Service
 	Dashboard *dashboard.Service
 	Settings  *settings.Service
 	Notify    *notify.Service
@@ -147,6 +149,7 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 	a.Branding = &branding.Service{Pool: pool, Log: log.With("component", "branding")}
 	a.Dashboard = &dashboard.Service{Pool: pool, Log: log.With("component", "dashboard")}
 	a.Settings = &settings.Service{Pool: pool, Sealer: sealer, Log: log.With("component", "settings")}
+	a.Vulns = &vulns.Service{Store: &vulns.Store{Pool: pool}, Settings: a.Settings, Log: log.With("component", "vulns")}
 	a.Maint = &maintenance.Service{Pool: pool, Settings: a.Settings, Log: log.With("component", "maintenance")}
 	a.Notify = &notify.Service{Pool: pool, Settings: a.Settings, Branding: a.Branding, Log: log.With("component", "notify")}
 	a.Sched = &reportsched.Service{Pool: pool, Settings: a.Settings, Mail: a.Notify, Log: log.With("component", "reports"), Names: func(ctx context.Context) (string, string, string) {
@@ -288,7 +291,7 @@ func (a *App) Handler() http.Handler {
 	}
 	deps := api.Deps{
 		Cfg: a.Cfg, Pool: a.Pool, Sealer: a.Sealer, Sessions: sessions, Events: a.Events,
-		Setup: setupCtl{a}, Devices: a.Hub, Authority: a.Authority, Log: a.Log, Deploy: a.Deploy, Catalog: a.Catalog, Winget: a.Winget, AgentDL: a.AgentDL, Updates: a.Updates, Releases: a.Releases, Policies: a.Policies, Branding: a.Branding, Settings: a.Settings, Notify: a.Notify, Maint: a.Maint, Sched: a.Sched, KeyAck: a.KeyAck,
+		Setup: setupCtl{a}, Devices: a.Hub, Authority: a.Authority, Log: a.Log, Deploy: a.Deploy, Catalog: a.Catalog, Winget: a.Winget, AgentDL: a.AgentDL, Updates: a.Updates, Releases: a.Releases, Policies: a.Policies, Vulns: a.Vulns, Branding: a.Branding, Settings: a.Settings, Notify: a.Notify, Maint: a.Maint, Sched: a.Sched, KeyAck: a.KeyAck,
 	}
 	sessions.Timeouts = api.SessionLimits(deps)
 	return api.NewHandler(deps, webui.Handler(a.pageHead))
@@ -409,6 +412,11 @@ func (a *App) housekeeping(ctx context.Context) {
 			a.Sched.Tick(ctx)
 			if n%5 == 0 {
 				a.Policies.Tick(ctx)
+			}
+			if n%60 == 11 {
+				// A download can take minutes (the NVD allows a few requests per half minute), so it runs on its own; the
+				// service lets only one run at a time and asks each feed only when it is due.
+				go a.Vulns.Tick(ctx)
 			}
 			if n%60 == 7 {
 				a.Catalog.RefreshDueOverlays(ctx) // asks each overlay URL at most every 12 hours

@@ -33,6 +33,7 @@ import (
 	"github.com/auzring1/librepatch/internal/server/reportsched"
 	"github.com/auzring1/librepatch/internal/server/settings"
 	"github.com/auzring1/librepatch/internal/server/updates"
+	"github.com/auzring1/librepatch/internal/server/vulns"
 	"github.com/auzring1/librepatch/internal/server/wingetindex"
 )
 
@@ -68,6 +69,7 @@ type Deps struct {
 	Updates   *updates.Service
 	Releases  *agentrel.Service
 	Policies  *policies.Service
+	Vulns     *vulns.Service
 	Branding  *branding.Service
 	Settings  *settings.Service
 	Notify    *notify.Service
@@ -273,6 +275,16 @@ func (s *server) routes(r chi.Router) {
 	r.With(s.require(auth.PermReportsRead)).Get("/reports/overview", s.reportOverview)
 	r.With(s.require(auth.PermReportsRead)).Get("/reports/compliance", s.reportCompliance)
 	r.With(s.require(auth.PermInventoryExport)).Get("/reports/compliance.csv", s.complianceCSV)
+	r.With(s.require(auth.PermReportsRead)).Get("/vulnerabilities", s.listVulnerabilities)
+	r.With(s.require(auth.PermReportsRead)).Get("/vulnerabilities/products", s.listVulnProducts)
+	r.With(s.require(auth.PermReportsRead)).Get("/vulnerabilities/{cve}/devices", s.vulnerabilityDevices)
+	r.With(s.require(auth.PermInventoryExport)).Get("/vulnerabilities.csv", s.vulnerabilitiesCSV)
+	r.With(s.require(auth.PermSettingsIntegrations)).Post("/vulnerabilities/sync", s.syncVulnerabilities)
+	r.With(s.require(auth.PermSettingsIntegrations)).Post("/vulnerabilities/import", s.importVulnerabilities)
+	r.With(s.require(auth.PermSettingsIntegrations)).Post("/vulnerabilities/products", s.addVulnProduct)
+	r.With(s.require(auth.PermSettingsIntegrations)).Put("/vulnerabilities/products/{id}", s.setVulnProduct)
+	r.With(s.require(auth.PermSettingsIntegrations)).Delete("/vulnerabilities/products/{id}", s.deleteVulnProduct)
+	r.With(s.requireDevice(auth.PermDevicesRead)).Get("/devices/{id}/vulnerabilities", s.deviceVulnerabilities)
 	r.With(s.require(auth.PermReportsRead)).Get("/reports/lifecycle", s.reportLifecycle)
 	r.With(s.require(auth.PermInventoryExport)).Get("/reports/lifecycle.csv", s.lifecycleCSV)
 	r.With(s.require(auth.PermInventoryExport)).Get("/reports/compliance.html", s.complianceHTML)

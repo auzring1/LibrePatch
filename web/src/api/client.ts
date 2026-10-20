@@ -59,6 +59,13 @@ export type LifecycleRow = components["schemas"]["LifecycleRow"];
 export type LifecycleReport = components["schemas"]["LifecycleReport"];
 export type JobDetail = components["schemas"]["JobDetail"];
 export type Dashboard = components["schemas"]["Dashboard"];
+export type Vulnerability = components["schemas"]["Vulnerability"];
+export type VulnerabilityOverview = components["schemas"]["VulnerabilityOverview"];
+export type VulnerabilityStatus = components["schemas"]["VulnerabilityStatus"];
+export type VulnerabilityDevice = components["schemas"]["VulnerabilityDevice"];
+export type DeviceVulnerability = components["schemas"]["DeviceVulnerability"];
+export type VulnerabilityProduct = components["schemas"]["VulnerabilityProduct"];
+export type VulnerabilitySyncReport = components["schemas"]["VulnerabilitySyncReport"];
 
 let csrfToken = "";
 

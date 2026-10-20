@@ -33,6 +33,7 @@ const SoftwareUpdatesPage = page(() => import("./pages/SoftwareUpdatesPage"), "S
 const TokensPage = page(() => import("./pages/TokensPage"), "TokensPage");
 const PoliciesPage = page(() => import("./pages/PoliciesPage"), "PoliciesPage");
 const ReportsPage = page(() => import("./pages/ReportsPage"), "ReportsPage");
+const VulnerabilitiesPage = page(() => import("./pages/VulnerabilitiesPage"), "VulnerabilitiesPage");
 const AgentUpdatesPage = page(() => import("./pages/AgentUpdatesPage"), "AgentUpdatesPage");
 const AccountPage = page(() => import("./pages/AccountPage"), "AccountPage");
 const SitesPage = page(() => import("./pages/SitesPage"), "SitesPage");
@@ -84,6 +85,7 @@ export function App() {
         <Route path="/catalog/:id" element={<PackagePage />} />
         <Route path="/policies" element={<PoliciesPage />} />
         <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/vulnerabilities" element={<VulnerabilitiesPage />} />
         <Route path="/agent-updates" element={<AgentUpdatesPage />} />
         <Route path="/account" element={<AccountPage />} />
         <Route path="/users" element={<UsersPage />} />

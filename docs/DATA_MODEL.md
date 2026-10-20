@@ -189,6 +189,10 @@ policy_attempts(policy_id, device_id, version, deployment_id, failures, created_
 catalog_overlays(id, org_id, label, kind[upload|url], url, public_key, enabled, priority, doc_name, doc_version, doc_issued_at, document jsonb,
                  entries, fetched_at, checked_at, status[new|ok|error], last_error, etag, created_by, unique(org_id, label))
                  -- catalog_packages.verified_by_overlay = label of the overlay that vouches for the package ('' = none)
+cves(id pk, published, modified, summary, cvss, severity[low|medium|high|critical], kev, kev_name, kev_added, kev_due, kev_ransomware, kev_action)  -- public data: no organization
+cve_ranges(cve_id, vendor, product, start_key bytea, start_incl, start_text, end_key bytea, end_incl, end_text)
+cve_products(id, org_id, normalized_name, vendor, product, source[builtin|user], enabled, unique(org_id, normalized_name, vendor, product))
+vuln_feeds(feed pk, last_ok, last_attempt, status[new|ok|error], last_error, etag, items)
 software_approvals(org_id, package_id, version, decision[approved|declined], note, decided_by, decided_at, pk(org_id, package_id, version))
 software_holds(id, org_id, policy_id, version, ring_id -> wu_rings, reason, created_at, released_at, released_by,
                unique open hold per (policy_id, version, ring_id))

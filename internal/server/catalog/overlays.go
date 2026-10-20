@@ -8,17 +8,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/auzring1/librepatch/gen/dbq"
+	"github.com/auzring1/librepatch/internal/server/safehttp"
 	"github.com/auzring1/librepatch/internal/shared/overlay"
 )
 
@@ -453,39 +452,12 @@ func (s *Service) ApplyOverlayState(ctx context.Context, org uuid.UUID) error {
 
 // ---- fetching ----
 
-// refuseLocal stops the server from being used to reach itself or the cloud metadata address through an overlay URL.
-func refuseLocal(_, address string, _ syscall.RawConn) error {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return err
-	}
-	ip := net.ParseIP(host)
-	if ip != nil && (ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()) {
-		return errors.New("addresses on this server itself and link-local addresses are not allowed")
-	}
-	return nil
-}
-
-func defaultOverlayClient() *http.Client {
-	d := &net.Dialer{Timeout: 10 * time.Second, Control: refuseLocal}
-	return &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: &http.Transport{DialContext: d.DialContext, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 20 * time.Second, DisableKeepAlives: true},
-		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
-			if len(via) >= 3 {
-				return errors.New("too many redirects")
-			}
-			return nil
-		},
-	}
-}
-
 // fetchBundle downloads a signed overlay. It returns notModified when the server answers 304 to the stored ETag. The body is
 // capped; the signature, not the transport, is what makes the content trusted.
 func (s *Service) fetchBundle(ctx context.Context, link, etag string) (body []byte, newTag string, notModified bool, err error) {
 	c := s.HTTP
 	if c == nil {
-		c = defaultOverlayClient()
+		c = safehttp.NewClient()
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, link, nil)
 	if err != nil {

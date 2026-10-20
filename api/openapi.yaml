@@ -2139,6 +2139,165 @@ paths:
           content:
             text/csv:
               schema: { type: string }
+  /vulnerabilities:
+    get:
+      tags: [vulnerabilities]
+      summary: Known vulnerabilities (CVEs) that affect devices, the exploited ones first, with a summary and the state of the data (requires reports:read)
+      parameters:
+        - { name: exploited, in: query, required: false, schema: { type: boolean }, description: Only vulnerabilities on the CISA list of known exploited vulnerabilities }
+        - { name: severity, in: query, required: false, schema: { type: string }, description: "Comma-separated: low, medium, high, critical" }
+        - { name: q, in: query, required: false, schema: { type: string }, description: Text in the CVE id, summary or software name }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 2000, default: 500 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VulnerabilityOverview" }
+  /vulnerabilities.csv:
+    get:
+      tags: [vulnerabilities]
+      summary: The same list as CSV (requires inventory:export; audited)
+      responses:
+        "200":
+          description: CSV
+          content:
+            text/csv:
+              schema: { type: string }
+  /vulnerabilities/{cve}/devices:
+    get:
+      tags: [vulnerabilities]
+      summary: The devices a CVE affects, and what to update (requires reports:read)
+      parameters: [{ name: cve, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/VulnerabilityDevice" } }
+        "400": { $ref: "#/components/responses/Error" }
+  /vulnerabilities/sync:
+    post:
+      tags: [vulnerabilities]
+      summary: Download the vulnerability feeds now (requires settings:integrations; audited as vulns.sync). The lookup must be turned on.
+      responses:
+        "200":
+          description: What the run did
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VulnerabilitySyncReport" }
+        "409": { $ref: "#/components/responses/Error" }
+  /vulnerabilities/import:
+    post:
+      tags: [vulnerabilities]
+      summary: Load a feed file by hand, for feeds the server cannot download (requires settings:integrations; audited as vulns.import)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind, data]
+              properties:
+                kind: { type: string, enum: [kev, nvd] }
+                data: { type: string, description: The text of the CISA catalog, or of one page of an NVD CVE API 2.0 answer }
+      responses:
+        "200":
+          description: Loaded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kind, items]
+                properties:
+                  kind: { type: string }
+                  items: { type: integer }
+        "422": { $ref: "#/components/responses/Error" }
+  /vulnerabilities/products:
+    get:
+      tags: [vulnerabilities]
+      summary: Which installed programs are looked up in the vulnerability data, and as what (requires reports:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/VulnerabilityProduct" } }
+    post:
+      tags: [vulnerabilities]
+      summary: Add a program to look up, by the vendor and product names the NVD uses (requires settings:integrations; audited as vulns.product_add)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, vendor, product]
+              properties:
+                name: { type: string, description: The program's name as the software inventory shows it }
+                vendor: { type: string }
+                product: { type: string }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VulnerabilityProduct" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /vulnerabilities/products/{id}:
+    put:
+      tags: [vulnerabilities]
+      summary: Switch a line on or off (requires settings:integrations; audited)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        "204": { description: Saved }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [vulnerabilities]
+      summary: Remove a line you added; lines that come with the product can only be switched off (requires settings:integrations; audited)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "204": { description: Removed }
+        "404": { $ref: "#/components/responses/Error" }
+  /devices/{id}/vulnerabilities:
+    get:
+      tags: [vulnerabilities]
+      summary: The known vulnerabilities that affect one device (requires devices:read for the device)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, enabled, has_data]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/DeviceVulnerability" } }
+                  enabled: { type: boolean }
+                  has_data: { type: boolean }
+        "404": { $ref: "#/components/responses/Error" }
   /reports/lifecycle:
     get:
       tags: [reports]
@@ -3521,6 +3680,108 @@ components:
         failed_updates: { type: integer }
         reboot_pending: { type: boolean }
         state: { type: string, enum: [compliant, non_compliant, unknown] }
+    Vulnerability:
+      type: object
+      required: [id, summary, severity, exploited, exploited_name, ransomware, required_action, devices, products, fixed_in]
+      properties:
+        id: { type: string, example: CVE-2026-0001 }
+        published: { type: string, format: date-time, nullable: true }
+        summary: { type: string }
+        cvss: { type: number, nullable: true, description: CVSS base score, 0 to 10 }
+        severity: { type: string, enum: ["", low, medium, high, critical] }
+        exploited: { type: boolean, description: On the CISA list of known exploited vulnerabilities }
+        exploited_name: { type: string }
+        kev_added: { type: string, format: date-time, nullable: true }
+        kev_due: { type: string, format: date-time, nullable: true, description: The date CISA asks for it to be fixed by }
+        ransomware: { type: boolean, description: Known to be used in ransomware campaigns }
+        required_action: { type: string }
+        devices: { type: integer }
+        products: { type: array, items: { type: string } }
+        fixed_in: { type: array, items: { type: string }, description: What to update to, per product }
+    VulnerabilitySummary:
+      type: object
+      required: [cves, exploited, critical, high, devices, devices_covered, devices_active]
+      properties:
+        cves: { type: integer }
+        exploited: { type: integer }
+        critical: { type: integer }
+        high: { type: integer }
+        devices: { type: integer, description: Devices affected by at least one }
+        devices_covered: { type: integer, description: Devices that have something the lookup knows about }
+        devices_active: { type: integer }
+    VulnerabilityFeed:
+      type: object
+      required: [feed, last_ok, last_attempt, status, last_error, items]
+      properties:
+        feed: { type: string, description: "kev, or nvd:<vendor>:<product>" }
+        last_ok: { type: string, format: date-time, nullable: true }
+        last_attempt: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [new, ok, error] }
+        last_error: { type: string }
+        items: { type: integer }
+    VulnerabilityStatus:
+      type: object
+      required: [enabled, counts, feeds, tracked_products, kev_updated_at, nvd_updated_at, problems]
+      properties:
+        enabled: { type: boolean }
+        counts:
+          type: object
+          required: [cves, cves_with_versions, exploited]
+          properties:
+            cves: { type: integer }
+            cves_with_versions: { type: integer }
+            exploited: { type: integer }
+        feeds: { type: array, items: { $ref: "#/components/schemas/VulnerabilityFeed" } }
+        tracked_products: { type: integer, description: Programs and Windows releases of the fleet that are looked up }
+        kev_updated_at: { type: string, format: date-time, nullable: true }
+        nvd_updated_at: { type: string, format: date-time, nullable: true, description: The oldest successful refresh among the products the fleet has; null until every one has been downloaded }
+        problems: { type: integer }
+    VulnerabilityOverview:
+      type: object
+      required: [summary, items, status]
+      properties:
+        summary: { $ref: "#/components/schemas/VulnerabilitySummary" }
+        items: { type: array, items: { $ref: "#/components/schemas/Vulnerability" } }
+        status: { $ref: "#/components/schemas/VulnerabilityStatus" }
+    VulnerabilityDevice:
+      type: object
+      required: [device_id, hostname, product, installed, fixed_in]
+      properties:
+        device_id: { type: string, format: uuid }
+        hostname: { type: string }
+        product: { type: string }
+        installed: { type: string }
+        fixed_in: { type: string, description: The version that fixes it; empty when none is known }
+    DeviceVulnerability:
+      allOf:
+        - { $ref: "#/components/schemas/Vulnerability" }
+        - type: object
+          required: [product, installed]
+          properties:
+            product: { type: string }
+            installed: { type: string }
+    VulnerabilityProduct:
+      type: object
+      required: [id, name, vendor, product, source, enabled, devices]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, description: The normalized program name the software inventory uses }
+        vendor: { type: string }
+        product: { type: string }
+        source: { type: string, enum: [builtin, user] }
+        enabled: { type: boolean }
+        devices: { type: integer, description: Active devices that have the program }
+    VulnerabilitySyncReport:
+      type: object
+      required: [kev, kev_items, products, pending, cves, requests, errors]
+      properties:
+        kev: { type: string, enum: [downloaded, unchanged, skipped, failed] }
+        kev_items: { type: integer }
+        products: { type: integer }
+        pending: { type: integer, description: Products left for the next run }
+        cves: { type: integer }
+        requests: { type: integer }
+        errors: { type: array, items: { type: string } }
     LifecycleRow:
       type: object
       required: [device_id, hostname, os, version, build, edition, product, release, end_of_support, days_left, status, note, last_seen_at]

@@ -2,12 +2,14 @@ package notify
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/auzring1/librepatch/internal/server/settings"
+	"github.com/auzring1/librepatch/internal/shared/vercmp"
 	"github.com/auzring1/librepatch/internal/testutil/pgtest"
 )
 
@@ -142,4 +144,48 @@ func itoa(n int) string {
 		return "0"
 	}
 	return s
+}
+
+func TestScanAnnouncesAnExploitedVulnerabilityOnce(t *testing.T) {
+	db := pgtest.New(t)
+	ctx := context.Background()
+	org, user, site := uuid.New(), uuid.New(), uuid.New()
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := db.Pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+	}
+	exec("INSERT INTO organizations (id, name) VALUES ($1, 'Contoso Health')", org)
+	exec("INSERT INTO users (id, org_id, email, display_name, password_hash) VALUES ($1, $2, 'a@example.org', 'A', 'x')", user, org)
+	exec("INSERT INTO sites (id, org_id, name) VALUES ($1, $2, 's')", site, org)
+	for _, h := range []string{"PC-1", "PC-2"} {
+		exec(`INSERT INTO devices (id, org_id, site_id, status, hostname, arch, os_caption, os_build, hardware) VALUES ($1,$2,$3,'active',$4,'amd64','Windows 11 Pro','26100.1000','{"os_build":26100}'::jsonb)`, uuid.New(), org, site, h)
+	}
+	// An exploited CVE for Windows 11 24H2 below 10.0.26100.2033, and one that is not exploited.
+	exec(`INSERT INTO cves (id, severity, cvss, kev, kev_name, kev_due) VALUES ('CVE-2026-0002','high',7.8,true,'Windows Privilege Escalation','2026-10-29'), ('CVE-2026-0003','medium',5.0,false,'',NULL)`)
+	for _, id := range []string{"CVE-2026-0002", "CVE-2026-0003"} {
+		exec(`INSERT INTO cve_ranges (cve_id, vendor, product, end_key, end_text) VALUES ($1,'microsoft','windows_11_24h2',$2,'10.0.26100.2033')`, id, vercmp.Key("10.0.26100.2033"))
+	}
+	svc := &settings.Service{Pool: db.Pool}
+	if _, err := svc.Put(ctx, settings.Actor{Org: org, User: user}, "notifications", 0, map[string]any{
+		"email_enabled": true, "smtp_host": "mail.example.org", "from_address": "librepatch@example.org",
+		"rules": ruleSet(map[string]int{"exploited_vulnerability": 0}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	n := &Service{Pool: db.Pool, Settings: svc, Now: func() time.Time { return time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC) }}
+	n.scan(ctx)
+	n.scan(ctx)
+	var count int
+	var subject, text string
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*), max(payload->>'subject'), max(payload->>'text') FROM notification_outbox WHERE org_id = $1 AND event = 'exploited_vulnerability'`, org).Scan(&count, &subject, &text); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || !strings.Contains(subject, "CVE-2026-0002") || !strings.Contains(subject, "2 device") || strings.Contains(subject, "0003") {
+		t.Fatalf("one announcement, for the exploited CVE only: %d %q", count, subject)
+	}
+	if !strings.Contains(text, "2026-10-29") || !strings.Contains(text, "10.0.26100.2033") {
+		t.Fatalf("the text says when it is due and what fixes it: %q", text)
+	}
 }

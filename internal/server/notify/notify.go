@@ -20,6 +20,7 @@ import (
 	"github.com/auzring1/librepatch/internal/server/branding"
 	"github.com/auzring1/librepatch/internal/server/lifecycle"
 	"github.com/auzring1/librepatch/internal/server/settings"
+	"github.com/auzring1/librepatch/internal/server/vulns"
 	"github.com/auzring1/librepatch/internal/shared/ptr"
 	"github.com/auzring1/librepatch/internal/shared/text"
 	"github.com/auzring1/librepatch/internal/shared/vercmp"
@@ -345,6 +346,43 @@ func (s *Service) scanDeviceHealth(ctx context.Context, org uuid.UUID, rules map
 	}
 	if r, ok := rules["os_end_of_support"]; ok {
 		s.scanEndOfSupport(ctx, org, r.Int("threshold"), now)
+	}
+	if _, ok := rules["exploited_vulnerability"]; ok {
+		s.scanExploited(ctx, org)
+	}
+}
+
+// scanExploited announces, once per CVE, a vulnerability on the CISA list of known exploited vulnerabilities that affects
+// devices of the organization.
+func (s *Service) scanExploited(ctx context.Context, org uuid.UUID) {
+	items, _, err := (&vulns.Store{Pool: s.Pool}).Overview(ctx, org, vulns.Filter{Exploited: true, Limit: 500})
+	if err != nil {
+		return
+	}
+	queued := s.queuedKeys(ctx, org, "exploited_vulnerability")
+	for _, it := range items {
+		key := "kev:" + it.ID
+		if queued[key] {
+			continue
+		}
+		due := ""
+		if it.KEVDue != nil {
+			due = it.KEVDue.UTC().Format("2006-01-02")
+		}
+		name := it.ExploitedName
+		if name == "" {
+			name = it.ID
+		}
+		text := fmt.Sprintf("%s (%s) is known to be exploited and affects %d device(s).", it.ID, name, it.Devices)
+		if due != "" {
+			text += " CISA asks for it to be fixed by " + due + "."
+		}
+		if len(it.FixedIn) > 0 {
+			text += " Fix: update to " + strings.Join(it.FixedIn, "; ") + "."
+		}
+		s.Emit(ctx, org, Event{Name: "exploited_vulnerability", Key: key,
+			Subject: fmt.Sprintf("%s is known to be exploited and affects %d device(s)", it.ID, it.Devices), Text: text,
+			Data: map[string]any{"cve": it.ID, "name": name, "devices": it.Devices, "fix_due": due, "ransomware": it.Ransomware, "severity": it.Severity}})
 	}
 }
 

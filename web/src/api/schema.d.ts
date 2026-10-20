@@ -5110,6 +5110,389 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vulnerabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Known vulnerabilities (CVEs) that affect devices, the exploited ones first, with a summary and the state of the data (requires reports:read) */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Only vulnerabilities on the CISA list of known exploited vulnerabilities */
+                    exploited?: boolean;
+                    /** @description Comma-separated: low, medium, high, critical */
+                    severity?: string;
+                    /** @description Text in the CVE id */
+                    q?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VulnerabilityOverview"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The same list as CSV (requires inventory:export; audited) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description CSV */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/csv": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities/{cve}/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The devices a CVE affects, and what to update (requires reports:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    cve: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["VulnerabilityDevice"][];
+                        };
+                    };
+                };
+                400: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Download the vulnerability feeds now (requires settings:integrations; audited as vulns.sync). The lookup must be turned on. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What the run did */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VulnerabilitySyncReport"];
+                    };
+                };
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Load a feed file by hand, for feeds the server cannot download (requires settings:integrations; audited as vulns.import) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        kind: "kev" | "nvd";
+                        /** @description The text of the CISA catalog */
+                        data: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Loaded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            kind: string;
+                            items: number;
+                        };
+                    };
+                };
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which installed programs are looked up in the vulnerability data, and as what (requires reports:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["VulnerabilityProduct"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Add a program to look up, by the vendor and product names the NVD uses (requires settings:integrations; audited as vulns.product_add) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description The program's name as the software inventory shows it */
+                        name: string;
+                        vendor: string;
+                        product: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Added */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VulnerabilityProduct"];
+                    };
+                };
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities/products/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Switch a line on or off (requires settings:integrations; audited) */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Saved */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        post?: never;
+        /** Remove a line you added; lines that come with the product can only be switched off (requires settings:integrations; audited) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{id}/vulnerabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The known vulnerabilities that affect one device (requires devices:read for the device) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["DeviceVulnerability"][];
+                            enabled: boolean;
+                            has_data: boolean;
+                        };
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/reports/lifecycle": {
         parameters: {
             query?: never;
@@ -7384,6 +7767,118 @@ export interface components {
             reboot_pending: boolean;
             /** @enum {string} */
             state: "compliant" | "non_compliant" | "unknown";
+        };
+        Vulnerability: {
+            /** @example CVE-2026-0001 */
+            id: string;
+            /** Format: date-time */
+            published?: string | null;
+            summary: string;
+            /** @description CVSS base score */
+            cvss?: number | null;
+            /** @enum {string} */
+            severity: "" | "low" | "medium" | "high" | "critical";
+            /** @description On the CISA list of known exploited vulnerabilities */
+            exploited: boolean;
+            exploited_name: string;
+            /** Format: date-time */
+            kev_added?: string | null;
+            /**
+             * Format: date-time
+             * @description The date CISA asks for it to be fixed by
+             */
+            kev_due?: string | null;
+            /** @description Known to be used in ransomware campaigns */
+            ransomware: boolean;
+            required_action: string;
+            devices: number;
+            products: string[];
+            /** @description What to update to */
+            fixed_in: string[];
+        };
+        VulnerabilitySummary: {
+            cves: number;
+            exploited: number;
+            critical: number;
+            high: number;
+            /** @description Devices affected by at least one */
+            devices: number;
+            /** @description Devices that have something the lookup knows about */
+            devices_covered: number;
+            devices_active: number;
+        };
+        VulnerabilityFeed: {
+            /** @description kev, or nvd:<vendor>:<product> */
+            feed: string;
+            /** Format: date-time */
+            last_ok: string | null;
+            /** Format: date-time */
+            last_attempt: string | null;
+            /** @enum {string} */
+            status: "new" | "ok" | "error";
+            last_error: string;
+            items: number;
+        };
+        VulnerabilityStatus: {
+            enabled: boolean;
+            counts: {
+                cves: number;
+                cves_with_versions: number;
+                exploited: number;
+            };
+            feeds: components["schemas"]["VulnerabilityFeed"][];
+            /** @description Programs and Windows releases of the fleet that are looked up */
+            tracked_products: number;
+            /** Format: date-time */
+            kev_updated_at: string | null;
+            /**
+             * Format: date-time
+             * @description The oldest successful refresh among the products the fleet has; null until every one has been downloaded
+             */
+            nvd_updated_at: string | null;
+            problems: number;
+        };
+        VulnerabilityOverview: {
+            summary: components["schemas"]["VulnerabilitySummary"];
+            items: components["schemas"]["Vulnerability"][];
+            status: components["schemas"]["VulnerabilityStatus"];
+        };
+        VulnerabilityDevice: {
+            /** Format: uuid */
+            device_id: string;
+            hostname: string;
+            product: string;
+            installed: string;
+            /** @description The version that fixes it; empty when none is known */
+            fixed_in: string;
+        };
+        DeviceVulnerability: components["schemas"]["Vulnerability"] & {
+            product: string;
+            installed: string;
+        };
+        VulnerabilityProduct: {
+            /** Format: uuid */
+            id: string;
+            /** @description The normalized program name the software inventory uses */
+            name: string;
+            vendor: string;
+            product: string;
+            /** @enum {string} */
+            source: "builtin" | "user";
+            enabled: boolean;
+            /** @description Active devices that have the program */
+            devices: number;
+        };
+        VulnerabilitySyncReport: {
+            /** @enum {string} */
+            kev: "downloaded" | "unchanged" | "skipped" | "failed";
+            kev_items: number;
+            products: number;
+            /** @description Products left for the next run */
+            pending: number;
+            cves: number;
+            requests: number;
+            errors: string[];
         };
         LifecycleRow: {
             /** Format: uuid */

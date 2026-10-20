@@ -9,6 +9,7 @@ no account and no telemetry.
 - **Software updates and deployment:** finds updates for installed programs by matching them to the winget community index, with
   no catalog to maintain; installs and updates from winget manifests or your own uploaded installers, with hash checks,
   maintenance windows and a verified/unverified safety step. Software policies can roll a new version out ring by ring and wait for your approval first, and signed overlays record the silent arguments and verified marks you have tested.
+- **Vulnerabilities:** matches the public CISA exploited-vulnerability list and the NIST database against Windows and the programs on your devices, entirely on your server (off until you turn it on).
 - **Windows Updates:** approval, update rings, maintenance windows, reboot policy and compliance reports.
 - **Alerts and lifecycle:** e-mail or webhook alerts for offline PCs, failed installs, restarts that wait too long, low disk space, BitLocker off and operating systems nearing end of support, plus a report of devices that are out of support.
 - **Agent self-update** with a pilot group and automatic rollback.

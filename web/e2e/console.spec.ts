@@ -361,6 +361,34 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
         await expect(devUpdates.getByText("Acme Corp")).toHaveCount(0, { timeout: 15_000 });
       }).toPass({ timeout: 90_000 });
 
+      // --- Vulnerabilities: feed files loaded by hand, a program mapped to the NVD, the page, the CVE dialog and the device tab ---
+      const csrf = ((await (await page.request.get("/api/v1/auth/session")).json()) as { csrf_token: string }).csrf_token;
+      // A state change needs the session's CSRF token and the console's own origin, as the browser would send them.
+      const post = (path: string, data: unknown) => page.request.post(`/api/v1${path}`, { data, headers: { "X-CSRF-Token": csrf, Origin: new URL(page.url()).origin } });
+      expect((await post("/vulnerabilities/products", { name: "bash", vendor: "gnu", product: "bash" })).status()).toBe(201);
+      const nvdPage = { resultsPerPage: 1, startIndex: 0, totalResults: 1, vulnerabilities: [{ cve: { id: "CVE-2026-9001", published: "2026-09-30T00:00:00.000", lastModified: "2026-10-01T00:00:00.000", vulnStatus: "Analyzed",
+        descriptions: [{ lang: "en", value: "A made-up bash vulnerability for the browser test." }], metrics: { cvssMetricV31: [{ cvssData: { baseScore: 9.8, baseSeverity: "CRITICAL" } }] },
+        configurations: [{ nodes: [{ operator: "OR", cpeMatch: [{ vulnerable: true, criteria: "cpe:2.3:a:gnu:bash:*:*:*:*:*:*:*:*", versionEndExcluding: "99.0" }] }] }] } }] };
+      const kevFile = { catalogVersion: "e2e", vulnerabilities: [{ cveID: "CVE-2026-9001", vendorProject: "GNU", product: "Bash", vulnerabilityName: "GNU Bash e2e vulnerability", dateAdded: "2026-10-01", requiredAction: "Apply updates per vendor instructions.", dueDate: "2026-10-22", knownRansomwareCampaignUse: "Unknown" }] };
+      expect((await post("/vulnerabilities/import", { kind: "nvd", data: JSON.stringify(nvdPage) })).status()).toBe(200);
+      expect((await post("/vulnerabilities/import", { kind: "kev", data: JSON.stringify(kevFile) })).status()).toBe(200);
+      expect((await post("/vulnerabilities/import", { kind: "kev", data: "not a catalog" })).status()).toBe(422);
+      await mainNav(page).getByRole("link", { name: "Vulnerabilities", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Vulnerabilities", exact: true })).toBeVisible();
+      await expect(page.getByText("Known exploited", { exact: true })).toBeVisible();
+      const cveRow = page.getByRole("table", { name: "Vulnerabilities" }).getByText("CVE-2026-9001");
+      await expect(cveRow).toBeVisible({ timeout: 30_000 });
+      await shot(page, "22c-vulnerabilities");
+      await cveRow.click();
+      const cd = page.getByRole("dialog");
+      await expect(cd.getByText("GNU Bash e2e vulnerability")).toBeVisible();
+      await expect(cd.getByText(/fix due 2026-10-22|fix was due 2026-10-22/)).toBeVisible();
+      await cd.getByRole("link", { name: /^\S+$/ }).filter({ hasNotText: "NVD page" }).first().click();
+      await expect(page).toHaveURL(/\?tab=vulnerabilities$/);
+      await expect(page.getByRole("table", { name: "Known vulnerabilities on this device" }).getByText("CVE-2026-9001")).toBeVisible();
+      const devVul = await (await page.request.get("/api/v1/vulnerabilities.csv")).text();
+      expect(devVul).toContain("CVE-2026-9001");
+
       // On the device page already: refresh, missing updates, uninstall from the inventory, then revoke and delete.
       await shot(page, "05-device-detail");
       await page.getByRole("button", { name: /Refresh/ }).click();

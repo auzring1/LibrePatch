@@ -1,5 +1,5 @@
 /** The tabs of the device page, in display order. */
-export const DEVICE_TABS = ["overview", "hardware", "software", "software-updates", "updates", "jobs", "activity"] as const;
+export const DEVICE_TABS = ["overview", "hardware", "software", "vulnerabilities", "software-updates", "updates", "jobs", "activity"] as const;
 export type DeviceTab = (typeof DEVICE_TABS)[number];
 
 /**
@@ -20,12 +20,15 @@ export const DEVICE_TAB_ALIASES: Readonly<Record<string, DeviceTab>> = {
   winupdates: "updates",
   wu: "updates",
   users: "overview",
+  cve: "vulnerabilities",
+  cves: "vulnerabilities",
+  security: "vulnerabilities",
   certificates: "hardware",
   certs: "hardware",
   "client-certificates": "hardware",
 };
 
-/** Which optional tabs the person may see. Overview, Hardware and Software are always available. */
+/** Which optional tabs the person may see. Overview, Hardware, Software and Vulnerabilities are always available (they need only access to the device). */
 export interface DeviceTabAccess {
   /** `updates:read`: the Windows updates tab. */
   hasUpdates: boolean;

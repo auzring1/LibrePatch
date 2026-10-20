@@ -11,6 +11,7 @@ import { HardwareTab } from "../components/DeviceHardware";
 import { JobsTab } from "../components/DeviceJobs";
 import { OverviewTab } from "../components/DeviceOverview";
 import { SoftwareTab } from "../components/DeviceSoftware";
+import { VulnerabilitiesTab } from "../components/DeviceVulnerabilities";
 import { SoftwareUpdatesTab, UpdatesTab } from "../components/DeviceUpdates";
 import { resolveDeviceTab, type DeviceTab } from "../components/deviceTabs";
 import { Card, Icons, Page, PageHeader, Status, StatusPill, TableSkeleton, toast, useConfirm } from "../ui";
@@ -132,6 +133,7 @@ export function DevicePage() {
                 <Tabs.Tab value="overview">Overview</Tabs.Tab>
                 <Tabs.Tab value="hardware">Hardware</Tabs.Tab>
                 <Tabs.Tab value="software">Software{d.software_count ? ` (${d.software_count})` : ""}</Tabs.Tab>
+                <Tabs.Tab value="vulnerabilities">Vulnerabilities</Tabs.Tab>
                 {access.hasSoftwareUpdates && <Tabs.Tab value="software-updates">Software updates</Tabs.Tab>}
                 {access.hasUpdates && <Tabs.Tab value="updates">Windows updates</Tabs.Tab>}
                 {access.hasJobs && <Tabs.Tab value="jobs">Jobs</Tabs.Tab>}
@@ -146,6 +148,9 @@ export function DevicePage() {
               </Tabs.Panel>
               <Tabs.Panel value="software" pt="md">
                 <SoftwareTab id={id} hostname={d.hostname} active={d.status === "active"} />
+              </Tabs.Panel>
+              <Tabs.Panel value="vulnerabilities" pt="md">
+                <VulnerabilitiesTab device={d} />
               </Tabs.Panel>
               {access.hasSoftwareUpdates && (
                 <Tabs.Panel value="software-updates" pt="md">

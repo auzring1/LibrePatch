@@ -40,6 +40,7 @@ export const SETTINGS_SECTIONS: NavItem[] = [
   { id: "settings-devices", section: "devices", to: "/settings/devices", label: "Device defaults", perm: "settings:devices", icon: I.NavDevices, keywords: ["offline", "stale", "custom fields", "tags", "columns"] },
   { id: "settings-reports", section: "reports", to: "/settings/reports", label: "Scheduled reports", perm: "settings:reports", icon: I.NavReports, keywords: ["scheduled reports", "pdf", "csv"] },
   { id: "settings-data", section: "data", to: "/settings/data", label: "Data and retention", perm: "settings:data", icon: I.NavData, keywords: ["maintenance", "retention", "backup", "export"] },
+  { id: "settings-vulnerabilities", section: "vulnerabilities", to: "/settings/vulnerabilities", label: "Vulnerability data", perm: "settings:integrations", icon: I.Shield, keywords: ["cve", "nvd", "cisa", "kev", "exploited", "security"] },
   { id: "settings-integrations", section: "integrations", to: "/settings/integrations", label: "Integrations", perm: "settings:integrations", icon: I.NavIntegrations, keywords: ["webhooks", "api tokens", "events"] },
   { id: "settings-about", section: "about", to: "/settings/about", label: "About", perm: "settings:write", icon: I.Info, keywords: ["version", "support bundle", "build"] },
 ];
@@ -78,7 +79,14 @@ export const NAV: NavGroup[] = [
       { id: "software-policies", to: "/policies", label: "Software policies", perm: "policies:read", icon: I.NavSoftwarePolicy, keywords: ["keep updated", "baseline"] },
     ],
   },
-  { id: "insights", label: "", items: [{ id: "reports", to: "/reports", label: "Reports", perm: "reports:read", icon: I.NavReports, keywords: ["compliance", "export"] }] },
+  {
+    id: "insights",
+    label: "",
+    items: [
+      { id: "vulnerabilities", to: "/vulnerabilities", label: "Vulnerabilities", perm: "reports:read", icon: I.Shield, keywords: ["cve", "exploited", "security", "risk", "kev", "nvd"] },
+      { id: "reports", to: "/reports", label: "Reports", perm: "reports:read", icon: I.NavReports, keywords: ["compliance", "export"] },
+    ],
+  },
   {
     id: "administration",
     label: "Administration",

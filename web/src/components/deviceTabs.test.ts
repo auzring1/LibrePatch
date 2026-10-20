@@ -19,6 +19,10 @@ describe("resolveDeviceTab", () => {
     for (const t of Object.values(DEVICE_TAB_ALIASES)) expect(DEVICE_TABS).toContain(t);
   });
 
+  it("leads the old and short names for the vulnerabilities tab there", () => {
+    for (const k of ["cve", "cves", "security", "vulnerabilities"]) expect(resolveDeviceTab(k, none)).toBe("vulnerabilities");
+  });
+
   it("is forgiving about case and whitespace", () => {
     expect(resolveDeviceTab(" Hardware ", all)).toBe("hardware");
     expect(resolveDeviceTab("WU", all)).toBe("updates");
@@ -49,8 +53,8 @@ describe("resolveDeviceTab", () => {
 
 describe("availableDeviceTabs", () => {
   it("keeps the display order", () => {
-    expect(availableDeviceTabs(all)).toEqual(["overview", "hardware", "software", "software-updates", "updates", "jobs", "activity"]);
-    expect(availableDeviceTabs(none)).toEqual(["overview", "hardware", "software"]);
-    expect(availableDeviceTabs({ hasUpdates: true, hasSoftwareUpdates: false, hasJobs: false, hasActivity: true })).toEqual(["overview", "hardware", "software", "updates", "activity"]);
+    expect(availableDeviceTabs(all)).toEqual(["overview", "hardware", "software", "vulnerabilities", "software-updates", "updates", "jobs", "activity"]);
+    expect(availableDeviceTabs(none)).toEqual(["overview", "hardware", "software", "vulnerabilities"]);
+    expect(availableDeviceTabs({ hasUpdates: true, hasSoftwareUpdates: false, hasJobs: false, hasActivity: true })).toEqual(["overview", "hardware", "software", "vulnerabilities", "updates", "activity"]);
   });
 });

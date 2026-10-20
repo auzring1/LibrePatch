@@ -34,6 +34,7 @@ var Events = []Option{
 	{"low_disk", "The system drive of a device is nearly full"},
 	{"bitlocker_off", "A disk on a device is not protected by BitLocker"},
 	{"os_end_of_support", "A device runs an operating system that is out of support or about to be"},
+	{"exploited_vulnerability", "A vulnerability that is known to be exploited affects devices"},
 }
 
 // EventDoc documents an event for the integrations page: when it fires and the shape of its payload.
@@ -76,6 +77,8 @@ func EventReference() []EventDoc {
 			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "disks": "C:"}),
 		doc("os_end_of_support", "A device runs an operating system whose support has ended, or ends within the configured number of days (sent once per device and operating system release).",
 			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "os": "Windows 11 24H2", "end_of_support": "2026-10-13", "days_left": -6}),
+		doc("exploited_vulnerability", "A vulnerability on the CISA list of known exploited vulnerabilities affects at least one device (sent once per CVE; needs the vulnerability lookup turned on).",
+			map[string]any{"cve": "CVE-2026-0001", "name": "Google Chromium V8 Type Confusion Vulnerability", "devices": 4, "fix_due": "2026-10-22", "ransomware": false}),
 		doc("test", "An administrator pressed 'Send test' on a webhook.", map[string]any{"message": "This is a test delivery."}),
 	}
 }
@@ -84,7 +87,7 @@ func EventReference() []EventDoc {
 // audit trail, search and the console's form follow; a test checks that every field has a label, help and a default
 // that passes its own validation.
 var Sections = []Section{
-	appearance, security, notifications, updates, devices, reports, data, integrations,
+	appearance, security, notifications, updates, devices, reports, data, integrations, vulnerabilities,
 }
 
 // ByID returns a section.
@@ -198,6 +201,7 @@ var notifications = Section{
 				ruleDefault("low_disk", false, 10),
 				ruleDefault("bitlocker_off", false, 0),
 				ruleDefault("os_end_of_support", false, 90),
+				ruleDefault("exploited_vulnerability", false, 0),
 			},
 			Fields: []Field{
 				{Key: "event", Label: "Event", Kind: Enum, Required: true, Options: Events, Default: "failed_install", Effect: Live, Help: "What happened."},
@@ -332,6 +336,21 @@ var data = Section{
 			Help: "How far back the dashboard's compliance chart can go. Older daily snapshots are deleted."},
 		{Key: "notification_log_days", Label: "Keep the notification log for", Kind: Int, Default: 90, Min: 7, Max: 730, Unit: "days", Effect: Live,
 			Help: "Sent and failed e-mails and webhook deliveries, with the error if there was one."},
+	},
+}
+
+var vulnerabilities = Section{
+	ID: "vulnerabilities", Label: "Vulnerability data", Perm: PermIntegrations,
+	Description: "Where the server gets the public lists of known vulnerabilities to match against what is installed on your devices. Nothing about your devices is sent: the server only downloads the lists and does the matching itself.",
+	Fields: []Field{
+		{Key: "enabled", Label: "Look up known vulnerabilities", Kind: Bool, Default: false, Effect: Live,
+			Help: "Turns on the daily download of the CISA list of exploited vulnerabilities and, for the programs and Windows versions your devices have, of the NIST National Vulnerability Database. The Vulnerabilities page works with whatever has been downloaded."},
+		{Key: "kev_url", Label: "CISA exploited-vulnerabilities list", Kind: URL, Default: "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json", Max: 500, Effect: Live,
+			Help: "Change this only to download from a mirror of your own (for example when the server cannot reach the internet directly)."},
+		{Key: "nvd_url", Label: "NIST vulnerability database", Kind: URL, Default: "https://services.nvd.nist.gov/rest/json/cves/2.0", Max: 500, Effect: Live,
+			Help: "The address of the NVD CVE API, version 2.0. Change this only to use a mirror that answers the same way."},
+		{Key: "nvd_api_key", Label: "NVD API key", Kind: Secret, Max: 200, Effect: Live,
+			Help: "Optional. Without a key the NVD allows 5 requests per 30 seconds, so the first download takes a few minutes; a free key (requested from NIST) raises that tenfold. Stored encrypted and never shown again."},
 	},
 }
 
