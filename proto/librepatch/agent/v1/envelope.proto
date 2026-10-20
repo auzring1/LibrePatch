@@ -27,6 +27,7 @@ enum JobType {
   JOB_TYPE_CANCEL = 10;
   JOB_TYPE_CONFIG = 11;
   JOB_TYPE_WAKE = 12;     // send Wake-on-LAN packets for other devices on this one's network (D125)
+  JOB_TYPE_RUN_SCRIPT = 14;  // run an administrator's script as SYSTEM; only on an agent whose owner switched scripts on (D127)
   JOB_TYPE_INSPECT = 13;  // read-only view: running programs, services or recent event log entries (D125)
 }
 
@@ -57,6 +58,7 @@ message JobEnvelope {
     CancelBody cancel = 28;
     WakeBody wake = 29;
     InspectBody inspect = 30;
+    RunScriptBody run_script = 31;
   }
 }
 
@@ -282,6 +284,24 @@ message InspectBody {
   uint32 max_level = 3;         // EVENTS: 1 critical .. 5 verbose; 0 = 3 (warnings and worse)
   uint32 since_minutes = 4;     // EVENTS: look back this far, 1..10080; 0 = 1440
   uint32 max_events = 5;        // EVENTS: 1..200; 0 = 100
+}
+
+enum ScriptInterpreter {
+  SCRIPT_INTERPRETER_UNSPECIFIED = 0;
+  SCRIPT_INTERPRETER_POWERSHELL = 1;  // Windows PowerShell 5.1
+}
+
+// RunScriptBody is a script from the library, with its content: what runs is exactly what the administrator saw (and, when
+// a second person approved the run, what that person approved). The agent refuses it unless scripts are switched on
+// locally, and checks that sha256 is the hash of content.
+message RunScriptBody {
+  string name = 1;                    // informational
+  uint32 version = 2;                 // informational
+  ScriptInterpreter interpreter = 3;
+  string content = 4;                 // 1..65536 bytes of UTF-8 text
+  bytes sha256 = 5;                   // of content
+  uint32 timeout_s = 6;               // 10..3600; the script and everything it started are ended when it is over
+  string run_id = 7;                  // informational
 }
 
 message InstallBody {

@@ -154,7 +154,7 @@ The aim is the feature set of the commercial tools, free and self-hosted. The ow
 | 6 | **Optional close-the-app or restart prompts for software updates** *(built, D124; the Windows code has not run on a real PC)* | Yes | Off by default: updates stay silent. Per deployment: skip if the app is open, ask the user to close it, or close it. A restart is offered only when the installer says it needs one. |
 | 7 | **Wake-on-LAN and read-only remote views** (services, processes, event log) *(built, D125; the Windows code has not run on a real PC)* | Yes | Wake a device through another online agent on its subnet. No remote desktop. |
 | 8 | **Peer cache** *(built, D126; not tried between real PCs)* | Yes | The content source interface exists (ARCHITECTURE §7); every source stays untrusted, so the hash check still decides. |
-| 9 | **Script library and run-script** | Yes | Highest risk: needs a design note first (separate permission, an opt-in on each agent that the server cannot raise as in D17, optional four-eyes approval, signed jobs, capped output and timeouts, full audit). |
+| 9 | **Script library and run-script** *(built, D127; PowerShell not tried on a real PC)* | Yes | Highest risk: needs a design note first (separate permission, an opt-in on each agent that the server cannot raise as in D17, optional four-eyes approval, signed jobs, capped output and timeouts, full audit). |
 | 10 | **Single sign-on (OIDC)** | No | Entra ID first; groups mapped to roles; a local break-glass administrator stays; whether the identity provider's MFA satisfies D73 is a setting. |
 
 Agent releases are batched: items 6 to 9 share one.

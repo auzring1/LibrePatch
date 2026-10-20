@@ -597,3 +597,7 @@ func (f *fakePlatform) Events(_ context.Context, q EventQuery) ([]EventInfo, err
 	f.eventQ = append(f.eventQ, q)
 	return f.eventList, f.viewErr
 }
+
+func (f *fakePlatform) ScriptHost(kind agentv1.ScriptInterpreter) (ScriptHost, error) {
+	return ScriptHost{FileName: "script.ps1", Exe: `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`, Args: []string{"-File", "%FILE%"}, BOM: true}, nil
+}

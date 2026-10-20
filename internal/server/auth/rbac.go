@@ -9,10 +9,17 @@ import (
 
 // Permission names checked by API handlers.
 const (
-	PermDevicesRead      = "devices:read"
-	PermDevicesWrite     = "devices:write"
-	PermDevicesWake      = "devices:wake"    // send a Wake-on-LAN packet for a sleeping device through another one (D125)
-	PermDevicesInspect   = "devices:inspect" // read-only views: running programs, services, event log (administrators only, D125)
+	PermDevicesRead    = "devices:read"
+	PermDevicesWrite   = "devices:write"
+	PermDevicesWake    = "devices:wake"    // send a Wake-on-LAN packet for a sleeping device through another one (D125)
+	PermDevicesInspect = "devices:inspect" // read-only views: running programs, services, event log (administrators only, D125)
+
+	// Scripts (D127). All administrator-only, organization-wide, and never in an API token: running code as SYSTEM on endpoints
+	// stays an interactive, audited act.
+	PermScriptsRead      = "scripts:read"    // see the library, runs and their output
+	PermScriptsWrite     = "scripts:write"   // create, change and delete library scripts
+	PermScriptsRun       = "scripts:run"     // ask for a script to be run on devices; cancel a run
+	PermScriptsApprove   = "scripts:approve" // approve or reject a run someone else asked for
 	PermEnrollmentRead   = "enrollment:read"
 	PermEnrollmentWrite  = "enrollment:write"
 	PermAuditRead        = "audit:read"
@@ -64,7 +71,7 @@ const (
 )
 
 var rolePerms = map[string][]string{
-	RoleAdmin: {PermDevicesRead, PermDevicesWrite, PermDevicesWake, PermDevicesInspect, PermEnrollmentRead, PermEnrollmentWrite, PermAuditRead,
+	RoleAdmin: {PermDevicesRead, PermDevicesWrite, PermDevicesWake, PermDevicesInspect, PermScriptsRead, PermScriptsWrite, PermScriptsRun, PermScriptsApprove, PermEnrollmentRead, PermEnrollmentWrite, PermAuditRead,
 		PermGroupsRead, PermGroupsWrite, PermInventoryExport,
 		PermCatalogRead, PermCatalogWrite, PermCatalogOverride, PermDeploymentsRead, PermDeploymentsWrite, PermSettingsWrite,
 		PermUpdatesRead, PermUpdatesWrite, PermUpdatesPolicy, PermReleasesRead, PermReleasesWrite,
@@ -90,7 +97,7 @@ var siteScopable = map[string]bool{
 // TokenScopable reports whether a permission may be put in an API token. Identity administration
 // stays interactive: tokens cannot manage users, roles or other tokens.
 func TokenScopable(perm string) bool {
-	return perm != PermUsersRead && perm != PermUsersWrite && perm != PermBrandingWrite && (perm == PermSettingsWrite || !strings.HasPrefix(perm, "settings:"))
+	return perm != PermUsersRead && perm != PermUsersWrite && perm != PermBrandingWrite && !strings.HasPrefix(perm, "scripts:") && (perm == PermSettingsWrite || !strings.HasPrefix(perm, "settings:"))
 }
 
 // AllPermissions is every permission name, sorted.

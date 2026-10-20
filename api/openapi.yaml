@@ -2540,6 +2540,204 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/DeviceView" }
         "404": { $ref: "#/components/responses/Error" }
+  /scripts:
+    get:
+      tags: [scripts]
+      summary: The script library (requires scripts:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/ScriptItem" } }
+    post:
+      tags: [scripts]
+      summary: Add a script to the library (requires scripts:write; audited)
+      description: Administrators only, and never through an API token. A script is PowerShell text of 1 to 65536 bytes. Every save of different content is a new version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScriptInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id: { type: string, format: uuid }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /scripts/status:
+    get:
+      tags: [scripts]
+      summary: Whether runs need a second person's approval, and whether anyone else could approve (requires scripts:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [require_approval, other_approvers, max_devices]
+                properties:
+                  require_approval: { type: boolean }
+                  other_approvers: { type: integer, format: int64, description: Other active administrators who could approve a run you ask for }
+                  max_devices: { type: integer }
+  /scripts/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [scripts]
+      summary: A script with its content and versions (requires scripts:read)
+      parameters:
+        - { name: version, in: query, schema: { type: integer, minimum: 1 }, description: Default is the current version }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptDetail" }
+        "404": { $ref: "#/components/responses/Error" }
+    put:
+      tags: [scripts]
+      summary: Change a script; different content becomes a new version (requires scripts:write; audited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScriptInput" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version]
+                properties:
+                  version: { type: integer }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [scripts]
+      summary: Delete a script and its versions; earlier runs keep their own copy (requires scripts:write; audited)
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
+  /scripts/runs:
+    get:
+      tags: [scripts]
+      summary: The newest script runs (requires scripts:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/ScriptRun" } }
+    post:
+      tags: [scripts]
+      summary: Ask for a script to be run on devices (requires scripts:run; audited)
+      description: |
+        The content of the chosen version is copied into the run. When the organization requires approval the run waits (24 hours) for another administrator; otherwise one signed job per device is queued at once. A device only runs it if its agent was installed with scripts switched on; the others end the job as rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScriptRunRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptRun" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /scripts/runs/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [scripts]
+      summary: A run with its exact content and one row per device (requires scripts:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptRunDetail" }
+        "404": { $ref: "#/components/responses/Error" }
+  /scripts/runs/{id}/approve:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    post:
+      tags: [scripts]
+      summary: Approve a run someone else asked for; its jobs are queued (requires scripts:approve; audited)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScriptDecision" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptRun" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /scripts/runs/{id}/reject:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    post:
+      tags: [scripts]
+      summary: Reject a run that waits for approval (requires scripts:approve; audited)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScriptDecision" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptRun" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /scripts/runs/{id}/cancel:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    post:
+      tags: [scripts]
+      summary: Withdraw a run and cancel the jobs that have not started (requires scripts:run; audited)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptRun" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /scripts/runs/{id}/jobs/{job}/output:
+    get:
+      tags: [scripts]
+      summary: What the script printed on one device (requires scripts:read; kept 30 days, never shown on job pages)
+      parameters:
+        - { $ref: "#/components/parameters/ID" }
+        - { name: job, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptOutput" }
+        "404": { $ref: "#/components/responses/Error" }
   /catalog/packages:
     get:
       tags: [catalog]
@@ -4241,6 +4439,113 @@ components:
         start_minute: { type: integer, minimum: 0, maximum: 1439 }
         duration_minutes: { type: integer, minimum: 1, maximum: 1440 }
         tz: { type: string, description: IANA name; empty = device-local time }
+    ScriptInput:
+      type: object
+      additionalProperties: false
+      required: [name, content]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 500 }
+        content: { type: string, maxLength: 65536, description: PowerShell text }
+        note: { type: string, maxLength: 200, description: What changed (kept with the version) }
+    ScriptItem:
+      type: object
+      required: [id, name, description, interpreter, version, updated_at, runs]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        interpreter: { type: string, enum: [powershell] }
+        version: { type: integer }
+        updated_at: { type: string, format: date-time }
+        runs: { type: integer, format: int64 }
+        last_run_at: { type: string, format: date-time, nullable: true }
+    ScriptDetail:
+      allOf:
+        - $ref: "#/components/schemas/ScriptItem"
+        - type: object
+          required: [content, sha256, versions]
+          properties:
+            content: { type: string }
+            sha256: { type: string, description: Fingerprint of the content shown }
+            versions:
+              type: array
+              items:
+                type: object
+                required: [version, sha256, note, created_at, created_by]
+                properties:
+                  version: { type: integer }
+                  sha256: { type: string }
+                  note: { type: string }
+                  created_at: { type: string, format: date-time }
+                  created_by: { type: string }
+    ScriptRunRequest:
+      type: object
+      additionalProperties: false
+      required: [script_id, reason]
+      properties:
+        script_id: { type: string, format: uuid }
+        version: { type: integer, minimum: 0, description: 0 = the current version }
+        group_ids: { type: array, items: { type: string, format: uuid } }
+        device_ids: { type: array, items: { type: string, format: uuid } }
+        timeout_s: { type: integer, minimum: 0, maximum: 3600, description: "0 = 300; otherwise 10 to 3600. The script and everything it started are ended when it is over." }
+        reason: { type: string, minLength: 1, maxLength: 200, description: Why; recorded with the run and in the audit log }
+    ScriptDecision:
+      type: object
+      additionalProperties: false
+      properties:
+        note: { type: string, maxLength: 200 }
+    ScriptRun:
+      type: object
+      required: [id, script_name, version, sha256, reason, status, devices, timeout_s, requested_at, requested_by, succeeded, failed, needs_approval]
+      properties:
+        id: { type: string, format: uuid }
+        script_id: { type: string, format: uuid, nullable: true }
+        script_name: { type: string }
+        version: { type: integer }
+        sha256: { type: string }
+        reason: { type: string }
+        status: { type: string, enum: [pending_approval, running, rejected, cancelled, expired] }
+        devices: { type: integer }
+        timeout_s: { type: integer }
+        requested_at: { type: string, format: date-time }
+        requested_by: { type: string }
+        requested_by_id: { type: string, format: uuid, nullable: true }
+        decided_at: { type: string, format: date-time, nullable: true }
+        decided_by: { type: string }
+        decision_note: { type: string }
+        succeeded: { type: integer, format: int64 }
+        failed: { type: integer, format: int64 }
+        needs_approval: { type: boolean }
+    ScriptRunDetail:
+      allOf:
+        - $ref: "#/components/schemas/ScriptRun"
+        - type: object
+          required: [content, jobs]
+          properties:
+            content: { type: string, description: Exactly what is sent to the devices }
+            jobs:
+              type: array
+              items:
+                type: object
+                required: [job_id, device_id, hostname, status, status_reason, has_output]
+                properties:
+                  job_id: { type: string, format: uuid }
+                  device_id: { type: string, format: uuid }
+                  hostname: { type: string }
+                  status: { $ref: "#/components/schemas/JobStatus" }
+                  status_reason: { type: string }
+                  exit_code: { type: integer, nullable: true }
+                  finished_at: { type: string, format: date-time, nullable: true }
+                  has_output: { type: boolean }
+    ScriptOutput:
+      type: object
+      required: [job_id, exit_code, output, created_at]
+      properties:
+        job_id: { type: string, format: uuid }
+        exit_code: { type: integer }
+        output: { type: string }
+        created_at: { type: string, format: date-time }
     DeviceView:
       type: object
       required: [status, status_reason]

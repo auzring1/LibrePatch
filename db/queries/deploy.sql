@@ -60,9 +60,9 @@ ORDER BY si.device_id, lower(si.name), si.scope, si.user_sid, si.item_key;
 SELECT device_id, sid, username FROM device_users WHERE device_id = ANY($1::uuid[]) AND profile_path <> '' ORDER BY device_id, sid;
 
 -- name: InsertJob :exec
-INSERT INTO jobs (id, org_id, deployment_id, device_id, user_sid, type, title, body, depends_on, depends_when, not_before, expires_at, attempt)
+INSERT INTO jobs (id, org_id, deployment_id, device_id, user_sid, type, title, body, depends_on, depends_when, not_before, expires_at, attempt, script_run_id)
 VALUES (@id, @org_id, @deployment_id, @device_id, @user_sid, @type, @title, @body, @depends_on,
-        COALESCE(NULLIF(@depends_when::text, ''), 'success'), @not_before, @expires_at, @attempt);
+        COALESCE(NULLIF(@depends_when::text, ''), 'success'), @not_before, @expires_at, @attempt, sqlc.narg('script_run_id'));
 
 -- name: GetJob :one
 SELECT * FROM jobs WHERE id = $1 AND org_id = $2;

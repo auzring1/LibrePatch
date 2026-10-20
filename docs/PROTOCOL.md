@@ -142,7 +142,8 @@ message JobEnvelope {
     WuInstallBody wu_install = 23; WuHideBody wu_hide = 24; RebootBody reboot = 25;
     InventoryBody inventory = 26; AgentUpdateBody agent_update = 27; CancelBody cancel = 28;
     WakeBody wake = 29; InspectBody inspect = 30;   // D125
-    ConfigBody config = 31;   // reserved, not implemented (29 and 30 are taken by wake and inspect)
+    RunScriptBody run_script = 31;   // D127: script text + SHA-256 + time limit; refused unless the agent opted in
+    ConfigBody config = 32;   // reserved, not implemented
   }
 }
 ```

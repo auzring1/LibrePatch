@@ -85,6 +85,7 @@ export {
   IconRestore as Restore,
   IconRocket as NavDeployments,
   IconSearch as Search,
+  IconTerminal2 as NavScripts,
   IconSelector as Select,
   IconServer as Server,
   IconSettings as NavSettings,

@@ -156,6 +156,14 @@ Permission: `settings:devices`. How devices get the installers they install. By 
 | **Disk space for shared installers on each device** (`peer_cache_mb`) | int | `2048` | 256 to 20480 MB | in effect | The oldest installers are removed first when the limit is reached; installers unused for two weeks are removed. Turning sharing off empties the cache. |
 | **Port for sharing** (`peer_cache_port`) | int | `7421` | 1024 to 65535 | in effect | TCP port each device listens on, for other devices on the same network only. Change it only if something else uses it. |
 
+## Scripts
+
+Permission: `settings:security`. Running scripts on devices is the most powerful thing this product can do: code you wrote runs as SYSTEM on the computers you choose. Only administrators can use it, every step is in the audit log, and a device only accepts a script if the agent on it was installed with scripts switched on (--allow-scripts, or ALLOWSCRIPTS=1 in the MSI); the server cannot switch that on.
+
+| Setting | Type | Default | Limits | Effect | What it does |
+|---|---|---|---|---|---|
+| **A second administrator must approve every run** (`require_approval`) | bool | `false` |  | in effect | A run waits until another administrator (not the person who asked) approves exactly the script that was requested. Recommended whenever you have two or more administrators. With only one administrator nobody could approve, so it is off by default. |
+
 ## Scheduled reports
 
 Permission: `settings:reports`. Reports e-mailed on a schedule as PDF or CSV. Needs working e-mail under Notifications. The header carries your organization and product names from Branding.

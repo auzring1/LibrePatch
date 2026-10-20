@@ -169,7 +169,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   if (agentBin) {
     const dir = mkdtempSync(join(tmpdir(), "lp-agent-"));
     agentDirs.push(dir);
-    agent = spawn(agentBin, ["run", "--data-dir", dir, "--server", gateway, "--token", enrollment], { stdio: "ignore" });
+    agent = spawn(agentBin, ["run", "--data-dir", dir, "--server", gateway, "--token", enrollment, "--allow-scripts"], { stdio: "ignore" });
   }
   try {
     await mainNav(page).getByRole("link", { name: "Devices", exact: true }).click();
@@ -359,6 +359,28 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await page.getByRole("button", { name: "Show", exact: true }).click();
       await expect(page.getByRole("table", { name: "Event log" }).getByText("The device has a bad block.")).toBeVisible({ timeout: 30_000 });
       await shot(page, "15b-device-inspect");
+
+      // Scripts (D127): the test agent was started with --allow-scripts and runs the text with /bin/sh.
+      await mainNav(page).getByRole("link", { name: "Scripts", exact: true }).click();
+      await page.getByRole("button", { name: "Add script" }).click();
+      await page.getByRole("textbox", { name: "Name", exact: true }).fill("Say hello");
+      await page.getByLabel("PowerShell").fill("echo hello-from-script");
+      await page.getByRole("button", { name: "Save script" }).click();
+      await expect(page.getByRole("table", { name: "Scripts" }).getByText("Say hello")).toBeVisible();
+      await page.getByRole("button", { name: "Run Say hello" }).click();
+      await page.getByRole("combobox", { name: "Devices" }).click();
+      await page.getByRole("option").first().click();
+      await page.keyboard.press("Escape");
+      await page.getByLabel(/^Why are you running it/).fill("e2e check");
+      await page.getByRole("checkbox", { name: /I have read the script/ }).check();
+      await shot(page, "15c-script-run");
+      await page.getByRole("button", { name: "Run", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Output" })).toBeVisible({ timeout: 60_000 });
+      await page.getByRole("button", { name: "Output" }).click();
+      await expect(page.getByText("hello-from-script", { exact: true })).toBeVisible();
+      await shot(page, "15d-script-output");
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
 
       // Catalog: approve the security update, leave the other one pending.
       await mainNav(page).getByRole("link", { name: "Windows updates", exact: true }).click();

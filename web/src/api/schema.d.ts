@@ -6068,6 +6068,499 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scripts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The script library (requires scripts:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["ScriptItem"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Add a script to the library (requires scripts:write; audited)
+         * @description Administrators only, and never through an API token. A script is PowerShell text of 1 to 65536 bytes. Every save of different content is a new version.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ScriptInput"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                        };
+                    };
+                };
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether runs need a second person's approval, and whether anyone else could approve (requires scripts:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            require_approval: boolean;
+                            /**
+                             * Format: int64
+                             * @description Other active administrators who could approve a run you ask for
+                             */
+                            other_approvers: number;
+                            max_devices: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        /** A script with its content and versions (requires scripts:read) */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Default is the current version */
+                    version?: number;
+                };
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptDetail"];
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        /** Change a script; different content becomes a new version (requires scripts:write; audited) */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ScriptInput"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            version: number;
+                        };
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        post?: never;
+        /** Delete a script and its versions; earlier runs keep their own copy (requires scripts:write; audited) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The newest script runs (requires scripts:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["ScriptRun"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Ask for a script to be run on devices (requires scripts:run; audited)
+         * @description The content of the chosen version is copied into the run. When the organization requires approval the run waits (24 hours) for another administrator; otherwise one signed job per device is queued at once. A device only runs it if its agent was installed with scripts switched on; the others end the job as rejected.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ScriptRunRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptRun"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        /** A run with its exact content and one row per device (requires scripts:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptRunDetail"];
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/runs/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a run someone else asked for; its jobs are queued (requires scripts:approve; audited) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ScriptDecision"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptRun"];
+                    };
+                };
+                403: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/runs/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a run that waits for approval (requires scripts:approve; audited) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ScriptDecision"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptRun"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/runs/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a run and cancel the jobs that have not started (requires scripts:run; audited) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptRun"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/runs/{id}/jobs/{job}/output": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What the script printed on one device (requires scripts:read; kept 30 days, never shown on job pages) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    job: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptOutput"];
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/catalog/packages": {
         parameters: {
             query?: never;
@@ -8433,6 +8926,110 @@ export interface components {
             duration_minutes: number;
             /** @description IANA name; empty = device-local time */
             tz?: string;
+        };
+        ScriptInput: {
+            name: string;
+            description?: string;
+            /** @description PowerShell text */
+            content: string;
+            /** @description What changed (kept with the version) */
+            note?: string;
+        };
+        ScriptItem: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            /** @enum {string} */
+            interpreter: "powershell";
+            version: number;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: int64 */
+            runs: number;
+            /** Format: date-time */
+            last_run_at?: string | null;
+        };
+        ScriptDetail: components["schemas"]["ScriptItem"] & {
+            content: string;
+            /** @description Fingerprint of the content shown */
+            sha256: string;
+            versions: {
+                version: number;
+                sha256: string;
+                note: string;
+                /** Format: date-time */
+                created_at: string;
+                created_by: string;
+            }[];
+        };
+        ScriptRunRequest: {
+            /** Format: uuid */
+            script_id: string;
+            /** @description 0 = the current version */
+            version?: number;
+            group_ids?: string[];
+            device_ids?: string[];
+            /** @description 0 = 300; otherwise 10 to 3600. The script and everything it started are ended when it is over. */
+            timeout_s?: number;
+            /** @description Why; recorded with the run and in the audit log */
+            reason: string;
+        };
+        ScriptDecision: {
+            note?: string;
+        };
+        ScriptRun: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            script_id?: string | null;
+            script_name: string;
+            version: number;
+            sha256: string;
+            reason: string;
+            /** @enum {string} */
+            status: "pending_approval" | "running" | "rejected" | "cancelled" | "expired";
+            devices: number;
+            timeout_s: number;
+            /** Format: date-time */
+            requested_at: string;
+            requested_by: string;
+            /** Format: uuid */
+            requested_by_id?: string | null;
+            /** Format: date-time */
+            decided_at?: string | null;
+            decided_by?: string;
+            decision_note?: string;
+            /** Format: int64 */
+            succeeded: number;
+            /** Format: int64 */
+            failed: number;
+            needs_approval: boolean;
+        };
+        ScriptRunDetail: components["schemas"]["ScriptRun"] & {
+            /** @description Exactly what is sent to the devices */
+            content: string;
+            jobs: {
+                /** Format: uuid */
+                job_id: string;
+                /** Format: uuid */
+                device_id: string;
+                hostname: string;
+                status: components["schemas"]["JobStatus"];
+                status_reason: string;
+                exit_code?: number | null;
+                /** Format: date-time */
+                finished_at?: string | null;
+                has_output: boolean;
+            }[];
+        };
+        ScriptOutput: {
+            /** Format: uuid */
+            job_id: string;
+            exit_code: number;
+            output: string;
+            /** Format: date-time */
+            created_at: string;
         };
         DeviceView: {
             status: components["schemas"]["JobStatus"];

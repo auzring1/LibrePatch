@@ -38,8 +38,10 @@ type Options struct {
 	Server      string
 	Token       string
 	AllowedJobs string
-	Wait        time.Duration
-	Out         io.Writer
+	// AllowScripts switches on running scripts from the console on this computer (off by default, D127).
+	AllowScripts bool
+	Wait         time.Duration
+	Out          io.Writer
 }
 
 func requireAdmin() error {
@@ -62,6 +64,7 @@ func Install(o Options) error {
 	if cfg.AllowedJobs, err = config.ParseAllowedJobs(o.AllowedJobs); err != nil {
 		return err
 	}
+	cfg.AllowScripts = o.AllowScripts
 	m, err := mgr.Connect()
 	if err != nil {
 		return fmt.Errorf("connect to service manager: %w", err)

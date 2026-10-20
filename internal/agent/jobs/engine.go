@@ -57,6 +57,9 @@ type Engine struct {
 	// LocalNets and SendUDP are the network of this computer and how a packet leaves it (Wake-on-LAN; tests replace both).
 	LocalNets func() []LocalNet
 	SendUDP   func(local net.IP, dest string, pkt []byte) error
+	// ScriptsEnabled: this computer's owner switched on running scripts (Config.AllowScripts). Without it every script job is
+	// refused, whatever the ceiling says.
+	ScriptsEnabled bool
 	// CacheFile, if set, is told about every installer that passed the hash check, so it can be kept for other computers.
 	CacheFile func(path string, sha []byte)
 	// Sleep waits d (default: a timer that ends with ctx). Tests replace it to move a fake clock.
@@ -111,7 +114,7 @@ func controlJob(t agentv1.JobType) bool {
 func interruptedByRestart(t agentv1.JobType) bool {
 	switch t {
 	case agentv1.JobType_JOB_TYPE_SOFTWARE_INSTALL, agentv1.JobType_JOB_TYPE_SOFTWARE_UPDATE, agentv1.JobType_JOB_TYPE_SOFTWARE_UNINSTALL,
-		agentv1.JobType_JOB_TYPE_WU_INSTALL, agentv1.JobType_JOB_TYPE_AGENT_UPDATE:
+		agentv1.JobType_JOB_TYPE_WU_INSTALL, agentv1.JobType_JOB_TYPE_AGENT_UPDATE, agentv1.JobType_JOB_TYPE_RUN_SCRIPT:
 		return true
 	}
 	return false
@@ -163,6 +166,10 @@ func (e *Engine) allowed(t agentv1.JobType) bool {
 	name := ceilingName(t)
 	if name == "" {
 		return false
+	}
+	if t == agentv1.JobType_JOB_TYPE_RUN_SCRIPT {
+		// Scripts are never part of "everything": the owner of the computer switched them on, and a ceiling that is set names them.
+		return e.ScriptsEnabled && (len(e.Allowed) == 0 || e.Allowed[name])
 	}
 	if len(e.Allowed) == 0 {
 		return true
@@ -225,7 +232,11 @@ func (e *Engine) Accept(se *agentv1.SignedEnvelope, env *agentv1.JobEnvelope) {
 		return
 	}
 	if !e.allowed(env.Type) {
-		reject("job type not allowed by the local policy ceiling", agentv1.SecurityEventKind_SECURITY_EVENT_KIND_POLICY_CEILING)
+		why := "job type not allowed by the local policy ceiling"
+		if env.Type == agentv1.JobType_JOB_TYPE_RUN_SCRIPT && !e.ScriptsEnabled {
+			why = "scripts are not switched on on this computer (the agent was installed without --allow-scripts)"
+		}
+		reject(why, agentv1.SecurityEventKind_SECURITY_EVENT_KIND_POLICY_CEILING)
 		return
 	}
 	if err := ValidateWindow(env.Window); err != nil {
@@ -275,6 +286,16 @@ func (e *Engine) Accept(se *agentv1.SignedEnvelope, env *agentv1.JobEnvelope) {
 			return
 		}
 		if err := ValidateInspect(env.GetInspect()); err != nil {
+			reject(err.Error(), agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		e.setState(r, agentv1.JobState_JOB_STATE_ACCEPTED, "", nil)
+	case agentv1.JobType_JOB_TYPE_RUN_SCRIPT:
+		if env.TargetUserSid != "" {
+			reject("script jobs are machine-scope", agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		if err := ValidateRunScript(env.GetRunScript()); err != nil {
 			reject(err.Error(), agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
 			return
 		}
@@ -505,6 +526,8 @@ func (e *Engine) runJob(ctx context.Context, r *Record, env *agentv1.JobEnvelope
 		out = e.sendWake(jctx, env)
 	case agentv1.JobType_JOB_TYPE_INSPECT:
 		out = e.inspect(jctx, env)
+	case agentv1.JobType_JOB_TYPE_RUN_SCRIPT:
+		out = e.runScript(jctx, r, env)
 	}
 	if out == nil {
 		out = fail("unsupported job type")

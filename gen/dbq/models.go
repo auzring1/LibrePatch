@@ -435,6 +435,7 @@ type Job struct {
 	CancelPending   bool
 	Result          []byte
 	DependsWhen     string
+	ScriptRunID     *uuid.UUID
 }
 
 type JobEvent struct {
@@ -559,6 +560,58 @@ type RoleBinding struct {
 	Role      string
 	ScopeType string
 	ScopeID   uuid.UUID
+}
+
+type Script struct {
+	ID             uuid.UUID
+	OrgID          uuid.UUID
+	Name           string
+	Description    string
+	Interpreter    string
+	CurrentVersion int32
+	CreatedBy      *uuid.UUID
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type ScriptOutput struct {
+	JobID     uuid.UUID
+	RunID     uuid.UUID
+	ExitCode  int32
+	Output    string
+	CreatedAt time.Time
+}
+
+type ScriptRun struct {
+	ID              uuid.UUID
+	OrgID           uuid.UUID
+	ScriptID        *uuid.UUID
+	ScriptName      string
+	Version         int32
+	Interpreter     string
+	Content         string
+	Sha256          []byte
+	TimeoutS        int32
+	Reason          string
+	TargetGroupIds  []uuid.UUID
+	TargetDeviceIds []uuid.UUID
+	Status          string
+	RequestedBy     *uuid.UUID
+	RequestedAt     time.Time
+	DecidedBy       *uuid.UUID
+	DecidedAt       *time.Time
+	DecisionNote    string
+	Devices         int32
+}
+
+type ScriptVersion struct {
+	ScriptID  uuid.UUID
+	Version   int32
+	Content   string
+	Sha256    []byte
+	Note      string
+	CreatedBy *uuid.UUID
+	CreatedAt time.Time
 }
 
 type Session struct {

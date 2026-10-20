@@ -418,6 +418,9 @@ func (a *Agent) session(ctx context.Context, id *store.Identity) (time.Duration,
 	}
 	if a.Jobs != nil {
 		caps = append(caps, "jobs/v1")
+		if a.Cfg.AllowScripts {
+			caps = append(caps, "scripts/v1")
+		}
 	}
 	a.hwPending, a.wuPending = nil, nil
 	if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_Hello{Hello: &agentv1.Hello{
@@ -905,6 +908,7 @@ func (a *Agent) startJobs(ctx context.Context) {
 			a.Jobs.Allowed[n] = true
 		}
 	}
+	a.Jobs.ScriptsEnabled = a.Cfg.AllowScripts
 	if a.Jobs.Fetch == nil {
 		a.Jobs.Fetch = &jobs.MultiFetcher{Server: a.fetchFromServer, Peer: a.fetchFromPeer}
 	}

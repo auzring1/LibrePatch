@@ -31,6 +31,7 @@ import (
 	"github.com/auzring1/librepatch/internal/server/pki"
 	"github.com/auzring1/librepatch/internal/server/policies"
 	"github.com/auzring1/librepatch/internal/server/reportsched"
+	"github.com/auzring1/librepatch/internal/server/scripts"
 	"github.com/auzring1/librepatch/internal/server/settings"
 	"github.com/auzring1/librepatch/internal/server/updates"
 	"github.com/auzring1/librepatch/internal/server/vulns"
@@ -69,6 +70,7 @@ type Deps struct {
 	Updates   *updates.Service
 	Releases  *agentrel.Service
 	Policies  *policies.Service
+	Scripts   *scripts.Service
 	Vulns     *vulns.Service
 	Branding  *branding.Service
 	Settings  *settings.Service
@@ -268,6 +270,19 @@ func (s *server) routes(r chi.Router) {
 	r.With(s.require(auth.PermAuditRead)).Get("/audit.csv", s.auditCSV)
 	r.With(s.requireAny(auth.PermDevicesRead)).Get("/events", s.events)
 
+	r.With(s.require(auth.PermScriptsRead)).Get("/scripts", s.listScripts)
+	r.With(s.require(auth.PermScriptsWrite)).Post("/scripts", s.createScript)
+	r.With(s.require(auth.PermScriptsRead)).Get("/scripts/status", s.scriptStatus)
+	r.With(s.require(auth.PermScriptsRun)).Post("/scripts/runs", s.requestScriptRun)
+	r.With(s.require(auth.PermScriptsRead)).Get("/scripts/runs", s.listScriptRuns)
+	r.With(s.require(auth.PermScriptsRead)).Get("/scripts/runs/{id}", s.getScriptRun)
+	r.With(s.require(auth.PermScriptsApprove)).Post("/scripts/runs/{id}/approve", s.approveScriptRun)
+	r.With(s.require(auth.PermScriptsApprove)).Post("/scripts/runs/{id}/reject", s.rejectScriptRun)
+	r.With(s.require(auth.PermScriptsRun)).Post("/scripts/runs/{id}/cancel", s.cancelScriptRun)
+	r.With(s.require(auth.PermScriptsRead)).Get("/scripts/runs/{id}/jobs/{job}/output", s.scriptRunOutput)
+	r.With(s.require(auth.PermScriptsRead)).Get("/scripts/{id}", s.getScript)
+	r.With(s.require(auth.PermScriptsWrite)).Put("/scripts/{id}", s.updateScript)
+	r.With(s.require(auth.PermScriptsWrite)).Delete("/scripts/{id}", s.deleteScript)
 	r.With(s.require(auth.PermPoliciesRead)).Get("/policies", s.listPolicies)
 	r.With(s.require(auth.PermPoliciesWrite)).Post("/policies", s.createPolicy)
 	r.With(s.require(auth.PermPoliciesWrite)).Put("/policies/{id}", s.updatePolicy)

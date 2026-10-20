@@ -17,6 +17,8 @@ import (
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
+
+	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
 )
 
 var procGetProcessMemoryInfo = windows.NewLazySystemDLL("psapi.dll").NewProc("GetProcessMemoryInfo")
@@ -164,4 +166,19 @@ func (l *limitedBuffer) Write(p []byte) (int, error) {
 
 func hiddenWindow() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}
+}
+
+// ScriptHost implements Platform: Windows PowerShell 5.1 from the system directory, no profile, no prompts, and an execution
+// policy that does not get in the way of a script an administrator chose to run (the job is signed; the script file is
+// private to SYSTEM).
+func (p *winPlatform) ScriptHost(kind agentv1.ScriptInterpreter) (ScriptHost, error) {
+	if kind != agentv1.ScriptInterpreter_SCRIPT_INTERPRETER_POWERSHELL {
+		return ScriptHost{}, ErrUnsupported
+	}
+	root, _ := windows.Getenv("SystemRoot")
+	if root == "" {
+		root = `C:\Windows`
+	}
+	return ScriptHost{FileName: "script.ps1", Exe: filepath.Join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+		Args: []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "%FILE%"}, BOM: true}, nil
 }

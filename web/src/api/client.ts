@@ -149,3 +149,8 @@ export async function uploadBrandingAsset(kind: BrandingAssetKind, file: File): 
 }
 export type InstallPrompts = components["schemas"]["InstallPrompts"];
 export type DeviceView = components["schemas"]["DeviceView"];
+export type ScriptItem = components["schemas"]["ScriptItem"];
+export type ScriptDetail = components["schemas"]["ScriptDetail"];
+export type ScriptRun = components["schemas"]["ScriptRun"];
+export type ScriptRunDetail = components["schemas"]["ScriptRunDetail"];
+export type ScriptOutput = components["schemas"]["ScriptOutput"];

@@ -87,7 +87,7 @@ func EventReference() []EventDoc {
 // audit trail, search and the console's form follow; a test checks that every field has a label, help and a default
 // that passes its own validation.
 var Sections = []Section{
-	appearance, security, notifications, updates, devices, downloads, reports, data, integrations, vulnerabilities,
+	appearance, security, notifications, updates, devices, downloads, scripts, reports, data, integrations, vulnerabilities,
 }
 
 // ByID returns a section.
@@ -308,6 +308,15 @@ var downloads = Section{
 			Help: "The oldest installers are removed first when the limit is reached; installers unused for two weeks are removed. Turning sharing off empties the cache."},
 		{Key: "peer_cache_port", Label: "Port for sharing", Kind: Int, Default: 7421, Min: 1024, Max: 65535, ShowIf: "peer_cache", Effect: Live,
 			Help: "TCP port each device listens on, for other devices on the same network only. Change it only if something else uses it."},
+	},
+}
+
+var scripts = Section{
+	ID: "scripts", Label: "Scripts", Perm: PermSecurity,
+	Description: "Running scripts on devices is the most powerful thing this product can do: code you wrote runs as SYSTEM on the computers you choose. Only administrators can use it, every step is in the audit log, and a device only accepts a script if the agent on it was installed with scripts switched on (--allow-scripts, or ALLOWSCRIPTS=1 in the MSI); the server cannot switch that on.",
+	Fields: []Field{
+		{Key: "require_approval", Label: "A second administrator must approve every run", Kind: Bool, Default: false, Effect: Live,
+			Help: "A run waits until another administrator (not the person who asked) approves exactly the script that was requested. Recommended whenever you have two or more administrators. With only one administrator nobody could approve, so it is off by default."},
 	},
 }
 

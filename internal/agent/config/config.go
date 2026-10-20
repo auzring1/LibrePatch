@@ -29,6 +29,10 @@ type Config struct {
 	// cannot raise it. Empty means the default set for this agent version.
 	AllowedJobs []string `json:"allowed_jobs,omitempty"`
 	LogLevel    string   `json:"log_level,omitempty"`
+	// AllowScripts switches on running administrators' scripts as SYSTEM (D127). Off unless the person installing the agent
+	// asked for it (--allow-scripts, MSI property ALLOWSCRIPTS=1); the server cannot raise it, and an allowed-jobs ceiling that
+	// is set must name run_script as well.
+	AllowScripts bool `json:"allow_scripts,omitempty"`
 	// UpdateRollbackMinutes is how long a freshly updated agent has to reach the server before the
 	// safety net restores the previous version (default 10, allowed 1 to 60). Meant for tests and
 	// diagnosis; it can only be changed by someone who can already write the data directory.
@@ -46,7 +50,7 @@ func (c *Config) RollbackWindow() time.Duration {
 // AllJobTypes lists every name a ceiling may contain: the job types, and "peer_cache" (not a job: sharing downloaded
 // installers with computers on the same network, D126). A ceiling that leaves it out keeps the agent from sharing.
 var AllJobTypes = []string{"inventory", "software_install", "software_uninstall", "software_update",
-	"wu_scan", "wu_install", "wu_hide", "reboot", "agent_update", "wake", "inspect", "peer_cache"}
+	"wu_scan", "wu_install", "wu_hide", "reboot", "agent_update", "wake", "inspect", "peer_cache", "run_script"}
 
 // FromBundle builds a config from an enrollment string. serverOverride, if
 // non-empty, replaces the gateway address in the bundle (the root pin stays).

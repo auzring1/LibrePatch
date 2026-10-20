@@ -1,6 +1,6 @@
 // Command librepatch-agent is the LibrePatch endpoint agent.
 //
-//	librepatch-agent install --server HOST:PORT --token LP1.... [--allowed-jobs inventory,wu_scan] [--if-not-installed]
+//	librepatch-agent install --server HOST:PORT --token LP1.... [--allowed-jobs inventory,wu_scan] [--allow-scripts] [--if-not-installed]
 //	librepatch-agent uninstall
 //	librepatch-agent status
 //	librepatch-agent run [--data-dir DIR] [--server HOST:PORT --token LP1....]   (foreground; development)
@@ -100,6 +100,7 @@ func cmdInstall(args []string) error {
 	server := fl.String("server", "", "gateway address host:port (defaults to the address inside the token)")
 	token := fl.String("token", "", "enrollment string from the console (LP1....)")
 	allowed := fl.String("allowed-jobs", "", "optional local ceiling of allowed job types (comma-separated)")
+	allowScripts := fl.Bool("allow-scripts", false, "let administrators run PowerShell scripts on this computer from the console (off by default; the server cannot switch it on later)")
 	wait := fl.Duration("wait", 90*time.Second, "how long to wait for enrollment to finish")
 	ifNot := fl.Bool("if-not-installed", false, "exit 0 without changes when the agent is already installed and configured (used by the MSI)")
 	if err := fl.Parse(args); err != nil {
@@ -112,7 +113,7 @@ func cmdInstall(args []string) error {
 	if *token == "" {
 		return errors.New("--token is required")
 	}
-	return install.Install(install.Options{Server: *server, Token: *token, AllowedJobs: *allowed, Wait: *wait, Out: os.Stdout})
+	return install.Install(install.Options{Server: *server, Token: *token, AllowedJobs: *allowed, AllowScripts: *allowScripts, Wait: *wait, Out: os.Stdout})
 }
 
 func cmdRollbackCheck() error {
@@ -154,6 +155,7 @@ func cmdRun(args []string) error {
 	dir := fl.String("data-dir", install.DataDir(), "agent data directory")
 	server := fl.String("server", "", "gateway address (first run only)")
 	token := fl.String("token", "", "enrollment string (first run only)")
+	allowScripts := fl.Bool("allow-scripts", false, "let administrators run scripts on this computer (first run only; development)")
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
@@ -168,6 +170,7 @@ func cmdRun(args []string) error {
 		if err != nil {
 			return err
 		}
+		c.AllowScripts = *allowScripts
 		first = c
 	}
 	return runAgent(ctx, *dir, first)

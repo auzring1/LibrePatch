@@ -12,6 +12,7 @@ import (
 	"io"
 	"time"
 
+	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
 	"github.com/auzring1/librepatch/internal/agent/inventory"
 	"github.com/auzring1/librepatch/internal/agent/selfupdate"
 	"github.com/auzring1/librepatch/internal/agent/wu"
@@ -126,6 +127,8 @@ type Platform interface {
 	// CloseProcesses asks the programs to close, waits grace, and ends those still open. It returns what is still running.
 	CloseProcesses(ctx context.Context, procs []Proc, grace time.Duration) (left []Proc, err error)
 
+	// ScriptHost says how a script is run (the interpreter, an absolute path, and its arguments).
+	ScriptHost(kind agentv1.ScriptInterpreter) (ScriptHost, error)
 	// Processes, Services and Events are the read-only views of a device (D125).
 	Processes() ([]ProcessInfo, error)
 	Services() ([]ServiceInfo, error)

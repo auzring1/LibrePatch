@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
 	"github.com/auzring1/librepatch/internal/agent/inventory"
 	"github.com/auzring1/librepatch/internal/agent/selfupdate"
 	"github.com/auzring1/librepatch/internal/agent/wu"
@@ -192,4 +193,12 @@ func (p *devPlatform) Events(_ context.Context, q EventQuery) ([]EventInfo, erro
 		v.Events = v.Events[:q.Max]
 	}
 	return v.Events, err
+}
+
+// ScriptHost on the development platform runs a script with /bin/sh, so the console flow can be tried without Windows.
+func (p *devPlatform) ScriptHost(kind agentv1.ScriptInterpreter) (ScriptHost, error) {
+	if kind != agentv1.ScriptInterpreter_SCRIPT_INTERPRETER_POWERSHELL {
+		return ScriptHost{}, ErrUnsupported
+	}
+	return ScriptHost{FileName: "script.sh", Exe: "/bin/sh", Args: []string{"%FILE%"}}, nil
 }
