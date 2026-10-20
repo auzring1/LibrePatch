@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Checkbox, Group, Modal, MultiSelect, NumberInput, Select, Stack, TextInput } from "@mantine/core";
-import { api, errorMessage, type Group as Grp, type Pkg, type SoftwarePolicy } from "../api/client";
+import { Alert, Button, Checkbox, Group, Modal, MultiSelect, NumberInput, Select, Stack, Text, TextInput } from "@mantine/core";
+import { api, errorMessage, type Group as Grp, type PackageDetail, type Pkg, type SoftwarePolicy } from "../api/client";
 import { useSession } from "../api/session";
+import { InstallPromptsFields } from "../components/InstallPromptsFields";
+import { describePrompts, fromPrompts, needsPrograms, toPrompts, type PromptsForm } from "../components/prompts";
 import { RolloutModal } from "../components/RolloutModal";
 import { summarizeRollout } from "../components/rollout";
 import { SoftwareApprovalsCard } from "../components/SoftwareApprovalsCard";
@@ -65,6 +67,13 @@ export function PoliciesPage() {
       { id: "package", header: "Package", value: (p) => p.package_name, width: 200 },
       // The group names resolve once the groups have loaded, so the value follows `groups.data`.
       { id: "groups", header: "Groups", value: (p) => p.group_ids.map(groupName).join(", "), width: 220, wrap: true },
+      {
+        id: "messages",
+        header: "Messages to the user",
+        width: 280,
+        wrap: true,
+        value: (p) => describePrompts(p.prompts) || "Silent",
+      },
       {
         id: "rollout",
         header: "Rollout",
@@ -173,11 +182,15 @@ function PolicyModal({ policy, groups, onClose }: { policy?: SoftwarePolicy; gro
   const [enabled, setEnabled] = useState(policy?.enabled ?? true);
   const [useRings, setUseRings] = useState(policy?.use_rings ?? false);
   const [approval, setApproval] = useState(policy?.require_approval ?? false);
+  const [prompts, setPrompts] = useState<PromptsForm>(fromPrompts(policy?.prompts));
   const [error, setError] = useState("");
   const chosen = pkgs.data?.items.find((p) => p.id === pkg);
+  const detail = useQuery({ queryKey: ["catalog", "package", pkg], queryFn: () => api<PackageDetail>("GET", `/catalog/packages/${pkg}`), enabled: !!pkg });
+  const own = detail.data?.override.processes ?? [];
+  const programs = own.length > 0 ? own : (detail.data?.overlay?.processes ?? []);
   const save = useMutation({
     mutationFn: () => {
-      const body = { name: name.trim(), kind, package_id: pkg, group_ids: gs, delay_days: Number(delay) || 0, only_new_devices: onlyNew, unverified_confirmed: unverified, enabled, use_rings: kind === "keep_updated" && useRings, require_approval: approval };
+      const body = { name: name.trim(), kind, package_id: pkg, group_ids: gs, delay_days: Number(delay) || 0, only_new_devices: onlyNew, unverified_confirmed: unverified, enabled, use_rings: kind === "keep_updated" && useRings, require_approval: approval, prompts: toPrompts(prompts) };
       return policy ? api("PUT", `/policies/${policy.id}`, body) : api("POST", "/policies", body);
     },
     onSuccess: () => (toast.success("Policy saved."), void qc.invalidateQueries({ queryKey: ["policies"] }), onClose()),
@@ -216,6 +229,12 @@ function PolicyModal({ policy, groups, onClose }: { policy?: SoftwarePolicy; gro
             checked={approval}
             onChange={(e) => setApproval(e.currentTarget.checked)}
           />
+          <Stack gap="xs">
+            <Text fw={500} size="sm">
+              Messages to the user (optional)
+            </Text>
+            <InstallPromptsFields value={prompts} onChange={setPrompts} programs={programs} packageId={pkg || undefined} />
+          </Stack>
           {chosen && chosen.source === "winget" && !chosen.verified && (
             <Checkbox label="I accept that this winget package has not been marked as verified" checked={unverified} onChange={(e) => setUnverified(e.currentTarget.checked)} />
           )}
@@ -229,7 +248,7 @@ function PolicyModal({ policy, groups, onClose }: { policy?: SoftwarePolicy; gro
             <Button variant="default" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" loading={save.isPending} disabled={!name.trim() || !pkg || gs.length === 0}>
+            <Button type="submit" loading={save.isPending} disabled={!name.trim() || !pkg || gs.length === 0 || (needsPrograms(prompts) && programs.length === 0)}>
               Save policy
             </Button>
           </Group>

@@ -186,6 +186,9 @@ InstallBody {
   timeout_s, max_retries, retry_backoff_s
   reboot [NEVER]                       // reboot-required is reported, never performed
   allow_downgrade, update              // update = SOFTWARE_UPDATE of an existing install
+  prompts? { in_use [IGNORE|SKIP|ASK|CLOSE], processes[] (image names, validated),
+             ask_timeout_s, defer_minutes,
+             restart [NONE|ASK|COUNTDOWN], restart_notify_minutes }   // optional messages to the signed-in user (D124)
 }
 ```
 

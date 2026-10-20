@@ -5,6 +5,7 @@ import { Alert, Button, Checkbox, Select, Textarea, TextInput } from "@mantine/c
 import { api, errorMessage, type Detection, type Installer, type PackageDetail, type PackageOverride } from "../api/client";
 import { bytes, dateTime } from "../api/format";
 import { useSession } from "../api/session";
+import { parsePrograms } from "../components/prompts";
 import { PackageBadges } from "./CatalogPage";
 import { PRODUCT_NAME } from "../brand.generated";
 import { Card, DataTable, EmptyState, Icons, Page, PageHeader, StatusPill, TileSkeleton, toast, useConfirm, type Column } from "../ui";
@@ -267,8 +268,9 @@ function Overrides({ detail }: { detail: PackageDetail }) {
   const [userPolicy, setUserPolicy] = useState<string>(o.user_scope_policy ?? "");
   const [selfPolicy, setSelfPolicy] = useState<string>(o.self_update_policy ?? "");
   const [detection, setDetection] = useState(detectionToText(o.extra_detection));
+  const [programs, setPrograms] = useState((o.processes ?? []).join(", "));
   const [error, setError] = useState("");
-  useEffect(() => setError(""), [args, pin, excluded, userPolicy, selfPolicy, detection]);
+  useEffect(() => setError(""), [args, pin, excluded, userPolicy, selfPolicy, detection, programs]);
   const editable = can("catalog:override");
   const save = useMutation({
     mutationFn: () => {
@@ -279,6 +281,7 @@ function Overrides({ detail }: { detail: PackageDetail }) {
         excluded,
         user_scope_policy: userPolicy as PackageOverride["user_scope_policy"],
         self_update_policy: selfPolicy as PackageOverride["self_update_policy"],
+        processes: parsePrograms(programs),
       };
       return api("PUT", `/catalog/packages/${detail.package.id}/overrides`, body);
     },
@@ -313,6 +316,14 @@ function Overrides({ detail }: { detail: PackageDetail }) {
           onChange={(e) => setPin(e.currentTarget.value)}
           maw={300}
         />
+        <TextInput
+          label="Programs this update replaces"
+          description="File names such as chrome.exe, separated by commas. A deployment can then wait for them to be closed, ask the user to close them, or close them. Empty = silent installs only."
+          placeholder="chrome.exe, GoogleUpdate.exe"
+          value={programs}
+          disabled={!editable}
+          onChange={(e) => setPrograms(e.currentTarget.value)}
+        />
         <Select label="Per-user installs of this app" data={policies} value={userPolicy} disabled={!editable} onChange={(v) => setUserPolicy(v ?? "")} allowDeselect={false} />
         <Select label="Self-updating behaviour" data={selfUpdatePolicies} value={selfPolicy} disabled={!editable} onChange={(v) => setSelfPolicy(v ?? "")} allowDeselect={false} />
         <Textarea
@@ -341,6 +352,7 @@ function OverlayInfo({ overlay: o }: { overlay: NonNullable<PackageDetail["overl
   const lines: string[] = [];
   if (o.silent_args && o.silent_args.length > 0) lines.push(`Silent arguments: ${o.silent_args.join(" ")} (your own override of the arguments wins over this)`);
   if (o.detection_rules) lines.push(`${o.detection_rules} detection rule${o.detection_rules === 1 ? "" : "s"}, used together with the package's own`);
+  if (o.processes && o.processes.length > 0) lines.push(`Programs it replaces: ${o.processes.join(", ")} (your own list wins over this)`);
   if (o.self_updating !== null && o.self_updating !== undefined) lines.push(o.self_updating ? "Updates itself" : "Does not update itself");
   return (
     <Alert color="blue" title={`From the overlay “${o.source}”`} icon={<Icons.NavCatalog size={18} aria-hidden />}>

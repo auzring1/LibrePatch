@@ -147,3 +147,4 @@ export async function uploadBrandingAsset(kind: BrandingAssetKind, file: File): 
   if (!res.ok) throw new ApiError(res.status, data.error?.code ?? "error", data.error?.message ?? `Upload failed (HTTP ${res.status})`);
   return data as unknown as BrandingView;
 }
+export type InstallPrompts = components["schemas"]["InstallPrompts"];

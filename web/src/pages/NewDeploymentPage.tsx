@@ -5,6 +5,8 @@ import { Alert, Button, Checkbox, Group, Loader, MultiSelect, NumberInput, Segme
 import { hhmm, parseHHMM } from "../api/format";
 import { api, errorMessage, type Device, type DeploymentPlan, type DeploymentRequest, type Group as Grp, type PackageDetail, type Pkg } from "../api/client";
 import { Card, Icons, Page, PageHeader, StatGrid, StatTile } from "../ui";
+import { InstallPromptsFields } from "../components/InstallPromptsFields";
+import { SILENT, describePrompts, needsPrograms, toPrompts, type PromptsForm } from "../components/prompts";
 import "./newDeployment.css";
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -28,6 +30,7 @@ export function NewDeploymentPage() {
   const [start, setStart] = useState("22:00");
   const [mins, setMins] = useState<number | string>(240);
   const [confirmed, setConfirmed] = useState(false);
+  const [prompts, setPrompts] = useState<PromptsForm>(SILENT);
   const [error, setError] = useState("");
   const [plan, setPlan] = useState<DeploymentPlan | null>(null);
 
@@ -40,6 +43,12 @@ export function NewDeploymentPage() {
   const needsConfirm = !!pkg && pkg.source === "winget" && !pkg.verified;
   const hasTargets = groupIds.length + deviceIds.length > 0;
   const versions = useMemo(() => detail.data?.versions.map((v) => v.version) ?? [], [detail.data]);
+  // The programs the update replaces: the administrator's list, or the signed overlay's.
+  const programs = useMemo(() => {
+    const own = detail.data?.override.processes ?? [];
+    return own.length > 0 ? own : (detail.data?.overlay?.processes ?? []);
+  }, [detail.data]);
+  const promptsApply = action !== "uninstall";
 
   const create = useMutation({
     mutationFn: () => {
@@ -54,6 +63,8 @@ export function NewDeploymentPage() {
         expires_in_hours: Number(expiresH) || 72,
         unverified_confirmed: confirmed,
       };
+      const pr = promptsApply ? toPrompts(prompts) : null;
+      if (pr) body.prompts = pr;
       if (startsAt) body.starts_at = new Date(startsAt).toISOString();
       if (useWindow) body.window = { days: days.map(Number), start_minute: parseHHMM(start), duration_minutes: Number(mins) || 60 };
       return api<DeploymentPlan>("POST", "/deployments", body);
@@ -107,12 +118,14 @@ export function NewDeploymentPage() {
   }
 
   const windowOk = !useWindow || days.length > 0;
-  const valid = !!pkgId && hasTargets && (!needsConfirm || confirmed) && windowOk;
+  const promptsOk = !promptsApply || !needsPrograms(prompts) || programs.length > 0;
+  const valid = !!pkgId && hasTargets && (!needsConfirm || confirmed) && windowOk && promptsOk;
   const todo: { done: boolean; text: string }[] = [
     { done: !!pkgId, text: pkgId ? "Package chosen" : "Choose a package" },
     { done: hasTargets, text: hasTargets ? "Targets chosen" : "Choose at least one group or device" },
     ...(needsConfirm ? [{ done: confirmed, text: confirmed ? "Unverified package confirmed" : "Confirm the unverified package" }] : []),
     ...(useWindow ? [{ done: days.length > 0, text: days.length ? "Maintenance window set" : "Choose the days of the maintenance window" }] : []),
+    ...(promptsApply && needsPrograms(prompts) ? [{ done: programs.length > 0, text: programs.length ? "Program names known" : "Add the package's program names (see 4. Messages)" }] : []),
   ];
 
   return (
@@ -227,7 +240,13 @@ export function NewDeploymentPage() {
             </Stack>
           </Card>
 
-          <Card title="4. Schedule" description="When devices may start, and how long to keep trying.">
+          {promptsApply && (
+            <Card title="4. Messages to the user (optional)" description="Installs are silent unless you choose otherwise here.">
+              <InstallPromptsFields value={prompts} onChange={setPrompts} programs={programs} packageId={pkgId || undefined} />
+            </Card>
+          )}
+
+          <Card title={promptsApply ? "5. Schedule" : "4. Schedule"} description="When devices may start, and how long to keep trying.">
             <Stack>
               <TextInput label="Name" description="Optional" value={name} onChange={(e) => setName(e.currentTarget.value)} maxLength={200} />
               <Group grow align="flex-start">
@@ -267,6 +286,12 @@ export function NewDeploymentPage() {
                 <dd>{startsAt ? new Date(startsAt).toLocaleString() : "Now"}</dd>
                 <dt>Gives up</dt>
                 <dd>after {Number(expiresH) || 72} hours</dd>
+                {promptsApply && toPrompts(prompts) && (
+                  <>
+                    <dt>Messages</dt>
+                    <dd>{describePrompts(toPrompts(prompts))}</dd>
+                  </>
+                )}
                 {useWindow && (
                   <>
                     <dt>Window</dt>

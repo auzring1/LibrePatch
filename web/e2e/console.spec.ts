@@ -279,6 +279,28 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await page.keyboard.press("Escape");
       expect(existsSync(join(agentDir, "pf", "Acme", "tool.txt"))).toBe(true);
 
+      // Messages to the user (D124): the package lists its programs, and a deployment can choose to ask about them. The
+      // Linux test agent cannot see people's programs, so it installs as before; the choice must still be kept and shown.
+      await mainNav(page).getByRole("link", { name: "Catalog", exact: true }).click();
+      await page.getByRole("link", { name: "Acme Tool" }).first().click();
+      await page.getByLabel("Programs this update replaces").fill("acme.exe");
+      await page.getByRole("button", { name: "Save overrides" }).click();
+      await expect(page.getByText("Overrides saved.")).toBeVisible();
+      await page.getByRole("link", { name: "Deploy", exact: true }).click();
+      await page.getByRole("combobox", { name: "Devices" }).click();
+      await page.getByRole("option").first().click();
+      await page.keyboard.press("Escape");
+      await page.getByRole("textbox", { name: "Name", exact: true }).fill("Ask about Acme");
+      await page.getByRole("combobox", { name: "If the program is open" }).click();
+      await page.getByRole("option", { name: "Ask the user to close it" }).click();
+      await expect(page.getByText("acme.exe")).toBeVisible();
+      await shot(page, "13b-deployment-messages");
+      await page.getByRole("button", { name: "Start deployment" }).click();
+      await expect(page.getByText("Deployment queued")).toBeVisible();
+      await page.getByRole("button", { name: "Watch progress" }).click();
+      await expect(page.getByText("Messages to the user: asks the user to close the program")).toBeVisible();
+      await expect(page.getByTestId("deployment-status")).toHaveText("completed", { timeout: 60_000 });
+
       // Static group.
       await mainNav(page).getByRole("link", { name: "Groups", exact: true }).click();
       await page.getByRole("button", { name: "New group" }).click();
