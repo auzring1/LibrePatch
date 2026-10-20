@@ -161,3 +161,35 @@ func (p *devPlatform) Ask(context.Context, uint32, string, string, time.Duration
 func (p *devPlatform) CloseProcesses(_ context.Context, procs []Proc, _ time.Duration) ([]Proc, error) {
 	return procs, ErrUnsupported
 }
+
+// The development platform reads scripted views from inspect-dev.json in the agent's data directory
+// ({"processes": [...], "services": [...], "events": [...]}), the way wu-dev.json scripts Windows updates.
+func (p *devPlatform) devInspect() (v struct {
+	Processes []ProcessInfo `json:"processes"`
+	Services  []ServiceInfo `json:"services"`
+	Events    []EventInfo   `json:"events"`
+}, err error) {
+	b, err := os.ReadFile(filepath.Join(p.dir, "inspect-dev.json"))
+	if err != nil {
+		return v, ErrUnsupported
+	}
+	return v, json.Unmarshal(b, &v)
+}
+
+func (p *devPlatform) Processes() ([]ProcessInfo, error) {
+	v, err := p.devInspect()
+	return v.Processes, err
+}
+
+func (p *devPlatform) Services() ([]ServiceInfo, error) {
+	v, err := p.devInspect()
+	return v.Services, err
+}
+
+func (p *devPlatform) Events(_ context.Context, q EventQuery) ([]EventInfo, error) {
+	v, err := p.devInspect()
+	if len(v.Events) > q.Max {
+		v.Events = v.Events[:q.Max]
+	}
+	return v.Events, err
+}

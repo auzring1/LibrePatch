@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Menu, Tooltip } from "@mantine/core";
-import { errorMessage, type Device } from "../api/client";
+import { api, errorMessage, type Device } from "../api/client";
 import { useSession } from "../api/session";
 import { Icons, toast } from "../ui";
 import {
@@ -48,6 +48,13 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
   const [loadingInstall, setLoadingInstall] = useState(false);
   const [installFor, setInstallFor] = useState<{ items: Item[]; online: boolean } | null>(null);
   const [restartOpen, setRestartOpen] = useState(false);
+  // Wake-on-LAN: another online computer on the same network sends the packet (D125).
+  const wake = useMutation({
+    mutationFn: () => api<{ job_id: string; helper: string }>("POST", `/devices/${d.id}/wake`, {}),
+    onSuccess: (r) => toast.success(`Wake-up packet requested through ${r.helper}. If the computer is set up for Wake-on-LAN it connects within a minute or two.`),
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+  const canWake = can("devices:wake") && d.status === "active" && !d.online;
 
   const openInstall = async () => {
     setLoadingInstall(true);
@@ -88,6 +95,13 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
             Restart
           </Button>
         </>
+      )}
+      {canWake && (
+        <Tooltip label="Another online computer on the same network sends a Wake-on-LAN packet">
+          <Button variant="default" onClick={() => wake.mutate()} loading={wake.isPending} leftSection={<Icons.Play size={16} aria-hidden />}>
+            Wake up
+          </Button>
+        </Tooltip>
       )}
       {canDevices && d.status === "active" && (
         <Tooltip label={d.online ? "Ask the device to send its hardware, software and user information now" : "The device is offline"}>

@@ -147,6 +147,8 @@ message NetInterface {
   string name = 1;
   string mac = 2;
   repeated string addresses = 3;
+  // The same addresses with their network, "192.168.1.20/24", so another agent on that network can wake this one up.
+  repeated string cidrs = 4;
 }
 
 // ---- Windows Update (Phase 4) ----

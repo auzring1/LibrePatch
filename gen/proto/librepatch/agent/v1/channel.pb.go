@@ -1198,6 +1198,7 @@ type JobResult struct {
 	FinishedAt       int64                  `protobuf:"varint,9,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
 	AlreadySatisfied bool                   `protobuf:"varint,10,opt,name=already_satisfied,json=alreadySatisfied,proto3" json:"already_satisfied,omitempty"` // pre-check found the target state; nothing was run
 	WuResults        []*WuUpdateResult      `protobuf:"bytes,11,rep,name=wu_results,json=wuResults,proto3" json:"wu_results,omitempty"`                       // WU_INSTALL: one entry per requested update
+	DataJson         string                 `protobuf:"bytes,12,opt,name=data_json,json=dataJson,proto3" json:"data_json,omitempty"`                          // INSPECT: the requested view as JSON, at most 256 KiB
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1307,6 +1308,13 @@ func (x *JobResult) GetWuResults() []*WuUpdateResult {
 		return x.WuResults
 	}
 	return nil
+}
+
+func (x *JobResult) GetDataJson() string {
+	if x != nil {
+		return x.DataJson
+	}
+	return ""
 }
 
 type WuUpdateResult struct {
@@ -1562,7 +1570,7 @@ const file_librepatch_agent_v1_channel_proto_rawDesc = "" +
 	"\aattempt\x18\x03 \x01(\rR\aattempt\x123\n" +
 	"\x05state\x18\x04 \x01(\x0e2\x1d.librepatch.agent.v1.JobStateR\x05state\x12\x16\n" +
 	"\x06reason\x18\x05 \x01(\tR\x06reason\x126\n" +
-	"\x06result\x18\x06 \x01(\v2\x1e.librepatch.agent.v1.JobResultR\x06result\"\xca\x03\n" +
+	"\x06result\x18\x06 \x01(\v2\x1e.librepatch.agent.v1.JobResultR\x06result\"\xe7\x03\n" +
 	"\tJobResult\x129\n" +
 	"\aoutcome\x18\x01 \x01(\x0e2\x1f.librepatch.agent.v1.JobOutcomeR\aoutcome\x12\x1b\n" +
 	"\texit_code\x18\x02 \x01(\x05R\bexitCode\x12)\n" +
@@ -1578,7 +1586,8 @@ const file_librepatch_agent_v1_channel_proto_rawDesc = "" +
 	"\x11already_satisfied\x18\n" +
 	" \x01(\bR\x10alreadySatisfied\x12B\n" +
 	"\n" +
-	"wu_results\x18\v \x03(\v2#.librepatch.agent.v1.WuUpdateResultR\twuResults\"\x9a\x01\n" +
+	"wu_results\x18\v \x03(\v2#.librepatch.agent.v1.WuUpdateResultR\twuResults\x12\x1b\n" +
+	"\tdata_json\x18\f \x01(\tR\bdataJson\"\x9a\x01\n" +
 	"\x0eWuUpdateResult\x12\x1b\n" +
 	"\tupdate_id\x18\x01 \x01(\tR\bupdateId\x12\x1a\n" +
 	"\brevision\x18\x02 \x01(\x05R\brevision\x125\n" +

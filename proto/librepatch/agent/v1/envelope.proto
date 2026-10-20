@@ -26,6 +26,8 @@ enum JobType {
   JOB_TYPE_AGENT_UPDATE = 9;
   JOB_TYPE_CANCEL = 10;
   JOB_TYPE_CONFIG = 11;
+  JOB_TYPE_WAKE = 12;     // send Wake-on-LAN packets for other devices on this one's network (D125)
+  JOB_TYPE_INSPECT = 13;  // read-only view: running programs, services or recent event log entries (D125)
 }
 
 message JobEnvelope {
@@ -53,6 +55,8 @@ message JobEnvelope {
     InventoryBody inventory = 26;
     AgentUpdateBody agent_update = 27;
     CancelBody cancel = 28;
+    WakeBody wake = 29;
+    InspectBody inspect = 30;
   }
 }
 
@@ -247,6 +251,34 @@ message InstallPrompts {
   uint32 defer_minutes = 4;       // SKIP and ASK: wait this long before looking again, 5..1440; 0 = 60
   RestartPrompt restart = 5;
   uint32 restart_notify_minutes = 6;  // length of the restart countdown, 1..1440; 0 = 5
+}
+
+// WakeTarget is one sleeping computer: the MAC address of a network card and the IPv4 address it last had.
+message WakeTarget {
+  string mac = 1;        // aa:bb:cc:dd:ee:ff
+  string last_ip = 2;    // IPv4; the agent only sends on an interface whose network contains it
+}
+
+// WakeBody asks an online agent to send Wake-on-LAN "magic packets" on its own network. The agent never sends to
+// anything but the broadcast address of one of its own interfaces.
+message WakeBody {
+  repeated WakeTarget targets = 1;   // 1..4
+}
+
+enum InspectKind {
+  INSPECT_KIND_UNSPECIFIED = 0;
+  INSPECT_KIND_PROCESSES = 1;
+  INSPECT_KIND_SERVICES = 2;
+  INSPECT_KIND_EVENTS = 3;
+}
+
+// InspectBody asks for a read-only view of the device. The answer is JSON in JobResult.data_json, size-capped.
+message InspectBody {
+  InspectKind kind = 1;
+  string log = 2;               // EVENTS: System | Application | Setup (never Security)
+  uint32 max_level = 3;         // EVENTS: 1 critical .. 5 verbose; 0 = 3 (warnings and worse)
+  uint32 since_minutes = 4;     // EVENTS: look back this far, 1..10080; 0 = 1440
+  uint32 max_events = 5;        // EVENTS: 1..200; 0 = 100
 }
 
 message InstallBody {

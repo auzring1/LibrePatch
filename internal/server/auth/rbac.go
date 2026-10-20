@@ -11,6 +11,8 @@ import (
 const (
 	PermDevicesRead      = "devices:read"
 	PermDevicesWrite     = "devices:write"
+	PermDevicesWake      = "devices:wake"    // send a Wake-on-LAN packet for a sleeping device through another one (D125)
+	PermDevicesInspect   = "devices:inspect" // read-only views: running programs, services, event log (administrators only, D125)
 	PermEnrollmentRead   = "enrollment:read"
 	PermEnrollmentWrite  = "enrollment:write"
 	PermAuditRead        = "audit:read"
@@ -62,14 +64,14 @@ const (
 )
 
 var rolePerms = map[string][]string{
-	RoleAdmin: {PermDevicesRead, PermDevicesWrite, PermEnrollmentRead, PermEnrollmentWrite, PermAuditRead,
+	RoleAdmin: {PermDevicesRead, PermDevicesWrite, PermDevicesWake, PermDevicesInspect, PermEnrollmentRead, PermEnrollmentWrite, PermAuditRead,
 		PermGroupsRead, PermGroupsWrite, PermInventoryExport,
 		PermCatalogRead, PermCatalogWrite, PermCatalogOverride, PermDeploymentsRead, PermDeploymentsWrite, PermSettingsWrite,
 		PermUpdatesRead, PermUpdatesWrite, PermUpdatesPolicy, PermReleasesRead, PermReleasesWrite,
 		PermSitesRead, PermSitesWrite, PermUsersRead, PermUsersWrite, PermPoliciesRead, PermPoliciesWrite, PermReportsRead,
 		PermBrandingWrite,
 		PermSettingsAppearance, PermSettingsSecurity, PermSettingsNotifications, PermSettingsUpdates, PermSettingsDevices, PermSettingsReports, PermSettingsData, PermSettingsIntegrations},
-	RoleOperator: {PermDevicesRead, PermDevicesWrite, PermEnrollmentRead, PermGroupsRead, PermGroupsWrite, PermInventoryExport,
+	RoleOperator: {PermDevicesRead, PermDevicesWrite, PermDevicesWake, PermEnrollmentRead, PermGroupsRead, PermGroupsWrite, PermInventoryExport,
 		PermCatalogRead, PermCatalogWrite, PermDeploymentsRead, PermDeploymentsWrite, PermUpdatesRead, PermUpdatesWrite, PermReleasesRead,
 		PermSitesRead, PermPoliciesRead, PermReportsRead,
 		PermSettingsNotifications, PermSettingsDevices, PermSettingsReports},
@@ -81,7 +83,7 @@ var rolePerms = map[string][]string{
 // a single device from its own page; everything else is organization-wide configuration or a
 // fleet-wide view and needs an organization-scoped binding (docs/SECURITY.md §9d).
 var siteScopable = map[string]bool{
-	PermDevicesRead: true, PermDevicesWrite: true, PermDeploymentsRead: true, PermDeploymentsWrite: true,
+	PermDevicesRead: true, PermDevicesWrite: true, PermDevicesWake: true, PermDevicesInspect: true, PermDeploymentsRead: true, PermDeploymentsWrite: true,
 	PermUpdatesRead: true, PermUpdatesWrite: true, PermCatalogRead: true, PermSitesRead: true,
 }
 

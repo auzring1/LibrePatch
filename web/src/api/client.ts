@@ -148,3 +148,4 @@ export async function uploadBrandingAsset(kind: BrandingAssetKind, file: File): 
   return data as unknown as BrandingView;
 }
 export type InstallPrompts = components["schemas"]["InstallPrompts"];
+export type DeviceView = components["schemas"]["DeviceView"];

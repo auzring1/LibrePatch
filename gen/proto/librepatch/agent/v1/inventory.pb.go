@@ -1201,10 +1201,12 @@ func (x *Disk) GetBitlocker() string {
 }
 
 type NetInterface struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Mac           string                 `protobuf:"bytes,2,opt,name=mac,proto3" json:"mac,omitempty"`
-	Addresses     []string               `protobuf:"bytes,3,rep,name=addresses,proto3" json:"addresses,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Name      string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Mac       string                 `protobuf:"bytes,2,opt,name=mac,proto3" json:"mac,omitempty"`
+	Addresses []string               `protobuf:"bytes,3,rep,name=addresses,proto3" json:"addresses,omitempty"`
+	// The same addresses with their network, "192.168.1.20/24", so another agent on that network can wake this one up.
+	Cidrs         []string `protobuf:"bytes,4,rep,name=cidrs,proto3" json:"cidrs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1256,6 +1258,13 @@ func (x *NetInterface) GetMac() string {
 func (x *NetInterface) GetAddresses() []string {
 	if x != nil {
 		return x.Addresses
+	}
+	return nil
+}
+
+func (x *NetInterface) GetCidrs() []string {
+	if x != nil {
+		return x.Cidrs
 	}
 	return nil
 }
@@ -1734,11 +1743,12 @@ const file_librepatch_agent_v1_inventory_proto_rawDesc = "" +
 	"size_bytes\x18\x03 \x01(\x04R\tsizeBytes\x12\x1d\n" +
 	"\n" +
 	"free_bytes\x18\x04 \x01(\x04R\tfreeBytes\x12\x1c\n" +
-	"\tbitlocker\x18\x05 \x01(\tR\tbitlocker\"R\n" +
+	"\tbitlocker\x18\x05 \x01(\tR\tbitlocker\"h\n" +
 	"\fNetInterface\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03mac\x18\x02 \x01(\tR\x03mac\x12\x1c\n" +
-	"\taddresses\x18\x03 \x03(\tR\taddresses\"\xb6\x04\n" +
+	"\taddresses\x18\x03 \x03(\tR\taddresses\x12\x14\n" +
+	"\x05cidrs\x18\x04 \x03(\tR\x05cidrs\"\xb6\x04\n" +
 	"\bWuUpdate\x12\x1b\n" +
 	"\tupdate_id\x18\x01 \x01(\tR\bupdateId\x12\x1a\n" +
 	"\brevision\x18\x02 \x01(\x05R\brevision\x12\x14\n" +

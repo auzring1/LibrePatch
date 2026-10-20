@@ -45,7 +45,7 @@ func (c *Config) RollbackWindow() time.Duration {
 
 // AllJobTypes lists every job type name a ceiling may contain.
 var AllJobTypes = []string{"inventory", "software_install", "software_uninstall", "software_update",
-	"wu_scan", "wu_install", "wu_hide", "reboot", "agent_update"}
+	"wu_scan", "wu_install", "wu_hide", "reboot", "agent_update", "wake", "inspect"}
 
 // FromBundle builds a config from an enrollment string. serverOverride, if
 // non-empty, replaces the gateway address in the bundle (the root pin stays).

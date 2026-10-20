@@ -270,6 +270,10 @@ func ceilingName(t agentv1.JobType) string {
 		return "reboot"
 	case agentv1.JobType_JOB_TYPE_AGENT_UPDATE:
 		return "agent_update"
+	case agentv1.JobType_JOB_TYPE_WAKE:
+		return "wake"
+	case agentv1.JobType_JOB_TYPE_INSPECT:
+		return "inspect"
 	}
 	return ""
 }

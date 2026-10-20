@@ -5929,6 +5929,145 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/devices/{id}/wake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wake a sleeping device with a Wake-on-LAN packet sent by another online device on the same network (requires devices:wake; audited)
+         * @description The server picks an online device whose network contains the sleeping device's last address (it needs the current agent, which reports its networks) and queues a job for it; that device sends the packet to its own network's broadcast address, nothing else. The job belongs to the helper. Whether the computer wakes depends on its firmware and network card settings.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description A wake-up job was queued */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            job_id: string;
+                            /** @description Host name of the device that sends the packet */
+                            helper: string;
+                        };
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{id}/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask an online device for a read-only view of itself (requires devices:inspect; audited)
+         * @description Running programs, services or recent event log entries (System, Application or Setup; never Security). The answer is read with GET /devices/{id}/views/{job} and is kept for an hour.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        kind: "processes" | "services" | "events";
+                        /** @enum {string} */
+                        log?: "" | "System" | "Application" | "Setup";
+                        /** @description Events: 1 critical to 5 verbose; 0 = 3 */
+                        max_level?: number;
+                        /** @description Events: look back this far; 0 = 1440 */
+                        since_minutes?: number;
+                        /** @description Events: 0 = 100 */
+                        max_events?: number;
+                    };
+                };
+            };
+            responses: {
+                202: components["responses"]["JobQueued"];
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{id}/views/{job}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The state and, when ready, the data of a read-only view (requires devices:inspect) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    job: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceView"];
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/catalog/packages": {
         parameters: {
             query?: never;
@@ -8294,6 +8433,23 @@ export interface components {
             duration_minutes: number;
             /** @description IANA name; empty = device-local time */
             tz?: string;
+        };
+        DeviceView: {
+            status: components["schemas"]["JobStatus"];
+            status_reason: string;
+            /** @enum {string} */
+            kind?: "processes" | "services" | "events";
+            /** @description {kind, taken_at, truncated, total, items[]}; the item fields depend on kind */
+            data?: {
+                kind?: string;
+                /** Format: int64 */
+                taken_at?: number;
+                truncated?: boolean;
+                total?: number;
+                items?: {
+                    [key: string]: unknown;
+                }[];
+            };
         };
         /**
          * @description Optional messages to the signed-in user while software is installed. Omitted or all defaults = fully silent.

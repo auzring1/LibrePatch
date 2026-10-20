@@ -155,6 +155,7 @@ message JobResult {
   int64 finished_at = 9;
   bool already_satisfied = 10;       // pre-check found the target state; nothing was run
   repeated WuUpdateResult wu_results = 11;  // WU_INSTALL: one entry per requested update
+  string data_json = 12;             // INSPECT: the requested view as JSON, at most 256 KiB
 }
 
 enum WuResult {

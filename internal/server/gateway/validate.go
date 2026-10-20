@@ -31,10 +31,10 @@ func validateHardware(hw *agentv1.HardwareInventory) error {
 		return errors.New("hardware value out of range")
 	}
 	for _, n := range hw.Interfaces {
-		if len(n.Name) > 256 || len(n.Mac) > 64 || len(n.Addresses) > 32 {
+		if len(n.Name) > 256 || len(n.Mac) > 64 || len(n.Addresses) > 32 || len(n.Cidrs) > 32 {
 			return errors.New("interface field too long")
 		}
-		for _, a := range n.Addresses {
+		for _, a := range append(append([]string(nil), n.Addresses...), n.Cidrs...) {
 			if len(a) > 64 {
 				return errors.New("address too long")
 			}

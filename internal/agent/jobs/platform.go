@@ -126,6 +126,11 @@ type Platform interface {
 	// CloseProcesses asks the programs to close, waits grace, and ends those still open. It returns what is still running.
 	CloseProcesses(ctx context.Context, procs []Proc, grace time.Duration) (left []Proc, err error)
 
+	// Processes, Services and Events are the read-only views of a device (D125).
+	Processes() ([]ProcessInfo, error)
+	Services() ([]ServiceInfo, error)
+	Events(ctx context.Context, q EventQuery) ([]EventInfo, error)
+
 	// WindowsUpdate returns the Windows Update Agent client.
 	WindowsUpdate() wu.Client
 	// Reboot restarts the machine after delay; signed-in users see a countdown with message.

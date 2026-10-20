@@ -340,6 +340,26 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await expect(devUpdates.getByText("KB5099999", { exact: true })).toBeVisible({ timeout: 60_000 });
       await shot(page, "15-device-windows-updates");
 
+      // Read-only views (D125): the Linux test agent reads scripted data from inspect-dev.json.
+      writeFileSync(
+        join(wuDir, "inspect-dev.json"),
+        JSON.stringify({
+          processes: [{ pid: 4242, parent_pid: 1, name: "acme-dev.exe", session: 1, threads: 4, working_set_kb: 20480, path: "C:\\Program Files\\Acme\\acme-dev.exe" }],
+          services: [{ name: "AcmeSvc", display: "Acme Background Service", state: "running", start: "automatic", account: "LocalSystem", path: "C:\\Acme\\svc.exe" }],
+          events: [{ time: Math.floor(Date.now() / 1000) - 600, level: 2, provider: "Acme-Disk", id: 7, message: "The device has a bad block." }],
+        }),
+      );
+      await page.getByRole("tab", { name: "Look at" }).click();
+      await page.getByRole("button", { name: "Show", exact: true }).click();
+      await expect(page.getByRole("table", { name: "Running programs" }).getByRole("cell", { name: "acme-dev.exe", exact: true })).toBeVisible({ timeout: 30_000 });
+      await page.getByText("Services", { exact: true }).click();
+      await page.getByRole("button", { name: "Show", exact: true }).click();
+      await expect(page.getByRole("table", { name: "Services" }).getByText("Acme Background Service")).toBeVisible({ timeout: 30_000 });
+      await page.getByText("Event log", { exact: true }).click();
+      await page.getByRole("button", { name: "Show", exact: true }).click();
+      await expect(page.getByRole("table", { name: "Event log" }).getByText("The device has a bad block.")).toBeVisible({ timeout: 30_000 });
+      await shot(page, "15b-device-inspect");
+
       // Catalog: approve the security update, leave the other one pending.
       await mainNav(page).getByRole("link", { name: "Windows updates", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Windows updates", exact: true })).toBeVisible();
@@ -608,7 +628,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
 
   // --- A signed catalog overlay, made here with Node's Ed25519 and accepted by the server's Go verifier ---
   await mainNav(page).getByRole("link", { name: "Catalog", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Overlays" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overlays", exact: true })).toBeVisible();
   const ovKeys = generateKeyPairSync("ed25519");
   const ovPub = ovKeys.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("hex");
   const ovDoc = JSON.stringify({ format: "librepatch-overlay/1", name: "E2E overlay", version: 1, packages: [{ identifier: "7zip.7zip", self_updating: false, verified: true, verified_note: "Tested by the e2e run", silent_args: ["/S"] }] });

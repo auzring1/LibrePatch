@@ -110,6 +110,16 @@ func (s *Service) ApplyUpdate(ctx context.Context, dev dbq.Device, u *agentv1.Jo
 		if !changed {
 			return nil // late or duplicate update for a job that is already final
 		}
+		// What a read-only view returned goes to its own short-lived table, never into the job result that job pages show (D125).
+		if job.Type == "inspect" && u.Result != nil && u.Result.DataJson != "" && status == "succeeded" {
+			if kind, raw, ok := viewData(u.Result.DataJson); ok {
+				now := s.now()
+				_ = q.PruneDeviceViews(ctx, now.Add(-time.Hour))
+				if err := q.InsertDeviceView(ctx, dbq.InsertDeviceViewParams{JobID: id, OrgID: job.OrgID, DeviceID: dev.ID, Kind: kind, Data: raw}); err != nil {
+					return err
+				}
+			}
+		}
 		msg := clean(u.Reason, 128)
 		if u.Result != nil && u.Result.Message != "" {
 			msg = clean(u.Result.Message, 512)
@@ -288,4 +298,25 @@ func (s *Service) Sweep(ctx context.Context) {
 			_ = q.CompleteDeploymentIfDone(ctx, *r.DeploymentID)
 		}
 	}
+}
+
+// maxViewBytes caps what a device may store as the answer of a read-only view.
+const maxViewBytes = 256 << 10
+
+// viewData checks the JSON a device sent for a read-only view: size, well-formed, a known kind.
+func viewData(data string) (kind string, raw []byte, ok bool) {
+	if len(data) > maxViewBytes || !json.Valid([]byte(data)) {
+		return "", nil, false
+	}
+	var head struct {
+		Kind string `json:"kind"`
+	}
+	if json.Unmarshal([]byte(data), &head) != nil {
+		return "", nil, false
+	}
+	switch head.Kind {
+	case "processes", "services", "events":
+		return head.Kind, []byte(data), true
+	}
+	return "", nil, false
 }

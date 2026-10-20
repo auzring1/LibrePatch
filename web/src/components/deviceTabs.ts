@@ -1,5 +1,5 @@
 /** The tabs of the device page, in display order. */
-export const DEVICE_TABS = ["overview", "hardware", "software", "vulnerabilities", "software-updates", "updates", "jobs", "activity"] as const;
+export const DEVICE_TABS = ["overview", "hardware", "software", "vulnerabilities", "software-updates", "updates", "jobs", "inspect", "activity"] as const;
 export type DeviceTab = (typeof DEVICE_TABS)[number];
 
 /**
@@ -25,6 +25,10 @@ export const DEVICE_TAB_ALIASES: Readonly<Record<string, DeviceTab>> = {
   security: "vulnerabilities",
   certificates: "hardware",
   certs: "hardware",
+  processes: "inspect",
+  services: "inspect",
+  events: "inspect",
+  "event-log": "inspect",
   "client-certificates": "hardware",
 };
 
@@ -36,13 +40,15 @@ export interface DeviceTabAccess {
   hasSoftwareUpdates: boolean;
   /** `deployments:read` */
   hasJobs: boolean;
+  /** `devices:inspect`: the read-only views (programs, services, event log). */
+  hasInspect: boolean;
   /** `audit:read` on the organization */
   hasActivity: boolean;
 }
 
 export function availableDeviceTabs(access: DeviceTabAccess): DeviceTab[] {
   return DEVICE_TABS.filter((t) =>
-    t === "updates" ? access.hasUpdates : t === "software-updates" ? access.hasSoftwareUpdates : t === "jobs" ? access.hasJobs : t === "activity" ? access.hasActivity : true,
+    t === "updates" ? access.hasUpdates : t === "software-updates" ? access.hasSoftwareUpdates : t === "jobs" ? access.hasJobs : t === "inspect" ? access.hasInspect : t === "activity" ? access.hasActivity : true,
   );
 }
 

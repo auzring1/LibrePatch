@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -53,6 +54,9 @@ type Engine struct {
 	ReleaseKeys []ed25519.PublicKey
 	// RollbackWindow overrides the time a new version has to become healthy (tests).
 	RollbackWindow time.Duration
+	// LocalNets and SendUDP are the network of this computer and how a packet leaves it (Wake-on-LAN; tests replace both).
+	LocalNets func() []LocalNet
+	SendUDP   func(local net.IP, dest string, pkt []byte) error
 	// Sleep waits d (default: a timer that ends with ctx). Tests replace it to move a fake clock.
 	Sleep func(ctx context.Context, d time.Duration)
 	// PromptPoll is how often the engine looks whether programs it asked a user to close are gone (default 5 s).
@@ -84,11 +88,21 @@ const (
 func (l lane) handles(t agentv1.JobType) bool {
 	switch l {
 	case laneMain:
-		return t != agentv1.JobType_JOB_TYPE_REBOOT
+		return !controlJob(t)
 	case laneControl:
-		return t == agentv1.JobType_JOB_TYPE_REBOOT
+		return controlJob(t)
 	}
 	return true
+}
+
+// controlJob is a quick job that must not wait behind an installer: a restart request, a wake-up packet and a
+// read-only view.
+func controlJob(t agentv1.JobType) bool {
+	switch t {
+	case agentv1.JobType_JOB_TYPE_REBOOT, agentv1.JobType_JOB_TYPE_WAKE, agentv1.JobType_JOB_TYPE_INSPECT:
+		return true
+	}
+	return false
 }
 
 // interruptedByRestart reports whether a restart would break a job of this type halfway.
@@ -243,6 +257,26 @@ func (e *Engine) Accept(se *agentv1.SignedEnvelope, env *agentv1.JobEnvelope) {
 			return
 		}
 		e.setState(r, agentv1.JobState_JOB_STATE_ACCEPTED, "", nil)
+	case agentv1.JobType_JOB_TYPE_WAKE:
+		if env.TargetUserSid != "" {
+			reject("wake jobs are machine-scope", agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		if err := ValidateWake(env.GetWake()); err != nil {
+			reject(err.Error(), agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		e.setState(r, agentv1.JobState_JOB_STATE_ACCEPTED, "", nil)
+	case agentv1.JobType_JOB_TYPE_INSPECT:
+		if env.TargetUserSid != "" {
+			reject("inspect jobs are machine-scope", agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		if err := ValidateInspect(env.GetInspect()); err != nil {
+			reject(err.Error(), agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		e.setState(r, agentv1.JobState_JOB_STATE_ACCEPTED, "", nil)
 	default:
 		reject("unsupported job type", agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
 		return
@@ -392,7 +426,7 @@ func (e *Engine) tickLane(ctx context.Context, l lane) time.Duration {
 			soonest(now.Add(userPoll))
 			continue
 		}
-		if l == laneControl && e.unsafe.Load() > 0 {
+		if l == laneControl && agentv1.JobType(r.Type) == agentv1.JobType_JOB_TYPE_REBOOT && e.unsafe.Load() > 0 {
 			// An installer or update is running: the restart starts when it has finished (runJob wakes this loop).
 			e.setState(r, agentv1.JobState_JOB_STATE_WAITING, "waiting_install_finish", nil)
 			continue
@@ -465,6 +499,10 @@ func (e *Engine) runJob(ctx context.Context, r *Record, env *agentv1.JobEnvelope
 		out = e.rebootJob(env)
 	case agentv1.JobType_JOB_TYPE_AGENT_UPDATE:
 		out = e.agentUpdate(jctx, r, env)
+	case agentv1.JobType_JOB_TYPE_WAKE:
+		out = e.sendWake(jctx, env)
+	case agentv1.JobType_JOB_TYPE_INSPECT:
+		out = e.inspect(jctx, env)
 	}
 	if out == nil {
 		out = fail("unsupported job type")

@@ -141,7 +141,8 @@ message JobEnvelope {
     InstallBody install = 20; UninstallBody uninstall = 21; WuScanBody wu_scan = 22;
     WuInstallBody wu_install = 23; WuHideBody wu_hide = 24; RebootBody reboot = 25;
     InventoryBody inventory = 26; AgentUpdateBody agent_update = 27; CancelBody cancel = 28;
-    ConfigBody config = 29;
+    WakeBody wake = 29; InspectBody inspect = 30;   // D125
+    ConfigBody config = 31;   // reserved, not implemented (29 and 30 are taken by wake and inspect)
   }
 }
 ```

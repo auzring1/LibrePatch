@@ -2481,6 +2481,65 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+  /devices/{id}/wake:
+    post:
+      tags: [devices]
+      summary: Wake a sleeping device with a Wake-on-LAN packet sent by another online device on the same network (requires devices:wake; audited)
+      description: |
+        The server picks an online device whose network contains the sleeping device's last address (it needs the current agent, which reports its networks) and queues a job for it; that device sends the packet to its own network's broadcast address, nothing else. The job belongs to the helper. Whether the computer wakes depends on its firmware and network card settings.
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "202":
+          description: A wake-up job was queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, helper]
+                properties:
+                  job_id: { type: string, format: uuid }
+                  helper: { type: string, description: Host name of the device that sends the packet }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /devices/{id}/inspect:
+    post:
+      tags: [devices]
+      summary: Ask an online device for a read-only view of itself (requires devices:inspect; audited)
+      description: Running programs, services or recent event log entries (System, Application or Setup; never Security). The answer is read with GET /devices/{id}/views/{job} and is kept for an hour.
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind]
+              properties:
+                kind: { type: string, enum: [processes, services, events] }
+                log: { type: string, enum: ["", System, Application, Setup] }
+                max_level: { type: integer, minimum: 0, maximum: 5, description: "Events: 1 critical to 5 verbose; 0 = 3" }
+                since_minutes: { type: integer, minimum: 0, maximum: 10080, description: "Events: look back this far; 0 = 1440" }
+                max_events: { type: integer, minimum: 0, maximum: 200, description: "Events: 0 = 100" }
+      responses:
+        "202": { $ref: "#/components/responses/JobQueued" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /devices/{id}/views/{job}:
+    get:
+      tags: [devices]
+      summary: The state and, when ready, the data of a read-only view (requires devices:inspect)
+      parameters:
+        - { $ref: "#/components/parameters/ID" }
+        - { name: job, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceView" }
+        "404": { $ref: "#/components/responses/Error" }
   /catalog/packages:
     get:
       tags: [catalog]
@@ -4182,6 +4241,22 @@ components:
         start_minute: { type: integer, minimum: 0, maximum: 1439 }
         duration_minutes: { type: integer, minimum: 1, maximum: 1440 }
         tz: { type: string, description: IANA name; empty = device-local time }
+    DeviceView:
+      type: object
+      required: [status, status_reason]
+      properties:
+        status: { $ref: "#/components/schemas/JobStatus" }
+        status_reason: { type: string }
+        kind: { type: string, enum: [processes, services, events] }
+        data:
+          type: object
+          description: "{kind, taken_at, truncated, total, items[]}; the item fields depend on kind"
+          properties:
+            kind: { type: string }
+            taken_at: { type: integer, format: int64 }
+            truncated: { type: boolean }
+            total: { type: integer }
+            items: { type: array, items: { type: object, additionalProperties: true } }
     InstallPrompts:
       type: object
       additionalProperties: false

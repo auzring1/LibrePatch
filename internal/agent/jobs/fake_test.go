@@ -106,6 +106,11 @@ type fakePlatform struct {
 	noSession bool      // nobody is signed in
 	procsErr  error     // RunningProcesses fails
 	onAsk     func()    // runs when a question is shown (a program may close meanwhile)
+	psList    []ProcessInfo
+	viewErr   error
+	services  []ServiceInfo
+	eventList []EventInfo
+	eventQ    []EventQuery
 }
 
 type askCall struct {
@@ -573,4 +578,22 @@ func (f *fakePlatform) CloseProcesses(_ context.Context, procs []Proc, _ time.Du
 	}
 	f.procs = keep
 	return nil, nil
+}
+
+// scripted read-only views
+func (f *fakePlatform) Processes() ([]ProcessInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.psList, f.viewErr
+}
+func (f *fakePlatform) Services() ([]ServiceInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.services, f.viewErr
+}
+func (f *fakePlatform) Events(_ context.Context, q EventQuery) ([]EventInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.eventQ = append(f.eventQ, q)
+	return f.eventList, f.viewErr
 }

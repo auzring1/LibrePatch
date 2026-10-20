@@ -364,6 +364,15 @@ type DeviceUser struct {
 	IsAdmin     bool
 }
 
+type DeviceView struct {
+	JobID     uuid.UUID
+	OrgID     uuid.UUID
+	DeviceID  uuid.UUID
+	Kind      string
+	Data      []byte
+	CreatedAt time.Time
+}
+
 type EnrollmentToken struct {
 	ID              uuid.UUID
 	OrgID           uuid.UUID
