@@ -602,7 +602,7 @@ func (s *Service) Queue(ctx context.Context, org uuid.UUID) (*Approvals, error) 
 func policyRow(r dbq.ListSoftwarePoliciesRow) dbq.SoftwarePolicy {
 	return dbq.SoftwarePolicy{ID: r.ID, OrgID: r.OrgID, Name: r.Name, Kind: r.Kind, PackageID: r.PackageID, GroupIds: r.GroupIds, DelayDays: r.DelayDays,
 		OnlyNewDevices: r.OnlyNewDevices, UnverifiedConfirmed: r.UnverifiedConfirmed, MaintWindow: r.MaintWindow, Enabled: r.Enabled, CreatedBy: r.CreatedBy,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, UseRings: r.UseRings, RequireApproval: r.RequireApproval}
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, UseRings: r.UseRings, RequireApproval: r.RequireApproval, Prompts: r.Prompts}
 }
 
 // Decide records an administrator's decision about one version of a package: "approved", "declined", or "reset" (back

@@ -151,3 +151,13 @@ func (p *devPlatform) RebootRequired() bool {
 func (p *devPlatform) RunAsUser(ctx context.Context, _ string, s RunSpec) (RunResult, error) {
 	return p.Run(ctx, s)
 }
+
+// The development platform has no interactive users: it cannot see their programs or talk to them.
+func (p *devPlatform) RunningProcesses([]string, string) ([]Proc, error) { return nil, ErrUnsupported }
+func (p *devPlatform) UserSession(string) (uint32, bool)                 { return 0, false }
+func (p *devPlatform) Ask(context.Context, uint32, string, string, time.Duration, bool) (Answer, error) {
+	return 0, ErrUnsupported
+}
+func (p *devPlatform) CloseProcesses(_ context.Context, procs []Proc, _ time.Duration) ([]Proc, error) {
+	return procs, ErrUnsupported
+}

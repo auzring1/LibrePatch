@@ -17,17 +17,18 @@ import (
 )
 
 type deploymentReq struct {
-	Name                string         `json:"name"`
-	Action              string         `json:"action"`
-	PackageID           uuid.UUID      `json:"package_id"`
-	Version             string         `json:"version"`
-	Scope               string         `json:"scope"`
-	GroupIDs            []uuid.UUID    `json:"group_ids"`
-	DeviceIDs           []uuid.UUID    `json:"device_ids"`
-	StartsAt            *time.Time     `json:"starts_at"`
-	ExpiresInHours      int            `json:"expires_in_hours"`
-	Window              *deploy.Window `json:"window"`
-	UnverifiedConfirmed bool           `json:"unverified_confirmed"`
+	Name                string          `json:"name"`
+	Action              string          `json:"action"`
+	PackageID           uuid.UUID       `json:"package_id"`
+	Version             string          `json:"version"`
+	Scope               string          `json:"scope"`
+	GroupIDs            []uuid.UUID     `json:"group_ids"`
+	DeviceIDs           []uuid.UUID     `json:"device_ids"`
+	StartsAt            *time.Time      `json:"starts_at"`
+	ExpiresInHours      int             `json:"expires_in_hours"`
+	Window              *deploy.Window  `json:"window"`
+	UnverifiedConfirmed bool            `json:"unverified_confirmed"`
+	Prompts             *deploy.Prompts `json:"prompts"`
 }
 
 func (s *server) deploySvc(w http.ResponseWriter) bool {
@@ -49,7 +50,7 @@ func (s *server) createDeployment(w http.ResponseWriter, r *http.Request) {
 	p := principalFrom(r)
 	dr := deploy.Request{Name: req.Name, Action: req.Action, PackageID: req.PackageID, Version: strings.TrimSpace(req.Version), Scope: req.Scope,
 		GroupIDs: req.GroupIDs, DeviceIDs: req.DeviceIDs, ExpiresIn: time.Duration(req.ExpiresInHours) * time.Hour, Window: req.Window,
-		UnverifiedConfirmed: req.UnverifiedConfirmed, UserID: p.UserID, IP: clientIP(r)}
+		UnverifiedConfirmed: req.UnverifiedConfirmed, UserID: p.UserID, IP: clientIP(r), Prompts: req.Prompts}
 	if req.StartsAt != nil {
 		dr.StartsAt = *req.StartsAt
 	}
@@ -148,7 +149,7 @@ func (s *server) getDeployment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"id": d.ID, "name": d.Name, "action": d.Action, "scope": d.Scope, "status": d.Status,
 		"package_id": d.PackageID, "package_name": d.PackageName, "package_identifier": d.PackageIdentifier, "version": d.Version,
 		"created_at": d.CreatedAt, "starts_at": d.StartsAt, "expires_at": d.ExpiresAt, "unverified_confirmed": d.UnverifiedConfirmed,
-		"window": win, "job_counts": counts})
+		"window": win, "prompts": deploy.ParsePrompts(d.Prompts), "job_counts": counts})
 }
 
 func (s *server) deploymentJobs(w http.ResponseWriter, r *http.Request) {

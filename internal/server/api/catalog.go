@@ -286,12 +286,13 @@ func (s *server) getPackage(w http.ResponseWriter, r *http.Request) {
 		Excluded        bool                `json:"excluded"`
 		UserScopePolicy string              `json:"user_scope_policy"`
 		SelfUpdate      string              `json:"self_update_policy"`
+		Processes       []string            `json:"processes"`
 	}
-	ov := ovView{SilentArgs: []string{}, ExtraDetection: []catalog.Detection{}}
+	ov := ovView{SilentArgs: []string{}, ExtraDetection: []catalog.Detection{}, Processes: []string{}}
 	if o, err := q.GetPackageOverride(r.Context(), dbq.GetPackageOverrideParams{OrgID: pkg.OrgID, PackageID: pkg.ID}); err == nil {
 		var det []catalog.Detection
 		_ = json.Unmarshal(o.ExtraDetection, &det)
-		ov = ovView{SilentArgs: nzs(o.SilentArgs), ExtraDetection: nzdet(det), Pin: o.Pin, Excluded: o.Excluded, UserScopePolicy: o.UserScopePolicy, SelfUpdate: o.SelfUpdatePolicy}
+		ov = ovView{SilentArgs: nzs(o.SilentArgs), ExtraDetection: nzdet(det), Pin: o.Pin, Excluded: o.Excluded, UserScopePolicy: o.UserScopePolicy, SelfUpdate: o.SelfUpdatePolicy, Processes: nzs(o.Processes)}
 	}
 	orgPolicy := "report_only"
 	if os, err := q.GetOrgSettings(r.Context(), pkg.OrgID); err == nil {
@@ -325,11 +326,12 @@ func (s *server) getPackage(w http.ResponseWriter, r *http.Request) {
 		VerifiedNote   string   `json:"verified_note"`
 		SilentArgs     []string `json:"silent_args"`
 		DetectionRules int      `json:"detection_rules"`
+		Processes      []string `json:"processes"`
 	}
 	var ovl *overlayView
 	if s.Catalog != nil && s.Catalog.Overlay != nil {
 		if e, ok := s.Catalog.Overlay.EntryFor(pkg.OrgID, pkg.Identifier); ok && e.Source != "" {
-			ovl = &overlayView{Source: e.Source, Note: e.Note, Verified: e.Verified, VerifiedNote: e.VerifiedNote, SilentArgs: nzs(e.SilentArgs), DetectionRules: len(e.ExtraDetection)}
+			ovl = &overlayView{Source: e.Source, Note: e.Note, Verified: e.Verified, VerifiedNote: e.VerifiedNote, SilentArgs: nzs(e.SilentArgs), DetectionRules: len(e.ExtraDetection), Processes: nzs(e.Processes)}
 			if e.SelfUpdatingSet {
 				v := e.SelfUpdating
 				ovl.SelfUpdating = &v

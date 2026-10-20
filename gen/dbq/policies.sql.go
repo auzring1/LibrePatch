@@ -188,7 +188,7 @@ func (q *Queries) GetSoftwareHold(ctx context.Context, arg GetSoftwareHoldParams
 }
 
 const getSoftwarePolicy = `-- name: GetSoftwarePolicy :one
-SELECT id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, created_at, updated_at, use_rings, require_approval FROM software_policies WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, created_at, updated_at, use_rings, require_approval, prompts FROM software_policies WHERE id = $1 AND org_id = $2
 `
 
 type GetSoftwarePolicyParams struct {
@@ -216,6 +216,7 @@ func (q *Queries) GetSoftwarePolicy(ctx context.Context, arg GetSoftwarePolicyPa
 		&i.UpdatedAt,
 		&i.UseRings,
 		&i.RequireApproval,
+		&i.Prompts,
 	)
 	return i, err
 }
@@ -251,8 +252,8 @@ func (q *Queries) InsertSoftwareHold(ctx context.Context, arg InsertSoftwareHold
 }
 
 const insertSoftwarePolicy = `-- name: InsertSoftwarePolicy :exec
-INSERT INTO software_policies (id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, use_rings, require_approval)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+INSERT INTO software_policies (id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, use_rings, require_approval, prompts)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 `
 
 type InsertSoftwarePolicyParams struct {
@@ -270,6 +271,7 @@ type InsertSoftwarePolicyParams struct {
 	CreatedBy           *uuid.UUID
 	UseRings            bool
 	RequireApproval     bool
+	Prompts             []byte
 }
 
 func (q *Queries) InsertSoftwarePolicy(ctx context.Context, arg InsertSoftwarePolicyParams) error {
@@ -288,6 +290,7 @@ func (q *Queries) InsertSoftwarePolicy(ctx context.Context, arg InsertSoftwarePo
 		arg.CreatedBy,
 		arg.UseRings,
 		arg.RequireApproval,
+		arg.Prompts,
 	)
 	return err
 }
@@ -386,7 +389,7 @@ func (q *Queries) ListDevicesWithPackage(ctx context.Context, arg ListDevicesWit
 }
 
 const listEnabledSoftwarePolicies = `-- name: ListEnabledSoftwarePolicies :many
-SELECT id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, created_at, updated_at, use_rings, require_approval FROM software_policies WHERE enabled ORDER BY created_at, id
+SELECT id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, created_at, updated_at, use_rings, require_approval, prompts FROM software_policies WHERE enabled ORDER BY created_at, id
 `
 
 func (q *Queries) ListEnabledSoftwarePolicies(ctx context.Context) ([]SoftwarePolicy, error) {
@@ -415,6 +418,7 @@ func (q *Queries) ListEnabledSoftwarePolicies(ctx context.Context) ([]SoftwarePo
 			&i.UpdatedAt,
 			&i.UseRings,
 			&i.RequireApproval,
+			&i.Prompts,
 		); err != nil {
 			return nil, err
 		}
@@ -677,7 +681,7 @@ func (q *Queries) ListSoftwareHoldsForVersion(ctx context.Context, arg ListSoftw
 }
 
 const listSoftwarePolicies = `-- name: ListSoftwarePolicies :many
-SELECT p.id, p.org_id, p.name, p.kind, p.package_id, p.group_ids, p.delay_days, p.only_new_devices, p.unverified_confirmed, p.maint_window, p.enabled, p.created_by, p.created_at, p.updated_at, p.use_rings, p.require_approval, k.name AS package_name, k.identifier AS package_identifier
+SELECT p.id, p.org_id, p.name, p.kind, p.package_id, p.group_ids, p.delay_days, p.only_new_devices, p.unverified_confirmed, p.maint_window, p.enabled, p.created_by, p.created_at, p.updated_at, p.use_rings, p.require_approval, p.prompts, k.name AS package_name, k.identifier AS package_identifier
 FROM software_policies p JOIN catalog_packages k ON k.id = p.package_id
 WHERE p.org_id = $1 ORDER BY lower(p.name)
 `
@@ -699,6 +703,7 @@ type ListSoftwarePoliciesRow struct {
 	UpdatedAt           time.Time
 	UseRings            bool
 	RequireApproval     bool
+	Prompts             []byte
 	PackageName         string
 	PackageIdentifier   string
 }
@@ -729,6 +734,7 @@ func (q *Queries) ListSoftwarePolicies(ctx context.Context, orgID uuid.UUID) ([]
 			&i.UpdatedAt,
 			&i.UseRings,
 			&i.RequireApproval,
+			&i.Prompts,
 			&i.PackageName,
 			&i.PackageIdentifier,
 		); err != nil {
@@ -893,7 +899,7 @@ func (q *Queries) ReportJobCounts(ctx context.Context, arg ReportJobCountsParams
 
 const updateSoftwarePolicy = `-- name: UpdateSoftwarePolicy :execrows
 UPDATE software_policies SET name = $3, kind = $4, package_id = $5, group_ids = $6, delay_days = $7, only_new_devices = $8,
-    unverified_confirmed = $9, maint_window = $10, enabled = $11, use_rings = $12, require_approval = $13, updated_at = now()
+    unverified_confirmed = $9, maint_window = $10, enabled = $11, use_rings = $12, require_approval = $13, prompts = $14, updated_at = now()
 WHERE id = $1 AND org_id = $2
 `
 
@@ -911,6 +917,7 @@ type UpdateSoftwarePolicyParams struct {
 	Enabled             bool
 	UseRings            bool
 	RequireApproval     bool
+	Prompts             []byte
 }
 
 func (q *Queries) UpdateSoftwarePolicy(ctx context.Context, arg UpdateSoftwarePolicyParams) (int64, error) {
@@ -928,6 +935,7 @@ func (q *Queries) UpdateSoftwarePolicy(ctx context.Context, arg UpdateSoftwarePo
 		arg.Enabled,
 		arg.UseRings,
 		arg.RequireApproval,
+		arg.Prompts,
 	)
 	if err != nil {
 		return 0, err

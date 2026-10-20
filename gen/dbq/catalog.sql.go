@@ -174,7 +174,7 @@ func (q *Queries) GetOrgSettings(ctx context.Context, orgID uuid.UUID) (OrgSetti
 }
 
 const getPackageOverride = `-- name: GetPackageOverride :one
-SELECT org_id, package_id, silent_args, extra_detection, pin, excluded, user_scope_policy, self_update_policy, updated_by, updated_at FROM package_overrides WHERE org_id = $1 AND package_id = $2
+SELECT org_id, package_id, silent_args, extra_detection, pin, excluded, user_scope_policy, self_update_policy, updated_by, updated_at, processes FROM package_overrides WHERE org_id = $1 AND package_id = $2
 `
 
 type GetPackageOverrideParams struct {
@@ -196,6 +196,7 @@ func (q *Queries) GetPackageOverride(ctx context.Context, arg GetPackageOverride
 		&i.SelfUpdatePolicy,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.Processes,
 	)
 	return i, err
 }
@@ -622,11 +623,11 @@ func (q *Queries) UpsertOrgSettings(ctx context.Context, arg UpsertOrgSettingsPa
 }
 
 const upsertPackageOverride = `-- name: UpsertPackageOverride :exec
-INSERT INTO package_overrides (org_id, package_id, silent_args, extra_detection, pin, excluded, user_scope_policy, self_update_policy, updated_by, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+INSERT INTO package_overrides (org_id, package_id, silent_args, extra_detection, pin, excluded, user_scope_policy, self_update_policy, processes, updated_by, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
 ON CONFLICT (org_id, package_id) DO UPDATE SET silent_args = EXCLUDED.silent_args, extra_detection = EXCLUDED.extra_detection,
     pin = EXCLUDED.pin, excluded = EXCLUDED.excluded, user_scope_policy = EXCLUDED.user_scope_policy,
-    self_update_policy = EXCLUDED.self_update_policy, updated_by = EXCLUDED.updated_by, updated_at = now()
+    self_update_policy = EXCLUDED.self_update_policy, processes = EXCLUDED.processes, updated_by = EXCLUDED.updated_by, updated_at = now()
 `
 
 type UpsertPackageOverrideParams struct {
@@ -638,6 +639,7 @@ type UpsertPackageOverrideParams struct {
 	Excluded         bool
 	UserScopePolicy  string
 	SelfUpdatePolicy string
+	Processes        []string
 	UpdatedBy        *uuid.UUID
 }
 
@@ -651,6 +653,7 @@ func (q *Queries) UpsertPackageOverride(ctx context.Context, arg UpsertPackageOv
 		arg.Excluded,
 		arg.UserScopePolicy,
 		arg.SelfUpdatePolicy,
+		arg.Processes,
 		arg.UpdatedBy,
 	)
 	return err

@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/auzring1/librepatch/gen/dbq"
 	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
@@ -308,5 +309,53 @@ func TestPolicyValidationAndManagement(t *testing.T) {
 		if f.count("SELECT count(*) FROM audit_log WHERE action=$1", a) == 0 {
 			t.Errorf("no audit entry %s", a)
 		}
+	}
+}
+
+// A policy's choice about messages to the user reaches the jobs it creates, and needs the package's program names (D124).
+func TestPolicyPromptsReachTheJobs(t *testing.T) {
+	f := newFx(t)
+	d := f.device("d", time.Now())
+	f.install(d, "1.0")
+	g := f.group(d)
+	ctx := context.Background()
+	in := Input{Name: "ask", Kind: "keep_updated", PackageID: f.pkg, GroupIDs: []uuid.UUID{g}, Enabled: true, Prompts: &deploy.Prompts{InUse: "ask", Restart: "ask"}}
+	if _, err := f.svc.Create(ctx, f.actor(), in); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a package without program names: %v", err)
+	}
+	f.exec("INSERT INTO package_overrides (org_id, package_id, processes) VALUES ($1,$2,$3)", f.org, f.pkg, []string{"acme.exe"})
+	in.Prompts.AskTimeoutS = 5
+	if _, err := f.svc.Create(ctx, f.actor(), in); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a question that stays up 5 seconds: %v", err)
+	}
+	in.Prompts.AskTimeoutS = 90
+	id, err := f.svc.Create(ctx, f.actor(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, _ := f.svc.List(ctx, f.org)
+	if len(list) != 1 || list[0].ID != id || list[0].Prompts == nil || list[0].Prompts.InUse != "ask" || list[0].Prompts.AskTimeoutS != 90 {
+		t.Fatalf("the policy keeps its choice: %+v", list)
+	}
+	f.svc.Tick(ctx)
+	var raw []byte
+	if err := f.pool.QueryRow(ctx, "SELECT body FROM jobs WHERE device_id=$1 AND type IN ('software_install','software_update')", d).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var env agentv1.JobEnvelope
+	if err := proto.Unmarshal(raw, &env); err != nil {
+		t.Fatal(err)
+	}
+	pr := env.GetInstall().GetPrompts()
+	if pr == nil || pr.InUse != agentv1.InUseAction_IN_USE_ACTION_ASK || pr.Restart != agentv1.RestartPrompt_RESTART_PROMPT_ASK || len(pr.Processes) != 1 || pr.AskTimeoutS != 90 {
+		t.Fatalf("prompts in the job: %+v", pr)
+	}
+	// Taking the choice away makes the policy silent again.
+	in.Prompts = nil
+	if err := f.svc.Update(ctx, f.actor(), id, in); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = f.svc.List(ctx, f.org); list[0].Prompts != nil {
+		t.Fatalf("silent again: %+v", list[0].Prompts)
 	}
 }

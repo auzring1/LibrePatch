@@ -181,7 +181,7 @@ func ValidateInstall(b *agentv1.InstallBody, targetSID string) error {
 	if len(b.Version) > 128 || len(b.Name) > 256 || len(b.PackageId) > 200 {
 		return bad("descriptive fields too long")
 	}
-	return nil
+	return validatePrompts(b.Prompts)
 }
 
 // ValidateUninstall checks an uninstall body.

@@ -53,6 +53,10 @@ type Engine struct {
 	ReleaseKeys []ed25519.PublicKey
 	// RollbackWindow overrides the time a new version has to become healthy (tests).
 	RollbackWindow time.Duration
+	// Sleep waits d (default: a timer that ends with ctx). Tests replace it to move a fake clock.
+	Sleep func(ctx context.Context, d time.Duration)
+	// PromptPoll is how often the engine looks whether programs it asked a user to close are gone (default 5 s).
+	PromptPoll time.Duration
 	// Trust returns the pinned root, job-signing certificates and identity the
 	// user-context helper needs to re-verify a job.
 	Trust func() (root []byte, signing [][]byte, deviceID, orgID string)
@@ -481,6 +485,10 @@ func (e *Engine) runJob(ctx context.Context, r *Record, env *agentv1.JobEnvelope
 	r.Finished = now.Unix()
 
 	switch {
+	case out.waitUntil > 0:
+		r.NextRun, r.Finished = out.waitUntil, 0
+		e.setState(r, agentv1.JobState_JOB_STATE_WAITING, out.waitReason, nil)
+		return
 	case out.waitUser:
 		e.setState(r, agentv1.JobState_JOB_STATE_WAITING, "waiting_user_logon", nil)
 		return
@@ -536,6 +544,10 @@ type outcome struct {
 	waitUser  bool
 	cancelled bool
 	deferred  bool // the job outcome is reported later (agent update waiting for its restart)
+	// waitUntil, when set (unix seconds), puts the job back to WAITING until then without using up a retry:
+	// programs the update replaces are open (see inUseGate). waitReason is shown as the status reason.
+	waitUntil  int64
+	waitReason string
 }
 
 func fail(format string, a ...any) *outcome {

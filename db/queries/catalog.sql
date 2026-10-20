@@ -66,11 +66,11 @@ DELETE FROM catalog_packages WHERE id = $1 AND org_id = $2;
 SELECT * FROM package_overrides WHERE org_id = $1 AND package_id = $2;
 
 -- name: UpsertPackageOverride :exec
-INSERT INTO package_overrides (org_id, package_id, silent_args, extra_detection, pin, excluded, user_scope_policy, self_update_policy, updated_by, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+INSERT INTO package_overrides (org_id, package_id, silent_args, extra_detection, pin, excluded, user_scope_policy, self_update_policy, processes, updated_by, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
 ON CONFLICT (org_id, package_id) DO UPDATE SET silent_args = EXCLUDED.silent_args, extra_detection = EXCLUDED.extra_detection,
     pin = EXCLUDED.pin, excluded = EXCLUDED.excluded, user_scope_policy = EXCLUDED.user_scope_policy,
-    self_update_policy = EXCLUDED.self_update_policy, updated_by = EXCLUDED.updated_by, updated_at = now();
+    self_update_policy = EXCLUDED.self_update_policy, processes = EXCLUDED.processes, updated_by = EXCLUDED.updated_by, updated_at = now();
 
 -- name: GetOrgSettings :one
 SELECT * FROM org_settings WHERE org_id = $1;

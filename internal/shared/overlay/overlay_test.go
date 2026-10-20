@@ -107,6 +107,8 @@ func TestParseDocumentRefusesBadInput(t *testing.T) {
 		"duplicate":       `{"format":"librepatch-overlay/1","name":"x","version":1,"packages":[{"identifier":"A.B"},{"identifier":"a.b"}]}`,
 		"space in id":     `{"format":"librepatch-overlay/1","name":"x","version":1,"packages":[{"identifier":"A B"}]}`,
 		"unsafe argument": `{"format":"librepatch-overlay/1","name":"x","version":1,"packages":[{"identifier":"A.B","silent_args":["/S; calc"]}]}`,
+		"bad program":     `{"format":"librepatch-overlay/1","name":"x","version":1,"packages":[{"identifier":"A.B","processes":["C:\\x\\a.exe"]}]}`,
+		"windows program": `{"format":"librepatch-overlay/1","name":"x","version":1,"packages":[{"identifier":"A.B","processes":["lsass.exe"]}]}`,
 		"note too long":   `{"format":"librepatch-overlay/1","name":"x","version":1,"packages":[{"identifier":"A.B","note":"` + strings.Repeat("n", 501) + `"}]}`,
 		"orphan note":     `{"format":"librepatch-overlay/1","name":"x","version":1,"packages":[{"identifier":"A.B","verified_note":"yes"}]}`,
 		"trailing data":   `{"format":"librepatch-overlay/1","name":"x","version":1,"packages":[]} {}`,

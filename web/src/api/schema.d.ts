@@ -7654,6 +7654,7 @@ export interface components {
             use_rings?: boolean;
             /** @description A new version waits for an administrator's approval before it goes out */
             require_approval?: boolean;
+            prompts?: components["schemas"]["InstallPrompts"] | null;
             /** Format: date-time */
             created_at: string;
             /** Format: int64 */
@@ -7745,6 +7746,7 @@ export interface components {
             use_rings?: boolean;
             /** @description A new version waits for an administrator's approval */
             require_approval?: boolean;
+            prompts?: components["schemas"]["InstallPrompts"] | null;
             enabled?: boolean;
         };
         ComplianceRow: {
@@ -8179,6 +8181,8 @@ export interface components {
             user_scope_policy?: "" | "report_only" | "update_in_place" | "convert_to_machine" | "remove";
             /** @enum {string} */
             self_update_policy?: "" | "defer_to_vendor" | "enforce";
+            /** @description Image names (for example chrome.exe) of the programs an update replaces. Omit to leave the stored list unchanged. */
+            processes?: string[] | null;
         };
         PackageDetail: {
             package: components["schemas"]["Package"];
@@ -8209,6 +8213,7 @@ export interface components {
                 verified_note?: string;
                 silent_args?: string[];
                 detection_rules?: number;
+                processes?: string[];
             } | null;
         };
         OverlayChange: {
@@ -8290,6 +8295,30 @@ export interface components {
             /** @description IANA name; empty = device-local time */
             tz?: string;
         };
+        /**
+         * @description Optional messages to the signed-in user while software is installed. Omitted or all defaults = fully silent.
+         *     The programs to wait for, ask about or close are the package's `processes` (package override or signed overlay).
+         */
+        InstallPrompts: {
+            /**
+             * @description What to do when the package's programs are open: ignore = install silently; skip = wait until they are closed; ask = ask the user to let them be closed; close = warn, then close
+             * @default ignore
+             * @enum {string}
+             */
+            in_use: "ignore" | "skip" | "ask" | "close";
+            /** @description How long the question or warning stays up (0 = 300, otherwise 30 to 3600) */
+            ask_timeout_s?: number;
+            /** @description How long skip and ask wait before looking again (0 = 60, otherwise 5 to 1440) */
+            defer_minutes?: number;
+            /**
+             * @description What happens when the installer says it needs a restart: none = only report it; ask = ask the user; countdown = restart after a countdown
+             * @default none
+             * @enum {string}
+             */
+            restart: "none" | "ask" | "countdown";
+            /** @description Length of the restart countdown (0 = 5) */
+            restart_notify_minutes?: number;
+        };
         DeploymentRequest: {
             name: string;
             /** @enum {string} */
@@ -8308,6 +8337,7 @@ export interface components {
             expires_in_hours: number;
             window?: components["schemas"]["MaintenanceWindow"];
             unverified_confirmed?: boolean;
+            prompts?: components["schemas"]["InstallPrompts"] | null;
         };
         DeploymentPlan: {
             /** Format: uuid */
@@ -8363,6 +8393,7 @@ export interface components {
             expires_at?: string;
             unverified_confirmed?: boolean;
             window?: components["schemas"]["MaintenanceWindow"];
+            prompts?: components["schemas"]["InstallPrompts"] | null;
             job_counts: {
                 [key: string]: number;
             };

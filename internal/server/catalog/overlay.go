@@ -32,6 +32,7 @@ type OverlayEntry struct {
 	VerifiedNote    string      `json:"verified_note,omitempty"`
 	SilentArgs      []string    `json:"silent_args,omitempty"`
 	ExtraDetection  []Detection `json:"extra_detection,omitempty"`
+	Processes       []string    `json:"processes,omitempty"`
 }
 
 // MatrixResult is one passing VM-matrix run (docs/ARCHITECTURE.md §7.9).
@@ -158,11 +159,11 @@ func (o *Overlay) KnownFor(org uuid.UUID) []OverlayEntry {
 	return out
 }
 
-// MergeOverride layers what an overlay says under an administrator's own override: the override's silent arguments win
+// MergeOverride layers what an overlay says under an administrator's own override: the override's silent arguments and program names win
 // when it has any (the overlay's are used otherwise), and the detection rules of both are used. The result is a copy; an
 // override that is nil stays nil when the overlay adds nothing.
 func MergeOverride(ov *dbq.PackageOverride, e OverlayEntry) *dbq.PackageOverride {
-	if len(e.SilentArgs) == 0 && len(e.ExtraDetection) == 0 {
+	if len(e.SilentArgs) == 0 && len(e.ExtraDetection) == 0 && len(e.Processes) == 0 {
 		return ov
 	}
 	var out dbq.PackageOverride
@@ -171,6 +172,9 @@ func MergeOverride(ov *dbq.PackageOverride, e OverlayEntry) *dbq.PackageOverride
 	}
 	if len(out.SilentArgs) == 0 {
 		out.SilentArgs = append([]string(nil), e.SilentArgs...)
+	}
+	if len(out.Processes) == 0 {
+		out.Processes = append([]string(nil), e.Processes...)
 	}
 	if len(e.ExtraDetection) > 0 {
 		var mine []Detection

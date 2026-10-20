@@ -58,6 +58,9 @@ type Entry struct {
 	SilentArgs []string `json:"silent_args,omitempty"`
 	// ExtraDetection is a list of detection rules (the same shape as the package override's), added to the manifest's.
 	ExtraDetection json.RawMessage `json:"extra_detection,omitempty"`
+	// Processes are the image names (for example "chrome.exe") of the programs an update replaces. A deployment that asks
+	// people to close the program, or waits for them to, needs them (D124).
+	Processes []string `json:"processes,omitempty"`
 }
 
 // Document is the content of an overlay.
@@ -208,6 +211,9 @@ func ParseDocument(raw []byte) (*Document, error) {
 			return nil, invalid("package %q: a note is longer than %d characters", e.Identifier, MaxNote)
 		}
 		if err := installer.ValidateArgs(e.SilentArgs); err != nil {
+			return nil, invalid("package %q: %v", e.Identifier, err)
+		}
+		if err := installer.ValidateProcessNames(e.Processes); err != nil {
 			return nil, invalid("package %q: %v", e.Identifier, err)
 		}
 		if len(e.ExtraDetection) > MaxDetectionRaw {

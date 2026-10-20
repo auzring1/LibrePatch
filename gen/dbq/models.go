@@ -196,6 +196,21 @@ type CatalogVersion struct {
 	ImportedAt     time.Time
 }
 
+type Cfe struct {
+	ID            string
+	Published     *time.Time
+	Modified      *time.Time
+	Summary       string
+	Cvss          *float32
+	Severity      string
+	Kev           bool
+	KevName       string
+	KevAdded      pgtype.Date
+	KevDue        pgtype.Date
+	KevRansomware bool
+	KevAction     string
+}
+
 type ComplianceSnapshot struct {
 	OrgID        uuid.UUID
 	SiteID       uuid.UUID
@@ -215,6 +230,29 @@ type ContentBlob struct {
 	CreatedAt  time.Time
 }
 
+type CveProduct struct {
+	ID             uuid.UUID
+	OrgID          uuid.UUID
+	NormalizedName string
+	Vendor         string
+	Product        string
+	Source         string
+	Enabled        bool
+	CreatedAt      time.Time
+}
+
+type CveRange struct {
+	CveID     string
+	Vendor    string
+	Product   string
+	StartKey  []byte
+	StartIncl bool
+	StartText string
+	EndKey    []byte
+	EndIncl   bool
+	EndText   string
+}
+
 type Deployment struct {
 	ID                  uuid.UUID
 	OrgID               uuid.UUID
@@ -232,6 +270,7 @@ type Deployment struct {
 	Status              string
 	CreatedBy           uuid.UUID
 	CreatedAt           time.Time
+	Prompts             []byte
 }
 
 type Device struct {
@@ -461,6 +500,7 @@ type PackageOverride struct {
 	SelfUpdatePolicy string
 	UpdatedBy        *uuid.UUID
 	UpdatedAt        time.Time
+	Processes        []string
 }
 
 type PkiMaterial struct {
@@ -618,6 +658,7 @@ type SoftwarePolicy struct {
 	UpdatedAt           time.Time
 	UseRings            bool
 	RequireApproval     bool
+	Prompts             []byte
 }
 
 type SoftwareTitle struct {
@@ -657,6 +698,16 @@ type UserPreference struct {
 	UserID    uuid.UUID
 	Data      []byte
 	UpdatedAt time.Time
+}
+
+type VulnFeed struct {
+	Feed        string
+	LastOk      *time.Time
+	LastAttempt *time.Time
+	Status      string
+	LastError   string
+	Etag        string
+	Items       int32
 }
 
 type WebauthnCeremony struct {

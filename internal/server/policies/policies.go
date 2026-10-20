@@ -96,25 +96,28 @@ type Policy struct {
 	Enabled             bool           `json:"enabled"`
 	UseRings            bool           `json:"use_rings"`
 	RequireApproval     bool           `json:"require_approval"`
-	CreatedAt           time.Time      `json:"created_at"`
-	Devices             int64          `json:"devices_attempted"`
+	// Prompts are the optional messages to the signed-in user (D124); null = silent.
+	Prompts   *deploy.Prompts `json:"prompts"`
+	CreatedAt time.Time       `json:"created_at"`
+	Devices   int64           `json:"devices_attempted"`
 	// Rollout is the state of the newest version for a policy that uses rings or approval; null otherwise.
 	Rollout *RolloutView `json:"rollout"`
 }
 
 // Input is what an administrator submits.
 type Input struct {
-	Name                string         `json:"name"`
-	Kind                string         `json:"kind"`
-	PackageID           uuid.UUID      `json:"package_id"`
-	GroupIDs            []uuid.UUID    `json:"group_ids"`
-	DelayDays           int32          `json:"delay_days"`
-	OnlyNewDevices      bool           `json:"only_new_devices"`
-	UnverifiedConfirmed bool           `json:"unverified_confirmed"`
-	Window              *deploy.Window `json:"window"`
-	Enabled             bool           `json:"enabled"`
-	UseRings            bool           `json:"use_rings"`
-	RequireApproval     bool           `json:"require_approval"`
+	Name                string          `json:"name"`
+	Kind                string          `json:"kind"`
+	PackageID           uuid.UUID       `json:"package_id"`
+	GroupIDs            []uuid.UUID     `json:"group_ids"`
+	DelayDays           int32           `json:"delay_days"`
+	OnlyNewDevices      bool            `json:"only_new_devices"`
+	UnverifiedConfirmed bool            `json:"unverified_confirmed"`
+	Window              *deploy.Window  `json:"window"`
+	Enabled             bool            `json:"enabled"`
+	UseRings            bool            `json:"use_rings"`
+	RequireApproval     bool            `json:"require_approval"`
+	Prompts             *deploy.Prompts `json:"prompts"`
 }
 
 func (s *Service) validate(ctx context.Context, org uuid.UUID, in *Input) ([]byte, error) {
@@ -141,6 +144,14 @@ func (s *Service) validate(ctx context.Context, org uuid.UUID, in *Input) ([]byt
 	}
 	if pkg.Source == "winget" && !pkg.Verified && !in.UnverifiedConfirmed {
 		return nil, invalid("this winget package has not been verified on test machines; confirm that you accept that before automating it")
+	}
+	pr, err := in.Prompts.Validate()
+	if err != nil {
+		return nil, invalid("%v", strings.TrimPrefix(err.Error(), deploy.ErrInvalid.Error()+": "))
+	}
+	in.Prompts = pr
+	if err := s.Deploy.CheckPrograms(ctx, org, pkg, pr); err != nil {
+		return nil, invalid("%v", strings.TrimPrefix(err.Error(), deploy.ErrInvalid.Error()+": "))
 	}
 	for _, g := range in.GroupIDs {
 		if _, err := q.GetGroup(ctx, dbq.GetGroupParams{ID: g, OrgID: org}); err != nil {
@@ -171,10 +182,10 @@ func (s *Service) Create(ctx context.Context, a Actor, in Input) (uuid.UUID, err
 	id := uuid.New()
 	err = store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
 		if err := q.InsertSoftwarePolicy(ctx, dbq.InsertSoftwarePolicyParams{ID: id, OrgID: a.Org, Name: in.Name, Kind: in.Kind, PackageID: in.PackageID, GroupIds: in.GroupIDs,
-			DelayDays: in.DelayDays, OnlyNewDevices: in.OnlyNewDevices, UnverifiedConfirmed: in.UnverifiedConfirmed, MaintWindow: win, Enabled: in.Enabled, CreatedBy: &a.User, UseRings: in.UseRings, RequireApproval: in.RequireApproval}); err != nil {
+			DelayDays: in.DelayDays, OnlyNewDevices: in.OnlyNewDevices, UnverifiedConfirmed: in.UnverifiedConfirmed, MaintWindow: win, Enabled: in.Enabled, CreatedBy: &a.User, UseRings: in.UseRings, RequireApproval: in.RequireApproval, Prompts: deploy.MarshalPrompts(in.Prompts)}); err != nil {
 			return err
 		}
-		return s.audit(ctx, tx, a, "policy.create", id, map[string]any{"name": in.Name, "kind": in.Kind, "package": in.PackageID.String(), "groups": len(in.GroupIDs), "rings": in.UseRings, "approval": in.RequireApproval})
+		return s.audit(ctx, tx, a, "policy.create", id, map[string]any{"name": in.Name, "kind": in.Kind, "package": in.PackageID.String(), "groups": len(in.GroupIDs), "rings": in.UseRings, "approval": in.RequireApproval, "prompts": !in.Prompts.Silent()})
 	})
 	if isUnique(err) {
 		return uuid.Nil, fmt.Errorf("%w: a policy with that name already exists", ErrConflict)
@@ -190,14 +201,14 @@ func (s *Service) Update(ctx context.Context, a Actor, id uuid.UUID, in Input) e
 	}
 	err = store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
 		n, err := q.UpdateSoftwarePolicy(ctx, dbq.UpdateSoftwarePolicyParams{ID: id, OrgID: a.Org, Name: in.Name, Kind: in.Kind, PackageID: in.PackageID, GroupIds: in.GroupIDs,
-			DelayDays: in.DelayDays, OnlyNewDevices: in.OnlyNewDevices, UnverifiedConfirmed: in.UnverifiedConfirmed, MaintWindow: win, Enabled: in.Enabled, UseRings: in.UseRings, RequireApproval: in.RequireApproval})
+			DelayDays: in.DelayDays, OnlyNewDevices: in.OnlyNewDevices, UnverifiedConfirmed: in.UnverifiedConfirmed, MaintWindow: win, Enabled: in.Enabled, UseRings: in.UseRings, RequireApproval: in.RequireApproval, Prompts: deploy.MarshalPrompts(in.Prompts)})
 		if err != nil {
 			return err
 		}
 		if n == 0 {
 			return ErrNotFound
 		}
-		return s.audit(ctx, tx, a, "policy.update", id, map[string]any{"name": in.Name, "enabled": in.Enabled, "rings": in.UseRings, "approval": in.RequireApproval})
+		return s.audit(ctx, tx, a, "policy.update", id, map[string]any{"name": in.Name, "enabled": in.Enabled, "rings": in.UseRings, "approval": in.RequireApproval, "prompts": !in.Prompts.Silent()})
 	})
 	if isUnique(err) {
 		return fmt.Errorf("%w: a policy with that name already exists", ErrConflict)
@@ -235,7 +246,7 @@ func (s *Service) List(ctx context.Context, org uuid.UUID) ([]Policy, error) {
 	out := make([]Policy, 0, len(rows))
 	for _, r := range rows {
 		p := Policy{ID: r.ID, Name: r.Name, Kind: r.Kind, PackageID: r.PackageID, PackageName: r.PackageName, PackageIdentifier: r.PackageIdentifier, GroupIDs: r.GroupIds,
-			DelayDays: r.DelayDays, OnlyNewDevices: r.OnlyNewDevices, UnverifiedConfirmed: r.UnverifiedConfirmed, Enabled: r.Enabled, UseRings: r.UseRings, RequireApproval: r.RequireApproval, CreatedAt: r.CreatedAt}
+			DelayDays: r.DelayDays, OnlyNewDevices: r.OnlyNewDevices, UnverifiedConfirmed: r.UnverifiedConfirmed, Enabled: r.Enabled, UseRings: r.UseRings, RequireApproval: r.RequireApproval, Prompts: deploy.ParsePrompts(r.Prompts), CreatedAt: r.CreatedAt}
 		if len(r.MaintWindow) > 0 {
 			var w deploy.Window
 			if json.Unmarshal(r.MaintWindow, &w) == nil {
@@ -316,7 +327,7 @@ func (s *Service) run(ctx context.Context, p dbq.SoftwarePolicy) error {
 		}
 		plan, err := s.Deploy.Create(ctx, p.OrgID, deploy.Request{Name: name, Action: ro.action, PackageID: ro.pkg.ID,
 			Version: ro.ver.Version, Scope: "machine", DeviceIDs: eligible, ExpiresIn: deployLifetime, Window: windowOf(p, st), UnverifiedConfirmed: p.UnverifiedConfirmed,
-			Policy: p.ID.String(), UserID: *p.CreatedBy})
+			Policy: p.ID.String(), UserID: *p.CreatedBy, Prompts: deploy.ParsePrompts(p.Prompts)})
 		if err != nil {
 			return err
 		}

@@ -50,6 +50,8 @@ type Request struct {
 	// Policy, when set, marks a deployment created by a software policy: it is audited as the system
 	// acting for that policy rather than as the user who created the policy.
 	Policy string
+	// Prompts are the optional messages to the signed-in user (D124); nil = silent.
+	Prompts *Prompts
 }
 
 // Skip explains why a device got no job.
@@ -193,6 +195,22 @@ func (s *Service) Create(ctx context.Context, org uuid.UUID, r Request) (*Plan, 
 			ov = catalog.MergeOverride(ov, e)
 		}
 	}
+	if r.Action != "uninstall" {
+		var procs []string
+		if ov != nil {
+			procs = ov.Processes
+		}
+		pr, err := r.Prompts.Validate()
+		if err != nil {
+			return nil, err
+		}
+		if err := checkPrograms(pr, procs, pkg.Name); err != nil {
+			return nil, err
+		}
+		r.Prompts = pr
+	} else {
+		r.Prompts = nil
+	}
 	// A self-updating app (Chrome, Edge, Zoom, ...) is left to its vendor's updater unless an
 	// administrator chose to enforce versions (docs/ARCHITECTURE.md §7.7).
 	selfManaged := pkg.SelfUpdating && (ov == nil || ov.SelfUpdatePolicy != "enforce")
@@ -237,7 +255,8 @@ func (s *Service) Create(ctx context.Context, org uuid.UUID, r Request) (*Plan, 
 	err = store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
 		if err := q.InsertDeployment(ctx, dbq.InsertDeploymentParams{ID: depID, OrgID: org, Name: strings.TrimSpace(r.Name), Action: r.Action,
 			PackageID: pkg.ID, VersionID: verID, Scope: r.Scope, TargetGroupIds: nzu(r.GroupIDs), TargetDeviceIds: nzu(r.DeviceIDs),
-			StartsAt: starts, ExpiresAt: expires, MaintWindow: winJSON, UnverifiedConfirmed: r.UnverifiedConfirmed, CreatedBy: r.UserID}); err != nil {
+			StartsAt: starts, ExpiresAt: expires, MaintWindow: winJSON, UnverifiedConfirmed: r.UnverifiedConfirmed, CreatedBy: r.UserID,
+			Prompts: MarshalPrompts(r.Prompts)}); err != nil {
 			return err
 		}
 		for _, j := range pl.jobs {
@@ -252,6 +271,9 @@ func (s *Service) Create(ctx context.Context, org uuid.UUID, r Request) (*Plan, 
 		}
 		if pkg.Source == "winget" && !pkg.Verified {
 			details["unverified_confirmed"] = true
+		}
+		if !r.Prompts.Silent() {
+			details["in_use"], details["restart"] = r.Prompts.InUse, r.Prompts.Restart
 		}
 		actorType, actorID := audit.ActorUser, r.UserID.String()
 		if r.Policy != "" {
@@ -406,7 +428,16 @@ func (p *planner) addJobWhen(device uuid.UUID, sid string, typ agentv1.JobType, 
 }
 
 func (p *planner) installBody(inst *dbq.CatalogInstaller, scope string, update bool) (*agentv1.InstallBody, error) {
-	return catalog.BuildInstallBody(catalog.BuildInput{Pkg: p.pkg, Ver: *p.version, Inst: *inst, Override: p.ov, Scope: scope, Update: update})
+	body, err := catalog.BuildInstallBody(catalog.BuildInput{Pkg: p.pkg, Ver: *p.version, Inst: *inst, Override: p.ov, Scope: scope, Update: update})
+	if err != nil {
+		return nil, err
+	}
+	var procs []string
+	if p.ov != nil {
+		procs = p.ov.Processes
+	}
+	body.Prompts = p.req.Prompts.Proto(procs)
+	return body, nil
 }
 
 func (p *planner) title(verb, who string) string {

@@ -1,7 +1,7 @@
 -- name: InsertDeployment :exec
 INSERT INTO deployments (id, org_id, name, action, package_id, version_id, scope, target_group_ids, target_device_ids,
-    starts_at, expires_at, maint_window, unverified_confirmed, status, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active', $14);
+    starts_at, expires_at, maint_window, unverified_confirmed, status, created_by, prompts)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active', $14, $15);
 
 -- name: GetDeployment :one
 SELECT d.*, p.name AS package_name, p.identifier AS package_identifier, v.version AS version

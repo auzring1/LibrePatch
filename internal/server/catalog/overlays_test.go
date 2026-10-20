@@ -221,6 +221,14 @@ func TestMergeOverrideLayersTheOverlayUnderTheAdministrator(t *testing.T) {
 	if own.SilentArgs[0] != "/VERYSILENT" || strings.Contains(string(own.ExtraDetection), "HKLM") {
 		t.Fatal("the administrator's override must not be changed")
 	}
+	// Program names: the administrator's list wins; the overlay's are used when there is none.
+	pe := OverlayEntry{Processes: []string{"acme.exe"}}
+	if got := MergeOverride(nil, pe); got == nil || len(got.Processes) != 1 || got.Processes[0] != "acme.exe" {
+		t.Fatalf("overlay programs: %+v", got)
+	}
+	if got := MergeOverride(&dbq.PackageOverride{Processes: []string{"mine.exe"}}, pe); got.Processes[0] != "mine.exe" {
+		t.Fatalf("own programs must win: %+v", got.Processes)
+	}
 	// An entry with nothing to add returns the override as it is, including nil.
 	if MergeOverride(nil, OverlayEntry{}) != nil || MergeOverride(own, OverlayEntry{}) != own {
 		t.Fatal("an empty entry must change nothing")

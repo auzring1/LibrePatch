@@ -1,10 +1,10 @@
 -- name: InsertSoftwarePolicy :exec
-INSERT INTO software_policies (id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, use_rings, require_approval)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
+INSERT INTO software_policies (id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, use_rings, require_approval, prompts)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);
 
 -- name: UpdateSoftwarePolicy :execrows
 UPDATE software_policies SET name = $3, kind = $4, package_id = $5, group_ids = $6, delay_days = $7, only_new_devices = $8,
-    unverified_confirmed = $9, maint_window = $10, enabled = $11, use_rings = $12, require_approval = $13, updated_at = now()
+    unverified_confirmed = $9, maint_window = $10, enabled = $11, use_rings = $12, require_approval = $13, prompts = $14, updated_at = now()
 WHERE id = $1 AND org_id = $2;
 
 -- name: DeleteSoftwarePolicy :execrows

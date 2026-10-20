@@ -367,6 +367,8 @@ type Override struct {
 	Excluded        bool        `json:"excluded"`
 	UserScopePolicy string      `json:"user_scope_policy"`
 	SelfUpdate      string      `json:"self_update_policy"`
+	// Processes are the image names of the programs an update replaces (D124). nil = leave what is stored.
+	Processes *[]string `json:"processes"`
 }
 
 // ValidatePin accepts "", "latest", "= <version>" or "< <version>".
@@ -401,13 +403,24 @@ func (s *Service) SetOverride(ctx context.Context, org, user, pkg uuid.UUID, o O
 	if o.SelfUpdate != "" && o.SelfUpdate != "defer_to_vendor" && o.SelfUpdate != "enforce" {
 		return invalid("self_update_policy must be defer_to_vendor or enforce")
 	}
+	if o.Processes != nil {
+		if err := installer.ValidateProcessNames(*o.Processes); err != nil {
+			return invalid("%v", err)
+		}
+	}
 	q := dbq.New(s.Pool)
 	if _, err := q.GetCatalogPackage(ctx, dbq.GetCatalogPackageParams{ID: pkg, OrgID: org}); err != nil {
 		return err
 	}
+	var procs []string
+	if o.Processes != nil {
+		procs = *o.Processes
+	} else if cur, err := q.GetPackageOverride(ctx, dbq.GetPackageOverrideParams{OrgID: org, PackageID: pkg}); err == nil {
+		procs = cur.Processes // a client that does not know about programs must not erase them
+	}
 	det, _ := json.Marshal(nzd(o.ExtraDetection))
 	return q.UpsertPackageOverride(ctx, dbq.UpsertPackageOverrideParams{OrgID: org, PackageID: pkg, SilentArgs: nz(o.SilentArgs),
-		ExtraDetection: det, Pin: o.Pin, Excluded: o.Excluded, UserScopePolicy: o.UserScopePolicy, SelfUpdatePolicy: o.SelfUpdate, UpdatedBy: &user})
+		ExtraDetection: det, Pin: o.Pin, Excluded: o.Excluded, UserScopePolicy: o.UserScopePolicy, SelfUpdatePolicy: o.SelfUpdate, Processes: nz(procs), UpdatedBy: &user})
 }
 
 func contains(s []string, x string) bool {

@@ -219,6 +219,36 @@ message RebootBody {
   string reason = 2;                 // shown to signed-in users, plain text, bounded
 }
 
+// InUseAction says what an installation does when programs it replaces are open. Silent is the default: nothing
+// here changes how an installation runs unless an administrator chose one of the other values.
+enum InUseAction {
+  IN_USE_ACTION_UNSPECIFIED = 0;  // same as IGNORE
+  IN_USE_ACTION_IGNORE = 1;       // install silently regardless (the installer deals with it)
+  IN_USE_ACTION_SKIP = 2;         // do not prompt; try again later until the programs are closed
+  IN_USE_ACTION_ASK = 3;          // ask the signed-in user; Yes closes the programs, No/no answer = try again later
+  IN_USE_ACTION_CLOSE = 4;        // warn the signed-in user, then close the programs
+}
+
+// RestartPrompt says what happens after an installer reports that it needs a restart.
+enum RestartPrompt {
+  RESTART_PROMPT_UNSPECIFIED = 0;  // same as NONE
+  RESTART_PROMPT_NONE = 1;         // only report "restart required" (the administrator restarts it)
+  RESTART_PROMPT_ASK = 2;          // ask the signed-in user; Yes restarts after a short countdown, No/no answer leaves it
+  RESTART_PROMPT_COUNTDOWN = 3;    // restart after a countdown that signed-in users see
+}
+
+// InstallPrompts are the optional messages to the signed-in user. Absent or all-default = fully silent.
+message InstallPrompts {
+  InUseAction in_use = 1;
+  // Image names (for example "chrome.exe") of the programs the installation replaces. No paths. Only programs
+  // running in a signed-in user's session are asked about or closed.
+  repeated string processes = 2;
+  uint32 ask_timeout_s = 3;       // how long the question (ASK) or the warning (CLOSE) is shown, 30..3600; 0 = 300
+  uint32 defer_minutes = 4;       // SKIP and ASK: wait this long before looking again, 5..1440; 0 = 60
+  RestartPrompt restart = 5;
+  uint32 restart_notify_minutes = 6;  // length of the restart countdown, 1..1440; 0 = 5
+}
+
 message InstallBody {
   string package_id = 1;          // catalog identifier, informational
   string name = 2;
@@ -233,6 +263,7 @@ message InstallBody {
   RebootAllow reboot = 11;
   bool allow_downgrade = 12;
   bool update = 13;               // an upgrade of an existing install (job type SOFTWARE_UPDATE)
+  InstallPrompts prompts = 14;    // optional messages to the signed-in user (D124)
 }
 
 enum UninstallMethod {

@@ -96,6 +96,24 @@ type fakePlatform struct {
 	rebootErr error // returned by Reboot after the call is recorded
 	reboots   []rebootCall
 	aborts    int
+
+	// user prompts (D124)
+	procs     []Proc    // programs "running" now
+	answers   []Answer  // what the user answers, in order (empty = Yes)
+	asks      []askCall // every question shown
+	closed    [][]Proc  // every CloseProcesses call
+	noClose   bool      // programs ignore the request to close
+	noSession bool      // nobody is signed in
+	procsErr  error     // RunningProcesses fails
+	onAsk     func()    // runs when a question is shown (a program may close meanwhile)
+}
+
+type askCall struct {
+	session uint32
+	title   string
+	message string
+	yesNo   bool
+	timeout time.Duration
 }
 
 type rebootCall struct {
@@ -305,9 +323,14 @@ type fakeFetcher struct {
 	data map[string][]byte // by kind+url
 	err  error
 	n    int
+	// onOpen runs when a download starts (a program may be opened meanwhile).
+	onOpen func()
 }
 
 func (f *fakeFetcher) Open(_ context.Context, src *agentv1.ContentSource, _ string, _ []byte) (io.ReadCloser, error) {
+	if f.onOpen != nil {
+		f.onOpen()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.n++
@@ -492,4 +515,62 @@ func (f *fakePlatform) SelfUpdater() selfupdate.Platform {
 		return nil
 	}
 	return f.su
+}
+
+func (f *fakePlatform) RunningProcesses(names []string, _ string) ([]Proc, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.procsErr != nil {
+		return nil, f.procsErr
+	}
+	var out []Proc
+	for _, p := range f.procs {
+		for _, n := range names {
+			if strings.EqualFold(p.Name, n) {
+				out = append(out, p)
+			}
+		}
+	}
+	return out, nil
+}
+func (f *fakePlatform) UserSession(string) (uint32, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return 1, !f.noSession
+}
+func (f *fakePlatform) Ask(_ context.Context, session uint32, title, msg string, timeout time.Duration, yesNo bool) (Answer, error) {
+	f.mu.Lock()
+	f.asks = append(f.asks, askCall{session, title, msg, yesNo, timeout})
+	ans := AnswerYes
+	if len(f.answers) > 0 {
+		ans, f.answers = f.answers[0], f.answers[1:]
+	}
+	hook := f.onAsk
+	f.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	return ans, nil
+}
+func (f *fakePlatform) CloseProcesses(_ context.Context, procs []Proc, _ time.Duration) ([]Proc, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closed = append(f.closed, procs)
+	if f.noClose {
+		return procs, nil
+	}
+	var keep []Proc
+	for _, p := range f.procs {
+		gone := false
+		for _, c := range procs {
+			if c.PID == p.PID {
+				gone = true
+			}
+		}
+		if !gone {
+			keep = append(keep, p)
+		}
+	}
+	f.procs = keep
+	return nil, nil
 }

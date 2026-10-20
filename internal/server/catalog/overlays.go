@@ -402,7 +402,7 @@ func (s *Service) ReloadOverlays(ctx context.Context, org uuid.UUID) error {
 			if _, taken := m[key]; taken {
 				continue
 			}
-			oe := OverlayEntry{Identifier: e.Identifier, Note: e.Note, Source: r.Label, Verified: e.Verified, VerifiedNote: e.VerifiedNote, SilentArgs: e.SilentArgs}
+			oe := OverlayEntry{Identifier: e.Identifier, Note: e.Note, Source: r.Label, Verified: e.Verified, VerifiedNote: e.VerifiedNote, SilentArgs: e.SilentArgs, Processes: e.Processes}
 			if e.SelfUpdating != nil {
 				oe.SelfUpdating, oe.SelfUpdatingSet = *e.SelfUpdating, true
 			}
@@ -509,13 +509,13 @@ func (s *Service) Template(ctx context.Context, org uuid.UUID, orgName string) (
 	}
 	for _, p := range pkgs {
 		ov, err := q.GetPackageOverride(ctx, dbq.GetPackageOverrideParams{OrgID: org, PackageID: p.ID})
-		hasOv := err == nil && (len(ov.SilentArgs) > 0 || string(ov.ExtraDetection) != "" && string(ov.ExtraDetection) != "[]" && string(ov.ExtraDetection) != "null")
+		hasOv := err == nil && (len(ov.SilentArgs) > 0 || len(ov.Processes) > 0 || string(ov.ExtraDetection) != "" && string(ov.ExtraDetection) != "[]" && string(ov.ExtraDetection) != "null")
 		if !hasOv && !p.VerifiedByOrg {
 			continue
 		}
 		e := overlay.Entry{Identifier: p.Identifier}
 		if hasOv {
-			e.SilentArgs = ov.SilentArgs
+			e.SilentArgs, e.Processes = ov.SilentArgs, ov.Processes
 			if d := strings.TrimSpace(string(ov.ExtraDetection)); d != "" && d != "[]" && d != "null" {
 				e.ExtraDetection = json.RawMessage(ov.ExtraDetection)
 			}
