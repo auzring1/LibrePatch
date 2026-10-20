@@ -92,6 +92,7 @@ func (g *Gateway) Connect(stream agentv1.AgentChannelService_ConnectServer) erro
 		HeartbeatIntervalS: uint32(g.cfg.HeartbeatInterval.Seconds()),
 		RenewCertificate:   renewDue(ident, g.cfg.DeviceCertLifetime, now),
 	}
+	ack.PeerCache = g.peerPolicy(ctx, dev.OrgID)
 	if dev.HardwareRev < 0 || hello.Revs["hardware"] != uint64(dev.HardwareRev) { // #nosec G115 -- negative values handled first
 		ack.ResyncSections = append(ack.ResyncSections, agentv1.InventorySection_INVENTORY_SECTION_HARDWARE)
 	}
@@ -196,7 +197,7 @@ func (g *Gateway) handle(ctx context.Context, c *conn, dev dbq.Device, m *agentv
 		hb := msg.Heartbeat
 		if err := q.UpdateDeviceHeartbeat(ctx, dbq.UpdateDeviceHeartbeatParams{ID: dev.ID, LastSeenAt: &now,
 			UptimeS: clampI64(hb.UptimeS), PendingReboot: g.restartPending(ctx, dev.OrgID, hb.PendingReboot, hb.QueuedFileDeletes), LoggedOnUser: cleanField(hb.LoggedOnUser, 256),
-			SystemDriveFreeBytes: freeBytes(hb)}); err != nil {
+			SystemDriveFreeBytes: freeBytes(hb), PeerPort: int32(min(hb.PeerPort, 65535))}); err != nil { // #nosec G115 -- capped
 			return err
 		}
 		g.events.Publish(dev.OrgID, events.Event{Type: events.DeviceUpdated, DeviceID: dev.ID})
@@ -299,4 +300,16 @@ func (g *Gateway) securityAudit(ctx context.Context, dev dbq.Device, reason stri
 	_ = audit.Log(ctx, g.pool, audit.Entry{OrgID: &dev.OrgID, ActorType: audit.ActorDevice, ActorID: dev.ID.String(),
 		ActorIP: peerIP(ctx), Action: "gateway.protocol_violation", TargetType: "device", TargetIDs: []string{dev.ID.String()},
 		Outcome: audit.Denied, Details: map[string]any{"reason": reason}})
+}
+
+// peerPolicy is the organization's choice about sharing downloaded installers between devices (D126).
+func (g *Gateway) peerPolicy(ctx context.Context, org uuid.UUID) *agentv1.PeerCachePolicy {
+	if g.settings == nil {
+		return nil
+	}
+	v := g.settings.Peek(ctx, org, "downloads")
+	if !v.Bool("peer_cache") {
+		return nil
+	}
+	return &agentv1.PeerCachePolicy{Enabled: true, Port: uint32(v.Int("peer_cache_port")), MaxMb: uint32(v.Int("peer_cache_mb"))} // #nosec G115 -- validated ranges
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/auzring1/librepatch/internal/server/audit"
 	"github.com/auzring1/librepatch/internal/server/store"
 	"github.com/auzring1/librepatch/internal/shared/text"
+	"google.golang.org/protobuf/proto"
 )
 
 // ErrUnknownJob is returned when a device reports on a job that is not its own.
@@ -118,6 +119,12 @@ func (s *Service) ApplyUpdate(ctx context.Context, dev dbq.Device, u *agentv1.Jo
 				if err := q.InsertDeviceView(ctx, dbq.InsertDeviceViewParams{JobID: id, OrgID: job.OrgID, DeviceID: dev.ID, Kind: kind, Data: raw}); err != nil {
 					return err
 				}
+			}
+		}
+		// A device that finished an install from a file has that file in its cache and can be offered as a peer for it (D126).
+		if (job.Type == "software_install" || job.Type == "software_update") && (status == "succeeded" || status == "succeeded_reboot") {
+			if err := notePeerContent(ctx, q, dev.ID, job.Body, s.now()); err != nil {
+				return err
 			}
 		}
 		msg := clean(u.Reason, 128)
@@ -319,4 +326,16 @@ func viewData(data string) (kind string, raw []byte, ok bool) {
 		return head.Kind, []byte(data), true
 	}
 	return "", nil, false
+}
+
+// installerSHA is the SHA-256 of the installer a stored install job carries (nil when it has none).
+func installerSHA(body []byte) []byte {
+	var env agentv1.JobEnvelope
+	if proto.Unmarshal(body, &env) != nil {
+		return nil
+	}
+	if sha := env.GetInstall().GetInstaller().GetSha256(); len(sha) == 32 {
+		return sha
+	}
+	return nil
 }

@@ -87,7 +87,7 @@ func EventReference() []EventDoc {
 // audit trail, search and the console's form follow; a test checks that every field has a label, help and a default
 // that passes its own validation.
 var Sections = []Section{
-	appearance, security, notifications, updates, devices, reports, data, integrations, vulnerabilities,
+	appearance, security, notifications, updates, devices, downloads, reports, data, integrations, vulnerabilities,
 }
 
 // ByID returns a section.
@@ -295,6 +295,19 @@ var devices = Section{
 			}},
 		{Key: "default_columns", Label: "Device list columns", Kind: Multi, Default: []any{"hostname", "status", "connection", "os", "user", "seen", "agent"}, Min: 1, Options: DeviceColumns, Effect: Live,
 			Help: "The columns the device list shows for people who have not arranged their own."},
+	},
+}
+
+var downloads = Section{
+	ID: "downloads", Label: "Downloads", Perm: PermDevices,
+	Description: "How devices get the installers they install. By default each device downloads from the vendor (or from this server) itself.",
+	Fields: []Field{
+		{Key: "peer_cache", Label: "Share downloads between computers on the same network", Kind: Bool, Default: false, Effect: Live,
+			Help: "A device that has installed a program keeps the installer and hands it to other devices on the same network, so a few hundred PCs do not each download it from the internet. Every file is still checked against the fingerprint signed into the job, wherever it came from, and devices only talk to each other with their own certificates. It opens a port on each device (the agent adds the Windows Firewall rule for private and domain networks) and uses disk space on each. Takes effect as devices reconnect; an agent installed with a limit on its allowed jobs that leaves out peer_cache never shares."},
+		{Key: "peer_cache_mb", Label: "Disk space for shared installers on each device", Kind: Int, Default: 2048, Min: 256, Max: 20480, Unit: "MB", ShowIf: "peer_cache", Effect: Live,
+			Help: "The oldest installers are removed first when the limit is reached; installers unused for two weeks are removed. Turning sharing off empties the cache."},
+		{Key: "peer_cache_port", Label: "Port for sharing", Kind: Int, Default: 7421, Min: 1024, Max: 65535, ShowIf: "peer_cache", Effect: Live,
+			Help: "TCP port each device listens on, for other devices on the same network only. Change it only if something else uses it."},
 	},
 }
 

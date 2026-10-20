@@ -280,6 +280,9 @@ const (
 	ContentSourceKind_CONTENT_SOURCE_KIND_UNSPECIFIED ContentSourceKind = 0
 	ContentSourceKind_CONTENT_SOURCE_KIND_SERVER      ContentSourceKind = 1 // gateway FetchContent, authorized by this job
 	ContentSourceKind_CONTENT_SOURCE_KIND_VENDOR      ContentSourceKind = 2 // HTTPS URL from the catalog
+	// Another agent on the same network that has the file in its cache (D126): "https://<private IPv4>:<port>". Peers
+	// authenticate each other with their device certificates; the SHA-256 still decides.
+	ContentSourceKind_CONTENT_SOURCE_KIND_PEER ContentSourceKind = 3
 )
 
 // Enum value maps for ContentSourceKind.
@@ -288,11 +291,13 @@ var (
 		0: "CONTENT_SOURCE_KIND_UNSPECIFIED",
 		1: "CONTENT_SOURCE_KIND_SERVER",
 		2: "CONTENT_SOURCE_KIND_VENDOR",
+		3: "CONTENT_SOURCE_KIND_PEER",
 	}
 	ContentSourceKind_value = map[string]int32{
 		"CONTENT_SOURCE_KIND_UNSPECIFIED": 0,
 		"CONTENT_SOURCE_KIND_SERVER":      1,
 		"CONTENT_SOURCE_KIND_VENDOR":      2,
+		"CONTENT_SOURCE_KIND_PEER":        3,
 	}
 )
 
@@ -2955,11 +2960,12 @@ const file_librepatch_agent_v1_envelope_proto_rawDesc = "" +
 	"\x13JOB_OUTCOME_SUCCESS\x10\x01\x12\x1f\n" +
 	"\x1bJOB_OUTCOME_REBOOT_REQUIRED\x10\x02\x12\x19\n" +
 	"\x15JOB_OUTCOME_RETRYABLE\x10\x03\x12\x16\n" +
-	"\x12JOB_OUTCOME_FAILED\x10\x04*x\n" +
+	"\x12JOB_OUTCOME_FAILED\x10\x04*\x96\x01\n" +
 	"\x11ContentSourceKind\x12#\n" +
 	"\x1fCONTENT_SOURCE_KIND_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aCONTENT_SOURCE_KIND_SERVER\x10\x01\x12\x1e\n" +
-	"\x1aCONTENT_SOURCE_KIND_VENDOR\x10\x02*\x9e\x01\n" +
+	"\x1aCONTENT_SOURCE_KIND_VENDOR\x10\x02\x12\x1c\n" +
+	"\x18CONTENT_SOURCE_KIND_PEER\x10\x03*\x9e\x01\n" +
 	"\rDetectionKind\x12\x1e\n" +
 	"\x1aDETECTION_KIND_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aDETECTION_KIND_MSI_PRODUCT\x10\x01\x12\x1b\n" +

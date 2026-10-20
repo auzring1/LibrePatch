@@ -4493,6 +4493,7 @@ components:
         uptime_s: { type: integer }
         pending_reboot: { type: boolean }
         logged_on_user: { type: string }
+        peer_port: { type: integer, description: "Port on which the device shares downloaded installers with others on its network (0 = not sharing)" }
         replaces_device_id: { type: string, format: uuid, nullable: true }
         chassis: { type: string }
         software_count: { type: integer }

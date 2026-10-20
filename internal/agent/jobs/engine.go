@@ -57,6 +57,8 @@ type Engine struct {
 	// LocalNets and SendUDP are the network of this computer and how a packet leaves it (Wake-on-LAN; tests replace both).
 	LocalNets func() []LocalNet
 	SendUDP   func(local net.IP, dest string, pkt []byte) error
+	// CacheFile, if set, is told about every installer that passed the hash check, so it can be kept for other computers.
+	CacheFile func(path string, sha []byte)
 	// Sleep waits d (default: a timer that ends with ctx). Tests replace it to move a fake clock.
 	Sleep func(ctx context.Context, d time.Duration)
 	// PromptPoll is how often the engine looks whether programs it asked a user to close are gone (default 5 s).

@@ -8721,6 +8721,8 @@ export interface components {
             uptime_s?: number;
             pending_reboot?: boolean;
             logged_on_user?: string;
+            /** @description Port on which the device shares downloaded installers with others on its network (0 = not sharing) */
+            peer_port?: number;
             /** Format: uuid */
             replaces_device_id?: string | null;
             chassis?: string;

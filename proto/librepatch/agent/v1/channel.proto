@@ -61,6 +61,15 @@ message HelloAck {
   uint32 heartbeat_interval_s = 5;
   // Server suggests renewal when the certificate is inside the renewal window.
   bool renew_certificate = 6;
+  PeerCachePolicy peer_cache = 7;
+}
+
+// PeerCachePolicy is the organization's choice about sharing downloaded installers between computers on one network
+// (D126). An agent whose local configuration says "never" ignores it.
+message PeerCachePolicy {
+  bool enabled = 1;
+  uint32 port = 2;        // TCP port to listen on, 1024..65535
+  uint32 max_mb = 3;      // size of the cache, 256..20480
 }
 
 message SigningKeyRevocation {
@@ -76,6 +85,7 @@ message Heartbeat {
   uint64 system_drive_free_bytes = 3;
   string logged_on_user = 4;
   bool queued_file_deletes = 5; // files are queued for deletion at the next boot (see HardwareInventory)
+  uint32 peer_port = 6;         // the port this agent shares downloads on (D126); 0 = not sharing
 }
 
 message Ack {

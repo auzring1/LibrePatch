@@ -98,6 +98,9 @@ enum ContentSourceKind {
   CONTENT_SOURCE_KIND_UNSPECIFIED = 0;
   CONTENT_SOURCE_KIND_SERVER = 1;   // gateway FetchContent, authorized by this job
   CONTENT_SOURCE_KIND_VENDOR = 2;   // HTTPS URL from the catalog
+  // Another agent on the same network that has the file in its cache (D126): "https://<private IPv4>:<port>". Peers
+  // authenticate each other with their device certificates; the SHA-256 still decides.
+  CONTENT_SOURCE_KIND_PEER = 3;
 }
 
 // ContentSource is untrusted: bytes must match Installer.sha256 whatever the origin.

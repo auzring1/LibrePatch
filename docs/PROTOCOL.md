@@ -180,7 +180,7 @@ InstallBody {
   package_id, name, version            // informational; shown in logs
   scope [MACHINE|USER]                 // must agree with target_user_sid
   installer { type, nested_type, nested_path, sha256 (required), size, file_name,
-              sources[] (server content and/or vendor URL), args[] (validated tokens only),
+              sources[] (server content, vendor URL, or a peer on the same network, D126), args[] (validated tokens only),
               success_codes[], expected_codes[], signer_pin? { subject, thumbprint_sha256[] } }
   detection[] { kind [MSI|REGISTRY|FILE|APPX], key, value_name, version, cmp [EQ|GE] }
   preconditions { min_free_mb, os_build_min }

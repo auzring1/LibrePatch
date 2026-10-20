@@ -269,7 +269,7 @@ The ring promoter moves to the next ring once the time has passed and the succes
 
 The agent tries an ordered list of `ContentSource`s, and **every source is untrusted**. The bytes must match the SHA-256 in the signed job no matter where they came from. That's what makes adding peer-to-peer later safe.
 
-1. *Peer cache* (interface stub only in v1).
+1. *Peer cache* (D126): other agents on the same network that have the file, offered by the server as `PEER` sources in the signed job; off unless the organization turns it on.
 2. Server content endpoint (`/v1/content/{sha256}`, over mTLS, supports ranges and resume), used when cached or custom.
 3. Vendor URL from the manifest (HTTPS, system trust store, with a size limit taken from the catalog).
 

@@ -3,6 +3,7 @@ package jobs
 import (
 	"errors"
 	"fmt"
+	"github.com/auzring1/librepatch/internal/agent/peercache"
 	"net/url"
 	"regexp"
 	"strings"
@@ -155,6 +156,10 @@ func ValidateInstall(b *agentv1.InstallBody, targetSID string) error {
 			u, err := url.Parse(s.Url)
 			if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || len(s.Url) > 2048 {
 				return bad("vendor sources must be https URLs")
+			}
+		case agentv1.ContentSourceKind_CONTENT_SOURCE_KIND_PEER:
+			if _, err := peercache.ValidURL(s.Url); err != nil {
+				return bad("%v", err)
 			}
 		default:
 			return bad("unknown content source")

@@ -198,7 +198,7 @@ func (q *Queries) DeleteEnrollmentToken(ctx context.Context, arg DeleteEnrollmen
 }
 
 const findActiveDeviceByHardware = `-- name: FindActiveDeviceByHardware :one
-SELECT id, org_id, site_id, status, status_reason, hostname, smbios_uuid, serial, os_caption, os_build, arch, agent_version, enrolled_via, replaces_device_id, enroll_ticket_hash, pending_csr, enrolled_at, approved_by, approved_at, revoked_by, revoked_at, last_seen_at, online, last_ip, hardware, hardware_rev, hardware_updated_at, uptime_s, pending_reboot, logged_on_user, software_rev, users_rev, software_updated_at, software_count, inventory_truncated, chassis, manufacturer, model, ram_bytes, os_build_num, wu_rev, wu_scanned_at, wu_scan_error, wu_reboot_required, wu_policy, wu_service, wu_truncated, wu_settings_rev, system_drive_free_bytes FROM devices
+SELECT id, org_id, site_id, status, status_reason, hostname, smbios_uuid, serial, os_caption, os_build, arch, agent_version, enrolled_via, replaces_device_id, enroll_ticket_hash, pending_csr, enrolled_at, approved_by, approved_at, revoked_by, revoked_at, last_seen_at, online, last_ip, hardware, hardware_rev, hardware_updated_at, uptime_s, pending_reboot, logged_on_user, software_rev, users_rev, software_updated_at, software_count, inventory_truncated, chassis, manufacturer, model, ram_bytes, os_build_num, wu_rev, wu_scanned_at, wu_scan_error, wu_reboot_required, wu_policy, wu_service, wu_truncated, wu_settings_rev, system_drive_free_bytes, peer_port FROM devices
 WHERE org_id = $1 AND status = 'active' AND smbios_uuid = $2 AND serial = $3
   AND smbios_uuid <> '' AND serial <> ''
 ORDER BY enrolled_at DESC LIMIT 1
@@ -263,12 +263,13 @@ func (q *Queries) FindActiveDeviceByHardware(ctx context.Context, arg FindActive
 		&i.WuTruncated,
 		&i.WuSettingsRev,
 		&i.SystemDriveFreeBytes,
+		&i.PeerPort,
 	)
 	return i, err
 }
 
 const getDevice = `-- name: GetDevice :one
-SELECT id, org_id, site_id, status, status_reason, hostname, smbios_uuid, serial, os_caption, os_build, arch, agent_version, enrolled_via, replaces_device_id, enroll_ticket_hash, pending_csr, enrolled_at, approved_by, approved_at, revoked_by, revoked_at, last_seen_at, online, last_ip, hardware, hardware_rev, hardware_updated_at, uptime_s, pending_reboot, logged_on_user, software_rev, users_rev, software_updated_at, software_count, inventory_truncated, chassis, manufacturer, model, ram_bytes, os_build_num, wu_rev, wu_scanned_at, wu_scan_error, wu_reboot_required, wu_policy, wu_service, wu_truncated, wu_settings_rev, system_drive_free_bytes FROM devices WHERE id = $1
+SELECT id, org_id, site_id, status, status_reason, hostname, smbios_uuid, serial, os_caption, os_build, arch, agent_version, enrolled_via, replaces_device_id, enroll_ticket_hash, pending_csr, enrolled_at, approved_by, approved_at, revoked_by, revoked_at, last_seen_at, online, last_ip, hardware, hardware_rev, hardware_updated_at, uptime_s, pending_reboot, logged_on_user, software_rev, users_rev, software_updated_at, software_count, inventory_truncated, chassis, manufacturer, model, ram_bytes, os_build_num, wu_rev, wu_scanned_at, wu_scan_error, wu_reboot_required, wu_policy, wu_service, wu_truncated, wu_settings_rev, system_drive_free_bytes, peer_port FROM devices WHERE id = $1
 `
 
 func (q *Queries) GetDevice(ctx context.Context, id uuid.UUID) (Device, error) {
@@ -324,12 +325,13 @@ func (q *Queries) GetDevice(ctx context.Context, id uuid.UUID) (Device, error) {
 		&i.WuTruncated,
 		&i.WuSettingsRev,
 		&i.SystemDriveFreeBytes,
+		&i.PeerPort,
 	)
 	return i, err
 }
 
 const getDeviceByTicketHash = `-- name: GetDeviceByTicketHash :one
-SELECT id, org_id, site_id, status, status_reason, hostname, smbios_uuid, serial, os_caption, os_build, arch, agent_version, enrolled_via, replaces_device_id, enroll_ticket_hash, pending_csr, enrolled_at, approved_by, approved_at, revoked_by, revoked_at, last_seen_at, online, last_ip, hardware, hardware_rev, hardware_updated_at, uptime_s, pending_reboot, logged_on_user, software_rev, users_rev, software_updated_at, software_count, inventory_truncated, chassis, manufacturer, model, ram_bytes, os_build_num, wu_rev, wu_scanned_at, wu_scan_error, wu_reboot_required, wu_policy, wu_service, wu_truncated, wu_settings_rev, system_drive_free_bytes FROM devices WHERE enroll_ticket_hash = $1
+SELECT id, org_id, site_id, status, status_reason, hostname, smbios_uuid, serial, os_caption, os_build, arch, agent_version, enrolled_via, replaces_device_id, enroll_ticket_hash, pending_csr, enrolled_at, approved_by, approved_at, revoked_by, revoked_at, last_seen_at, online, last_ip, hardware, hardware_rev, hardware_updated_at, uptime_s, pending_reboot, logged_on_user, software_rev, users_rev, software_updated_at, software_count, inventory_truncated, chassis, manufacturer, model, ram_bytes, os_build_num, wu_rev, wu_scanned_at, wu_scan_error, wu_reboot_required, wu_policy, wu_service, wu_truncated, wu_settings_rev, system_drive_free_bytes, peer_port FROM devices WHERE enroll_ticket_hash = $1
 `
 
 func (q *Queries) GetDeviceByTicketHash(ctx context.Context, enrollTicketHash []byte) (Device, error) {
@@ -385,12 +387,13 @@ func (q *Queries) GetDeviceByTicketHash(ctx context.Context, enrollTicketHash []
 		&i.WuTruncated,
 		&i.WuSettingsRev,
 		&i.SystemDriveFreeBytes,
+		&i.PeerPort,
 	)
 	return i, err
 }
 
 const getDeviceInOrg = `-- name: GetDeviceInOrg :one
-SELECT id, org_id, site_id, status, status_reason, hostname, smbios_uuid, serial, os_caption, os_build, arch, agent_version, enrolled_via, replaces_device_id, enroll_ticket_hash, pending_csr, enrolled_at, approved_by, approved_at, revoked_by, revoked_at, last_seen_at, online, last_ip, hardware, hardware_rev, hardware_updated_at, uptime_s, pending_reboot, logged_on_user, software_rev, users_rev, software_updated_at, software_count, inventory_truncated, chassis, manufacturer, model, ram_bytes, os_build_num, wu_rev, wu_scanned_at, wu_scan_error, wu_reboot_required, wu_policy, wu_service, wu_truncated, wu_settings_rev, system_drive_free_bytes FROM devices WHERE id = $1 AND org_id = $2
+SELECT id, org_id, site_id, status, status_reason, hostname, smbios_uuid, serial, os_caption, os_build, arch, agent_version, enrolled_via, replaces_device_id, enroll_ticket_hash, pending_csr, enrolled_at, approved_by, approved_at, revoked_by, revoked_at, last_seen_at, online, last_ip, hardware, hardware_rev, hardware_updated_at, uptime_s, pending_reboot, logged_on_user, software_rev, users_rev, software_updated_at, software_count, inventory_truncated, chassis, manufacturer, model, ram_bytes, os_build_num, wu_rev, wu_scanned_at, wu_scan_error, wu_reboot_required, wu_policy, wu_service, wu_truncated, wu_settings_rev, system_drive_free_bytes, peer_port FROM devices WHERE id = $1 AND org_id = $2
 `
 
 type GetDeviceInOrgParams struct {
@@ -451,6 +454,7 @@ func (q *Queries) GetDeviceInOrg(ctx context.Context, arg GetDeviceInOrgParams) 
 		&i.WuTruncated,
 		&i.WuSettingsRev,
 		&i.SystemDriveFreeBytes,
+		&i.PeerPort,
 	)
 	return i, err
 }
@@ -789,7 +793,7 @@ func (q *Queries) UpdateDeviceHardware(ctx context.Context, arg UpdateDeviceHard
 }
 
 const updateDeviceHeartbeat = `-- name: UpdateDeviceHeartbeat :exec
-UPDATE devices SET last_seen_at = $2, uptime_s = $3, pending_reboot = $4, logged_on_user = $5, system_drive_free_bytes = $6 WHERE id = $1
+UPDATE devices SET last_seen_at = $2, uptime_s = $3, pending_reboot = $4, logged_on_user = $5, system_drive_free_bytes = $6, peer_port = $7 WHERE id = $1
 `
 
 type UpdateDeviceHeartbeatParams struct {
@@ -799,6 +803,7 @@ type UpdateDeviceHeartbeatParams struct {
 	PendingReboot        bool
 	LoggedOnUser         string
 	SystemDriveFreeBytes *int64
+	PeerPort             int32
 }
 
 func (q *Queries) UpdateDeviceHeartbeat(ctx context.Context, arg UpdateDeviceHeartbeatParams) error {
@@ -809,6 +814,7 @@ func (q *Queries) UpdateDeviceHeartbeat(ctx context.Context, arg UpdateDeviceHea
 		arg.PendingReboot,
 		arg.LoggedOnUser,
 		arg.SystemDriveFreeBytes,
+		arg.PeerPort,
 	)
 	return err
 }

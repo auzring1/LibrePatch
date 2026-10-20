@@ -323,6 +323,7 @@ type Device struct {
 	WuTruncated          bool
 	WuSettingsRev        int32
 	SystemDriveFreeBytes *int64
+	PeerPort             int32
 }
 
 type DeviceCert struct {
@@ -510,6 +511,12 @@ type PackageOverride struct {
 	UpdatedBy        *uuid.UUID
 	UpdatedAt        time.Time
 	Processes        []string
+}
+
+type PeerContent struct {
+	DeviceID uuid.UUID
+	Sha256   []byte
+	SeenAt   time.Time
 }
 
 type PkiMaterial struct {

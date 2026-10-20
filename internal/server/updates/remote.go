@@ -15,6 +15,7 @@ import (
 	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
 	"github.com/auzring1/librepatch/internal/server/audit"
 	"github.com/auzring1/librepatch/internal/server/deploy"
+	"github.com/auzring1/librepatch/internal/server/netinfo"
 	"github.com/auzring1/librepatch/internal/server/store"
 )
 
@@ -34,37 +35,11 @@ type simpleErr string
 func (e simpleErr) Error() string { return string(e) }
 func errNew(s string) error       { return simpleErr(s) }
 
-type hwIface struct {
-	Name      string   `json:"name"`
-	Mac       string   `json:"mac"`
-	Addresses []string `json:"addresses"`
-	Cidrs     []string `json:"cidrs"`
-}
-
-func interfacesOf(hw []byte) []hwIface {
-	var h struct {
-		Interfaces []hwIface `json:"interfaces"`
-	}
-	_ = json.Unmarshal(hw, &h)
-	return h.Interfaces
-}
-
-// virtualName spots adapters that never wake a computer: virtual switches, VPNs, tunnels, Bluetooth.
-func virtualName(n string) bool {
-	n = strings.ToLower(n)
-	for _, bad := range []string{"vethernet", "virtual", "vpn", "tunnel", "bluetooth", "loopback", "vmware", "vbox", "hyper-v", "tap-", "wireguard", "docker", "wsl", "tailscale", "zerotier"} {
-		if strings.Contains(n, bad) {
-			return true
-		}
-	}
-	return false
-}
-
 // WakeTargets are the network cards of a device that could be woken: a real-looking MAC and an IPv4 address, at most four.
 func WakeTargets(hw []byte) []*agentv1.WakeTarget {
 	var out []*agentv1.WakeTarget
-	for _, i := range interfacesOf(hw) {
-		if virtualName(i.Name) || len(i.Mac) != 17 {
+	for _, i := range netinfo.Interfaces(hw) {
+		if netinfo.Virtual(i.Name) || len(i.Mac) != 17 {
 			continue
 		}
 		for _, a := range i.Addresses {
@@ -84,22 +59,12 @@ func WakeTargets(hw []byte) []*agentv1.WakeTarget {
 
 // covered returns the targets whose address lies in one of the helper's networks (only networks of at least four addresses).
 func covered(helperHW []byte, targets []*agentv1.WakeTarget) []*agentv1.WakeTarget {
-	var nets []netip.Prefix
-	for _, i := range interfacesOf(helperHW) {
-		if virtualName(i.Name) {
-			continue
-		}
-		for _, c := range i.Cidrs {
-			if p, err := netip.ParsePrefix(c); err == nil && p.Addr().Is4() && p.Bits() <= 30 && p.Bits() >= 8 {
-				nets = append(nets, p.Masked())
-			}
-		}
-	}
+	nets := netinfo.Networks(helperHW)
 	var out []*agentv1.WakeTarget
 	for _, t := range targets {
 		ip, _ := netip.ParseAddr(t.LastIp)
 		for _, n := range nets {
-			if n.Contains(ip) {
+			if n.Prefix.Contains(ip) {
 				out = append(out, t)
 				break
 			}

@@ -45,6 +45,9 @@ type Service struct {
 	Winget  *wingetindex.Service
 	Overlay *catalog.Overlay
 
+	// PeerCache tells whether the organization shares downloaded installers between computers (D126). nil = no.
+	PeerCache func(ctx context.Context, org uuid.UUID) bool
+
 	// AfterTerminal, if set, runs once when a job reaches a final state (Windows Update bookkeeping).
 	AfterTerminal func(ctx context.Context, j dbq.Job, status string, u *agentv1.JobUpdate)
 
@@ -90,6 +93,11 @@ func (s *Service) signAndOffer(ctx context.Context, j dbq.Job) bool {
 	if err := proto.Unmarshal(j.Body, &env); err != nil {
 		s.log().Error("stored job body is corrupt", "job", j.ID, "err", err)
 		return false
+	}
+	if in := env.GetInstall(); in != nil && in.Installer != nil && s.PeerCache != nil && s.PeerCache(ctx, j.OrgID) {
+		if peers := s.peerSources(ctx, j, in); len(peers) > 0 {
+			in.Installer.Sources = append(peers, in.Installer.Sources...)
+		}
 	}
 	now := s.now()
 	env.IssuedAt = now.Add(-time.Minute).Unix() // tolerate small clock differences on the device

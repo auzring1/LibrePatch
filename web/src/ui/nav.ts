@@ -38,6 +38,7 @@ export const SETTINGS_SECTIONS: NavItem[] = [
   { id: "settings-notifications", section: "notifications", to: "/settings/notifications", label: "Notifications", perm: "settings:notifications", icon: I.Bell, keywords: ["email", "smtp", "webhook", "alerts"] },
   { id: "settings-updates", section: "updates", to: "/settings/updates", label: "Update defaults", perm: "settings:updates", icon: I.NavSource, keywords: ["update source", "ring", "restart", "active hours", "maintenance window", "drivers"] },
   { id: "settings-devices", section: "devices", to: "/settings/devices", label: "Device defaults", perm: "settings:devices", icon: I.NavDevices, keywords: ["offline", "stale", "custom fields", "tags", "columns"] },
+  { id: "settings-downloads", section: "downloads", to: "/settings/downloads", label: "Downloads", perm: "settings:devices", icon: I.Download, keywords: ["peer cache", "share downloads", "bandwidth", "installers", "lan"] },
   { id: "settings-reports", section: "reports", to: "/settings/reports", label: "Scheduled reports", perm: "settings:reports", icon: I.NavReports, keywords: ["scheduled reports", "pdf", "csv"] },
   { id: "settings-data", section: "data", to: "/settings/data", label: "Data and retention", perm: "settings:data", icon: I.NavData, keywords: ["maintenance", "retention", "backup", "export"] },
   { id: "settings-vulnerabilities", section: "vulnerabilities", to: "/settings/vulnerabilities", label: "Vulnerability data", perm: "settings:integrations", icon: I.Shield, keywords: ["cve", "nvd", "cisa", "kev", "exploited", "security"] },

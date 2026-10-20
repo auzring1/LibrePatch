@@ -29,7 +29,9 @@ var ErrHashMismatch = errors.New("jobs: downloaded content does not match the si
 type MultiFetcher struct {
 	// Server fetches from the gateway (nil while disconnected).
 	Server func(ctx context.Context, jobID string, sha []byte) (io.ReadCloser, error)
-	HTTP   *http.Client
+	// Peer fetches from another computer on the same network (nil = no peer sources are used).
+	Peer func(ctx context.Context, url string, sha []byte) (io.ReadCloser, error)
+	HTTP *http.Client
 }
 
 // Open implements Fetcher.
@@ -42,6 +44,17 @@ func (m *MultiFetcher) Open(ctx context.Context, src *agentv1.ContentSource, job
 		return m.Server(ctx, jobID, sha)
 	case agentv1.ContentSourceKind_CONTENT_SOURCE_KIND_VENDOR:
 		return m.vendor(ctx, src.Url)
+	case agentv1.ContentSourceKind_CONTENT_SOURCE_KIND_PEER:
+		if m.Peer == nil {
+			return nil, errors.New("peer sources are not available")
+		}
+		ctx, cancel := context.WithCancel(ctx)
+		rc, err := m.Peer(ctx, src.Url, sha)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		return newStallReader(rc, cancel, peerStall), nil
 	}
 	return nil, errors.New("unknown content source")
 }
@@ -87,6 +100,10 @@ func (m *MultiFetcher) vendor(ctx context.Context, raw string) (io.ReadCloser, e
 	}
 	return newStallReader(resp.Body, cancel, vendorStall), nil
 }
+
+// peerStall is how long a transfer from a peer may deliver no bytes. A computer that is busy or switched off must not hold up
+// an installation: the next source is tried.
+const peerStall = 30 * time.Second
 
 // vendorStall is how long a download may deliver no bytes before it is abandoned.
 const vendorStall = 2 * time.Minute

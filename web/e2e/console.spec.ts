@@ -671,7 +671,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   const setNav = page.getByRole("navigation", { name: "Settings sections" });
   // The sidebar has one Settings link; the sections are listed inside the Settings page only.
   await expect(mainNav(page).getByRole("link", { name: "Branding", exact: true })).toHaveCount(0);
-  for (const name of ["General", "Branding", "Appearance", "Security", "Notifications", "Update defaults", "Device defaults", "Scheduled reports", "Data and retention", "Integrations", "About"]) {
+  for (const name of ["General", "Branding", "Appearance", "Security", "Notifications", "Update defaults", "Device defaults", "Downloads", "Scheduled reports", "Data and retention", "Integrations", "About"]) {
     await expect(setNav.getByRole("link", { name, exact: true })).toBeVisible();
   }
   // Search finds a setting by what it says, and jumps to it.

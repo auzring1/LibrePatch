@@ -65,6 +65,58 @@ func (q *Queries) InsertDeviceView(ctx context.Context, arg InsertDeviceViewPara
 	return err
 }
 
+const listPeerCandidates = `-- name: ListPeerCandidates :many
+SELECT d.id, d.hostname, d.peer_port, d.hardware
+FROM peer_content p JOIN devices d ON d.id = p.device_id
+WHERE p.sha256 = $1 AND p.seen_at > $2 AND d.org_id = $3 AND d.id <> $4 AND d.status = 'active' AND d.online AND d.peer_port > 0
+ORDER BY p.seen_at DESC LIMIT 60
+`
+
+type ListPeerCandidatesParams struct {
+	Sha256 []byte
+	SeenAt time.Time
+	OrgID  uuid.UUID
+	ID     uuid.UUID
+}
+
+type ListPeerCandidatesRow struct {
+	ID       uuid.UUID
+	Hostname string
+	PeerPort int32
+	Hardware []byte
+}
+
+// Online devices that share downloads and have installed from this file, newest first.
+func (q *Queries) ListPeerCandidates(ctx context.Context, arg ListPeerCandidatesParams) ([]ListPeerCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listPeerCandidates,
+		arg.Sha256,
+		arg.SeenAt,
+		arg.OrgID,
+		arg.ID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPeerCandidatesRow{}
+	for rows.Next() {
+		var i ListPeerCandidatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Hostname,
+			&i.PeerPort,
+			&i.Hardware,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWakeHelpers = `-- name: ListWakeHelpers :many
 SELECT id, site_id, hostname, hardware FROM devices
 WHERE org_id = $1 AND status = 'active' AND online AND id <> $2 AND hardware IS NOT NULL
@@ -115,5 +167,30 @@ DELETE FROM device_views WHERE created_at < $1
 
 func (q *Queries) PruneDeviceViews(ctx context.Context, createdAt time.Time) error {
 	_, err := q.db.Exec(ctx, pruneDeviceViews, createdAt)
+	return err
+}
+
+const prunePeerContent = `-- name: PrunePeerContent :exec
+DELETE FROM peer_content WHERE seen_at < $1
+`
+
+func (q *Queries) PrunePeerContent(ctx context.Context, seenAt time.Time) error {
+	_, err := q.db.Exec(ctx, prunePeerContent, seenAt)
+	return err
+}
+
+const upsertPeerContent = `-- name: UpsertPeerContent :exec
+INSERT INTO peer_content (device_id, sha256, seen_at) VALUES ($1, $2, $3)
+ON CONFLICT (device_id, sha256) DO UPDATE SET seen_at = EXCLUDED.seen_at
+`
+
+type UpsertPeerContentParams struct {
+	DeviceID uuid.UUID
+	Sha256   []byte
+	SeenAt   time.Time
+}
+
+func (q *Queries) UpsertPeerContent(ctx context.Context, arg UpsertPeerContentParams) error {
+	_, err := q.db.Exec(ctx, upsertPeerContent, arg.DeviceID, arg.Sha256, arg.SeenAt)
 	return err
 }

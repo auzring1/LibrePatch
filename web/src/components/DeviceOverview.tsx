@@ -32,6 +32,7 @@ export function OverviewTab({ device: d }: { device: Device }) {
         <Field label="Uptime" value={duration(d.uptime_s)} />
         <Field label="IP (last connection)" value={d.last_ip} />
         <Field label="Agent version" value={d.agent_version} />
+        <Field label="Shares downloads" value={d.peer_port ? `yes, on port ${d.peer_port}` : "no"} />
         <Field label="Enrolled" value={dateTime(d.enrolled_at)} />
         <Field label="Software inventory" value={d.software_updated_at ? `${d.software_count} items, updated ${ago(d.software_updated_at)}` : "not reported yet"} />
       </SimpleGrid>

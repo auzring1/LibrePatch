@@ -106,6 +106,9 @@ func (e *Engine) install(ctx context.Context, r *Record, env *agentv1.JobEnvelop
 		}
 		return fail("the staged installer changed after it was verified")
 	}
+	if e.CacheFile != nil {
+		e.CacheFile(file, in.Sha256)
+	}
 	sig, serr := e.P.VerifySignature(file)
 	sigNote := "unsigned"
 	switch {

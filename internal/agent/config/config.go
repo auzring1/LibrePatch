@@ -43,9 +43,10 @@ func (c *Config) RollbackWindow() time.Duration {
 	return time.Duration(c.UpdateRollbackMinutes) * time.Minute
 }
 
-// AllJobTypes lists every job type name a ceiling may contain.
+// AllJobTypes lists every name a ceiling may contain: the job types, and "peer_cache" (not a job: sharing downloaded
+// installers with computers on the same network, D126). A ceiling that leaves it out keeps the agent from sharing.
 var AllJobTypes = []string{"inventory", "software_install", "software_uninstall", "software_update",
-	"wu_scan", "wu_install", "wu_hide", "reboot", "agent_update", "wake", "inspect"}
+	"wu_scan", "wu_install", "wu_hide", "reboot", "agent_update", "wake", "inspect", "peer_cache"}
 
 // FromBundle builds a config from an enrollment string. serverOverride, if
 // non-empty, replaces the gateway address in the bundle (the root pin stays).

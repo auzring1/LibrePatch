@@ -149,6 +149,9 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 	a.Branding = &branding.Service{Pool: pool, Log: log.With("component", "branding")}
 	a.Dashboard = &dashboard.Service{Pool: pool, Log: log.With("component", "dashboard")}
 	a.Settings = &settings.Service{Pool: pool, Sealer: sealer, Log: log.With("component", "settings")}
+	a.Deploy.PeerCache = func(ctx context.Context, org uuid.UUID) bool {
+		return a.Settings.Peek(ctx, org, "downloads").Bool("peer_cache")
+	}
 	a.Vulns = &vulns.Service{Store: &vulns.Store{Pool: pool}, Settings: a.Settings, Log: log.With("component", "vulns")}
 	a.Maint = &maintenance.Service{Pool: pool, Settings: a.Settings, Log: log.With("component", "maintenance")}
 	a.Notify = &notify.Service{Pool: pool, Settings: a.Settings, Branding: a.Branding, Log: log.With("component", "notify")}
