@@ -337,7 +337,7 @@ function ImageSlot({ slot, view, onView }: { slot: (typeof SLOTS)[number]; view:
             }}
           >
             {(props) => (
-              <Button {...props} size="xs" variant="default" loading={upload.isPending} aria-label={`Upload ${slot.label}`} leftSection={<Icons.Plus size={14} aria-hidden />}>
+              <Button {...props} size="xs" variant="default" loading={upload.isPending} aria-label={`${info ? "Replace" : "Upload"} ${slot.label}`} leftSection={<Icons.Plus size={14} aria-hidden />}>
                 {info ? "Replace" : "Upload"}
               </Button>
             )}

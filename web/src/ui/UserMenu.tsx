@@ -28,11 +28,14 @@ export function UserMenu({ name, email, onSignOut }: { name: string; email: stri
   return (
     <Menu position="bottom-end" width={270} shadow="md" withinPortal closeOnItemClick={false}>
       <Menu.Target>
-        <button type="button" className="lp-usermenu" aria-label={`Account menu for ${name}`} data-testid="user-menu">
+        <button type="button" className="lp-usermenu" data-testid="user-menu">
+          {/* The name comes from this hidden text, not from an aria-label: a label that leaves out text people can see
+              (the initials, the name) fails WCAG 2.5.3. The visible name is hidden from screen readers so it is not read twice. */}
+          <span className="lp-visually-hidden">Account menu for {name}</span>
           <span className="lp-avatar" aria-hidden="true">
             {initials(name)}
           </span>
-          <span className="lp-topbar__search-wide" style={{ fontWeight: 500 }}>
+          <span className="lp-topbar__search-wide" style={{ fontWeight: 500 }} aria-hidden="true">
             {name}
           </span>
           <I.ChevronDown size={14} aria-hidden />
