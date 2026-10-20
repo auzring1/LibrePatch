@@ -44,6 +44,7 @@ import (
 	"github.com/auzring1/librepatch/internal/server/reportsched"
 	"github.com/auzring1/librepatch/internal/server/scripts"
 	"github.com/auzring1/librepatch/internal/server/settings"
+	"github.com/auzring1/librepatch/internal/server/sso"
 	"github.com/auzring1/librepatch/internal/server/store"
 	"github.com/auzring1/librepatch/internal/server/updates"
 	"github.com/auzring1/librepatch/internal/server/vulns"
@@ -67,6 +68,7 @@ type App struct {
 	Releases  *agentrel.Service
 	Policies  *policies.Service
 	Scripts   *scripts.Service
+	SSO       *sso.Provider
 	Vulns     *vulns.Service
 	Dashboard *dashboard.Service
 	Settings  *settings.Service
@@ -155,6 +157,7 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 		return a.Settings.Peek(ctx, org, "downloads").Bool("peer_cache")
 	}
 	a.Scripts = &scripts.Service{Pool: pool, Deploy: a.Deploy, Settings: a.Settings, Log: log.With("component", "scripts")}
+	a.SSO = &sso.Provider{}
 	a.Vulns = &vulns.Service{Store: &vulns.Store{Pool: pool}, Settings: a.Settings, Log: log.With("component", "vulns")}
 	a.Maint = &maintenance.Service{Pool: pool, Settings: a.Settings, Log: log.With("component", "maintenance")}
 	a.Notify = &notify.Service{Pool: pool, Settings: a.Settings, Branding: a.Branding, Log: log.With("component", "notify")}
@@ -297,7 +300,7 @@ func (a *App) Handler() http.Handler {
 	}
 	deps := api.Deps{
 		Cfg: a.Cfg, Pool: a.Pool, Sealer: a.Sealer, Sessions: sessions, Events: a.Events,
-		Setup: setupCtl{a}, Devices: a.Hub, Authority: a.Authority, Log: a.Log, Deploy: a.Deploy, Catalog: a.Catalog, Winget: a.Winget, AgentDL: a.AgentDL, Updates: a.Updates, Releases: a.Releases, Policies: a.Policies, Scripts: a.Scripts, Vulns: a.Vulns, Branding: a.Branding, Settings: a.Settings, Notify: a.Notify, Maint: a.Maint, Sched: a.Sched, KeyAck: a.KeyAck,
+		Setup: setupCtl{a}, Devices: a.Hub, Authority: a.Authority, Log: a.Log, Deploy: a.Deploy, Catalog: a.Catalog, Winget: a.Winget, AgentDL: a.AgentDL, Updates: a.Updates, Releases: a.Releases, Policies: a.Policies, Scripts: a.Scripts, SSO: a.SSO, Vulns: a.Vulns, Branding: a.Branding, Settings: a.Settings, Notify: a.Notify, Maint: a.Maint, Sched: a.Sched, KeyAck: a.KeyAck,
 	}
 	sessions.Timeouts = api.SessionLimits(deps)
 	return api.NewHandler(deps, webui.Handler(a.pageHead))

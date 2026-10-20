@@ -560,6 +560,7 @@ type RoleBinding struct {
 	Role      string
 	ScopeType string
 	ScopeID   uuid.UUID
+	Source    string
 }
 
 type Script struct {
@@ -738,6 +739,14 @@ type SoftwareTitle struct {
 	DisplayName         string
 	DisplayPublisher    string
 	CreatedAt           time.Time
+}
+
+type SsoFlow struct {
+	StateHash   []byte
+	Nonce       string
+	Verifier    string
+	BindingHash []byte
+	CreatedAt   time.Time
 }
 
 type User struct {

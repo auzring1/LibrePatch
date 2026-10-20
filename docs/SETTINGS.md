@@ -92,6 +92,31 @@ Permission: `settings:notifications`. E-mail delivery, quiet hours and which eve
 | **Threshold** (`threshold`) | int | `0` | 0 to 720 | in effect | Device offline: hours without a report. Agent out of date: days after a release before devices count as late. Restart pending too long: days without a restart. Low disk: gigabytes free on the system drive. Operating system end of support: days before the end to warn (0 warns only once support has ended). Other events ignore it. |
 | **Hold during quiet hours** (`quiet_hours`) | bool | `true` |  | in effect | Wait for the end of quiet hours instead of sending at once. |
 
+## Single sign-on
+
+Permission: `settings:security`. Let people sign in with your company account (Microsoft Entra ID, or any provider that speaks OpenID Connect) instead of a password stored here. Register this server as an application with your provider first; the sign-in address to give it is shown on the Single sign-on page. A local administrator account with its own password always keeps working, so a broken provider can never lock you out.
+
+| Setting | Type | Default | Limits | Effect | What it does |
+|---|---|---|---|---|---|
+| **Allow sign-in with a company account** (`enabled`) | bool | `false` |  | in effect | Adds a button to the sign-in page. Local accounts keep working. |
+| **Button text** (`label`) | string | `Microsoft` | up to 40 characters | in effect | The button reads “Sign in with …”. |
+| **Issuer address** (`issuer`) | url | empty | up to 300 characters | in effect | For Microsoft Entra ID: https://login.microsoftonline.com/ + your directory (tenant) ID + /v2.0. It must be a specific directory, not “common”. Must start with https://. |
+| **Application (client) ID** (`client_id`) | string | empty | up to 200 characters | in effect | From the application registration at your provider. |
+| **Client secret** (`client_secret`) | secret | none | up to 500 characters | in effect | A client secret created for this application. Stored encrypted and never shown again; leave empty to keep the saved one. |
+| **Where roles come from** (`role_claim`) | enum | `roles` | roles, groups | in effect | Which claim of the sign-in token is matched against the list below. App roles are the tidier choice for Entra ID; groups are limited to about 200 per person. |
+| **Who gets which role** (`role_map`) | list | empty | up to 50 entries | in effect | A person gets the highest role of every line that matches what the provider says about them. Nobody who matches no line, and has no role set here by hand, can sign in. |
+| **Create accounts on first sign-in** (`auto_create`) | bool | `true` |  | in effect | A person the provider lets in and the list above gives a role gets an account the first time. Off: only people who already have an account here (and have been linked) can sign in. |
+| **Link existing accounts by email address** (`link_by_email`) | bool | `false` |  | in effect | If a local account has the same email address as the person signing in, connect the two on first sign-in. Turn this on only if your provider guarantees that people cannot choose their own email address (a single Entra ID directory does). Off: such a person is turned away and an administrator has to sort it out. |
+| **Only these email domains** (`allowed_domains`) | tags | empty | up to 20 entries | in effect | Optional extra limit, for example example.org. Empty means any domain. |
+| **The provider's multi-factor check replaces the second factor here** (`idp_mfa_counts`) | bool | `false` |  | in effect | Off (recommended): after signing in with the company account, people still confirm with an authenticator app or security key kept here. On: if the provider says the person used multi-factor (the amr claim contains “mfa”), no second step is asked; if it does not say so, it is asked. |
+
+**Each item of “Who gets which role”:**
+
+| Setting | Type | Default | Limits | Effect | What it does |
+|---|---|---|---|---|---|
+| **Role or group value** (`value`) | string | empty | up to 200 characters | in effect | The text the provider sends, for example the app role name or the group's object ID. |
+| **Role here** (`role`) | enum | `readonly` | admin, operator, readonly | in effect | Applies to the whole organization. |
+
 ## Update defaults
 
 Permission: `settings:updates`. Starting values for new update rings and auto-approval rules, so each one does not have to be filled in from scratch. Existing rings and rules are not changed. The update source and driver switch are on the Update rings and rules page.

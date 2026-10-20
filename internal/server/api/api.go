@@ -33,6 +33,7 @@ import (
 	"github.com/auzring1/librepatch/internal/server/reportsched"
 	"github.com/auzring1/librepatch/internal/server/scripts"
 	"github.com/auzring1/librepatch/internal/server/settings"
+	"github.com/auzring1/librepatch/internal/server/sso"
 	"github.com/auzring1/librepatch/internal/server/updates"
 	"github.com/auzring1/librepatch/internal/server/vulns"
 	"github.com/auzring1/librepatch/internal/server/wingetindex"
@@ -71,6 +72,7 @@ type Deps struct {
 	Releases  *agentrel.Service
 	Policies  *policies.Service
 	Scripts   *scripts.Service
+	SSO       *sso.Provider // single sign-on (D128); nil = not available
 	Vulns     *vulns.Service
 	Branding  *branding.Service
 	Settings  *settings.Service
@@ -149,6 +151,10 @@ func (s *server) routes(r chi.Router) {
 	r.Post("/setup/begin", s.setupBegin)
 	r.Post("/setup/complete", s.setupComplete)
 
+	r.Get("/auth/sso/info", s.ssoInfo)
+	r.Get("/auth/sso/start", s.ssoStart)
+	r.Get("/auth/sso/callback", s.ssoCallback)
+	r.Get("/auth/sso/continue", s.ssoContinue)
 	r.Post("/auth/login", s.login)
 	r.Post("/auth/mfa", s.mfaVerify)
 	r.Post("/auth/mfa/enroll", s.mfaEnroll)

@@ -87,7 +87,7 @@ func EventReference() []EventDoc {
 // audit trail, search and the console's form follow; a test checks that every field has a label, help and a default
 // that passes its own validation.
 var Sections = []Section{
-	appearance, security, notifications, updates, devices, downloads, scripts, reports, data, integrations, vulnerabilities,
+	appearance, security, notifications, sso, updates, devices, downloads, scripts, reports, data, integrations, vulnerabilities,
 }
 
 // ByID returns a section.
@@ -308,6 +308,45 @@ var downloads = Section{
 			Help: "The oldest installers are removed first when the limit is reached; installers unused for two weeks are removed. Turning sharing off empties the cache."},
 		{Key: "peer_cache_port", Label: "Port for sharing", Kind: Int, Default: 7421, Min: 1024, Max: 65535, ShowIf: "peer_cache", Effect: Live,
 			Help: "TCP port each device listens on, for other devices on the same network only. Change it only if something else uses it."},
+	},
+}
+
+var sso = Section{
+	ID: "sso", Label: "Single sign-on", Perm: PermSecurity,
+	Description: "Let people sign in with your company account (Microsoft Entra ID, or any provider that speaks OpenID Connect) instead of a password stored here. Register this server as an application with your provider first; the sign-in address to give it is shown on the Single sign-on page. A local administrator account with its own password always keeps working, so a broken provider can never lock you out.",
+	Fields: []Field{
+		{Key: "enabled", Label: "Allow sign-in with a company account", Kind: Bool, Default: false, Effect: Live,
+			Help: "Adds a button to the sign-in page. Local accounts keep working."},
+		{Key: "label", Label: "Button text", Kind: String, Default: "Microsoft", Max: 40, ShowIf: "enabled", Effect: Live, Help: "The button reads “Sign in with …”."},
+		{Key: "issuer", Label: "Issuer address", Kind: URL, Default: "", Max: 300, ShowIf: "enabled", Effect: Live,
+			Placeholder: "https://login.microsoftonline.com/<directory id>/v2.0",
+			Help:        "For Microsoft Entra ID: https://login.microsoftonline.com/ + your directory (tenant) ID + /v2.0. It must be a specific directory, not “common”. Must start with https://.",
+			Validate: func(v any, all map[string]any) error {
+				s, _ := v.(string)
+				if on, _ := all["enabled"].(bool); on && !strings.HasPrefix(s, "https://") {
+					return errors.New("the issuer address must start with https://")
+				}
+				return nil
+			}},
+		{Key: "client_id", Label: "Application (client) ID", Kind: String, Default: "", Max: 200, ShowIf: "enabled", Effect: Live, Help: "From the application registration at your provider."},
+		{Key: "client_secret", Label: "Client secret", Kind: Secret, Max: 500, ShowIf: "enabled", Effect: Live, Help: "A client secret created for this application. Stored encrypted and never shown again; leave empty to keep the saved one."},
+		{Key: "role_claim", Label: "Where roles come from", Kind: Enum, Default: "roles", ShowIf: "enabled", Effect: Live,
+			Options: []Option{{"roles", "App roles (the roles claim)"}, {"groups", "Groups (the groups claim, object IDs for Entra ID)"}},
+			Help:    "Which claim of the sign-in token is matched against the list below. App roles are the tidier choice for Entra ID; groups are limited to about 200 per person."},
+		{Key: "role_map", Label: "Who gets which role", Kind: List, Default: []any{}, Max: 50, ItemKey: "value", ShowIf: "enabled", Effect: Live,
+			Help: "A person gets the highest role of every line that matches what the provider says about them. Nobody who matches no line, and has no role set here by hand, can sign in.",
+			Fields: []Field{
+				{Key: "value", Label: "Role or group value", Kind: String, Required: true, Default: "", Min: 1, Max: 200, Effect: Live, Help: "The text the provider sends, for example the app role name or the group's object ID."},
+				{Key: "role", Label: "Role here", Kind: Enum, Default: "readonly", Required: true, Effect: Live,
+					Options: []Option{{"admin", "Administrator"}, {"operator", "Operator"}, {"readonly", "Read-only"}}, Help: "Applies to the whole organization."},
+			}},
+		{Key: "auto_create", Label: "Create accounts on first sign-in", Kind: Bool, Default: true, ShowIf: "enabled", Effect: Live,
+			Help: "A person the provider lets in and the list above gives a role gets an account the first time. Off: only people who already have an account here (and have been linked) can sign in."},
+		{Key: "link_by_email", Label: "Link existing accounts by email address", Kind: Bool, Default: false, ShowIf: "enabled", Effect: Live,
+			Help: "If a local account has the same email address as the person signing in, connect the two on first sign-in. Turn this on only if your provider guarantees that people cannot choose their own email address (a single Entra ID directory does). Off: such a person is turned away and an administrator has to sort it out."},
+		{Key: "allowed_domains", Label: "Only these email domains", Kind: Tags, Default: []any{}, Max: 20, ShowIf: "enabled", Effect: Live, Help: "Optional extra limit, for example example.org. Empty means any domain."},
+		{Key: "idp_mfa_counts", Label: "The provider's multi-factor check replaces the second factor here", Kind: Bool, Default: false, ShowIf: "enabled", Effect: Live,
+			Help: "Off (recommended): after signing in with the company account, people still confirm with an authenticator app or security key kept here. On: if the provider says the person used multi-factor (the amr claim contains “mfa”), no second step is asked; if it does not say so, it is asked."},
 	},
 }
 

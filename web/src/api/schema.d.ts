@@ -146,6 +146,172 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/sso/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the sign-in page offers single sign-on, and the address to register at the provider */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            enabled: boolean;
+                            /** @description Text for the button ("Sign in with …") */
+                            label: string;
+                            /** @description The redirect (reply) address to register for this server at the provider */
+                            redirect_uri: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sso/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Start a sign-in with the organization's OpenID Connect provider (redirects the browser to it)
+         * @description Authorization code flow with PKCE and a one-time state and nonce stored on the server for ten minutes. Rate limited like password sign-in.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description A page that sends the browser back to the sign-in page with an error code */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Redirect to the provider */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sso/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where the provider sends the person back (not for direct use)
+         * @description Exchanges the code, verifies the ID token (issuer, audience, signature from the provider's published keys, expiry, nonce), finds or creates the account, brings its provider-managed roles in line with the provider, and starts a session. The answer is a small page that sends the browser on to the console (the session cookie is SameSite=Strict, so a plain redirect after a cross-site navigation would not carry it). Without the provider's proof of multi-factor, or with that setting off, the session is "MFA pending" and the sign-in page asks for the second factor kept here.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    code?: string;
+                    state?: string;
+                    error?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description A page that continues to the console or to the sign-in page with an error code */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sso/continue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The second-factor step for a session that arrived through single sign-on */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The same answer as a password sign-in gives (which second-factor methods, or the enrollment of a first one) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                401: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -8257,6 +8423,8 @@ export interface components {
             must_change_password: boolean;
             has_totp: boolean;
             security_keys: number;
+            /** @description Signs in with the organization's identity provider */
+            sso?: boolean;
             bindings: {
                 /** Format: uuid */
                 id: string;
@@ -8264,6 +8432,11 @@ export interface components {
                 scope_type: string;
                 /** Format: uuid */
                 scope_id: string;
+                /**
+                 * @description sso = follows the identity provider at every sign-in; local = set by hand
+                 * @enum {string}
+                 */
+                source?: "local" | "sso";
             }[];
         };
         SoftwarePolicy: {

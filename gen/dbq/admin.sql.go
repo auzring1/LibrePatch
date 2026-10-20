@@ -470,7 +470,7 @@ func (q *Queries) ListAPITokensInOrg(ctx context.Context, orgID uuid.UUID) ([]Li
 }
 
 const listRoleBindingsInOrg = `-- name: ListRoleBindingsInOrg :many
-SELECT b.id, b.user_id, b.role, b.scope_type, b.scope_id
+SELECT b.id, b.user_id, b.role, b.scope_type, b.scope_id, b.source
 FROM role_bindings b JOIN users u ON u.id = b.user_id WHERE u.org_id = $1
 ORDER BY b.user_id, b.role, b.scope_type, b.scope_id
 `
@@ -490,6 +490,7 @@ func (q *Queries) ListRoleBindingsInOrg(ctx context.Context, orgID uuid.UUID) ([
 			&i.Role,
 			&i.ScopeType,
 			&i.ScopeID,
+			&i.Source,
 		); err != nil {
 			return nil, err
 		}

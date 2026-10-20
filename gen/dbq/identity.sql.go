@@ -292,7 +292,7 @@ func (q *Queries) InsertRecoveryCode(ctx context.Context, arg InsertRecoveryCode
 }
 
 const listRoleBindingsForUser = `-- name: ListRoleBindingsForUser :many
-SELECT id, user_id, role, scope_type, scope_id FROM role_bindings WHERE user_id = $1 ORDER BY role, scope_type, scope_id
+SELECT id, user_id, role, scope_type, scope_id, source FROM role_bindings WHERE user_id = $1 ORDER BY role, scope_type, scope_id
 `
 
 func (q *Queries) ListRoleBindingsForUser(ctx context.Context, userID uuid.UUID) ([]RoleBinding, error) {
@@ -310,6 +310,7 @@ func (q *Queries) ListRoleBindingsForUser(ctx context.Context, userID uuid.UUID)
 			&i.Role,
 			&i.ScopeType,
 			&i.ScopeID,
+			&i.Source,
 		); err != nil {
 			return nil, err
 		}

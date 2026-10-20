@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Checkbox } from "@mantine/core";
-import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, Anchor, Button, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
 import { api, errorMessage, setCsrf } from "../api/client";
 import { useSession } from "../api/session";
@@ -34,6 +35,8 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const notice = useQuery({ queryKey: ["auth-notice"], queryFn: () => api<{ enabled: boolean; text: string; require_ack: boolean }>("GET", "/auth/notice"), staleTime: 60_000, retry: false });
   const [accepted, setAccepted] = useState(false);
+  const sso = useQuery({ queryKey: ["sso-info"], queryFn: () => api<{ enabled: boolean; label: string }>("GET", "/auth/sso/info"), staleTime: 60_000, retry: false });
+  const [params, setParams] = useSearchParams();
   const noticeOn = !!notice.data?.enabled;
   const mustAccept = noticeOn && !!notice.data?.require_ack && !accepted;
 
@@ -56,6 +59,16 @@ export function LoginPage() {
     else if (r.mfa === "enroll") setStage({ kind: "enroll", secret: r.totp_secret ?? "", uri: r.otpauth_uri ?? "" });
     else setStage({ kind: "verify", methods: r.methods ?? ["totp"] });
   };
+
+  // Back from the identity provider: either a message about why not, or the second-factor step of a sign-in that has begun.
+  const ssoError = params.get("sso_error");
+  const ssoContinue = params.get("sso") === "continue";
+  useEffect(() => {
+    if (!ssoContinue) return;
+    setParams({}, { replace: true });
+    void run(async () => proceed(await api<Next>("GET", "/auth/sso/continue")));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ssoContinue]);
 
   const login = () =>
     run(async () => {
@@ -133,8 +146,23 @@ export function LoginPage() {
             <Button type="submit" loading={busy} disabled={mustAccept} fullWidth>
               Continue
             </Button>
+            {sso.data?.enabled && (
+              <>
+                <Text size="sm" c="dimmed" ta="center">
+                  or
+                </Text>
+                <Button component="a" href={mustAccept ? undefined : "/api/v1/auth/sso/start"} variant="default" disabled={mustAccept} fullWidth leftSection={<Icons.NavSecurity size={16} aria-hidden />} data-testid="sso-button">
+                  Sign in with {sso.data.label}
+                </Button>
+              </>
+            )}
           </Stack>
         </form>
+      )}
+      {stage.kind === "password" && ssoError && (
+        <Alert color="red" role="alert" icon={<Icons.Danger size={18} aria-hidden />} data-testid="sso-error">
+          {ssoMessage(ssoError)}
+        </Alert>
       )}
       {stage.kind === "change_password" && (
         <form onSubmit={(e) => (e.preventDefault(), void changePassword())}>
@@ -227,4 +255,26 @@ function LoginFooter() {
       )}
     </Stack>
   );
+}
+
+/** What the person sees when single sign-on did not work. The reason in detail is in the audit log, not here. */
+export function ssoMessage(code: string): string {
+  switch (code) {
+    case "no_access":
+      return "Your company account is not allowed to use this system. Ask an administrator to give you a role.";
+    case "account_exists":
+      return "An account with your email address already exists here but is not linked to your company account. Ask an administrator.";
+    case "disabled":
+      return "Your account here has been switched off. Ask an administrator.";
+    case "expired":
+      return "That sign-in took too long or was already used. Try again.";
+    case "denied":
+      return "Your company sign-in was cancelled or refused.";
+    case "rate_limited":
+      return "Too many sign-in attempts. Wait a minute and try again.";
+    case "unavailable":
+      return "Single sign-on is not available right now. Use your password, or try again later.";
+    default:
+      return "Single sign-on did not work. Try again, or use your password.";
+  }
 }
