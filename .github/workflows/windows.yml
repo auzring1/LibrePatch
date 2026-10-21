@@ -157,6 +157,10 @@ jobs:
 
       - name: Install the agent, then run the deployment scenarios
         shell: pwsh
+        env:
+          # The winget-7zip scenario lists package versions through the GitHub API; without a token the shared runner
+          # addresses hit the anonymous rate limit. The workflow's own read-only token is enough for public repositories.
+          LIBREPATCH_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ErrorActionPreference = "Stop"
           & "$env:PGBIN\psql.exe" -h 127.0.0.1 -U $env:PGUSER -c "CREATE DATABASE librepatch_deploy"
