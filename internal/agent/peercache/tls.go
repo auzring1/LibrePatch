@@ -59,6 +59,8 @@ func ServerTLS(root *x509.Certificate, cert, issuing []byte, key crypto.Signer) 
 
 // ClientTLS is the configuration for asking a peer: the server's certificate must be a device certificate of this installation.
 func ClientTLS(root *x509.Certificate, cert, issuing []byte, key crypto.Signer) *tls.Config {
+	// The same pinned-root pattern as internal/agent/core/tls.go: the standard check is replaced, not dropped.
+	// nosemgrep: no-insecure-tls
 	return &tls.Config{
 		MinVersion:   tls.VersionTLS13,
 		Certificates: []tls.Certificate{keyPair(cert, issuing, key)},

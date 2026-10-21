@@ -34,7 +34,7 @@ func TestSettingsPermissionsValidationAuditAndSecrets(t *testing.T) {
 	op := h.orgUser("op@example.com", "operator")
 	ro := h.orgUser("ro@example.com", "readonly")
 
-	// The schema lists only what the caller may open: administrators all twelve, operators the delegated three,
+	// The schema lists only what the caller may open: administrators all twelve, operators the delegated four,
 	// read-only people none.
 	_, b := h.do("GET", "/api/v1/settings/schema", nil, nil)
 	if len(sectionIDs(b)) != 12 {
@@ -42,7 +42,7 @@ func TestSettingsPermissionsValidationAuditAndSecrets(t *testing.T) {
 	}
 	_, b = op.do("GET", "/api/v1/settings/schema", nil, nil)
 	ids := sectionIDs(b)
-	if len(ids) != 3 || !has(ids, "notifications") || !has(ids, "devices") || !has(ids, "reports") {
+	if len(ids) != 4 || !has(ids, "notifications") || !has(ids, "devices") || !has(ids, "downloads") || !has(ids, "reports") {
 		t.Fatalf("operator sections: %v", ids)
 	}
 	_, b = ro.do("GET", "/api/v1/settings/schema", nil, nil)

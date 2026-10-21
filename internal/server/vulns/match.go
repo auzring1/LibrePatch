@@ -141,6 +141,8 @@ func (s *Store) Overview(ctx context.Context, org uuid.UUID, f Filter) ([]Item, 
 	args6 := func() []any { return append(args(nil), keys) }
 
 	var sum Summary
+	// hitsSQL() and the text added here are all fixed strings; every value goes in as a $n parameter.
+	// nosemgrep: no-sql-string-building
 	err = s.Pool.QueryRow(ctx, base+`
 		SELECT count(DISTINCT h.cve_id), count(DISTINCT h.cve_id) FILTER (WHERE c.kev), count(DISTINCT h.cve_id) FILTER (WHERE c.severity = 'critical'),
 		       count(DISTINCT h.cve_id) FILTER (WHERE c.severity = 'high'), count(DISTINCT h.device_id)
@@ -210,6 +212,8 @@ func (s *Store) DevicesFor(ctx context.Context, org uuid.UUID, cve string) ([]De
 	if err != nil {
 		return nil, err
 	}
+	// hitsSQL() and the text added here are all fixed strings; every value goes in as a $n parameter.
+	// nosemgrep: no-sql-string-building
 	rows, err := s.Pool.Query(ctx, hitsSQL()+`
 		SELECT DISTINCT ON (h.device_id, h.label) h.device_id, d.hostname, h.label, h.installed, h.fixed_in
 		FROM hits h JOIN devices d ON d.id = h.device_id WHERE h.cve_id = $8
@@ -243,6 +247,8 @@ func (s *Store) ForDevice(ctx context.Context, org, device uuid.UUID) ([]DeviceI
 	if err != nil {
 		return nil, err
 	}
+	// hitsSQL() and the text added here are all fixed strings; every value goes in as a $n parameter.
+	// nosemgrep: no-sql-string-building
 	rows, err := s.Pool.Query(ctx, hitsSQL()+`
 		SELECT DISTINCT ON (c.id, h.label) c.id, c.published, c.summary, c.cvss, c.severity, c.kev, c.kev_name, c.kev_added, c.kev_due, c.kev_ransomware, c.kev_action,
 		       h.label, h.installed, h.fixed_in
