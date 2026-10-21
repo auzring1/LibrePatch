@@ -58,7 +58,7 @@ The examples below use the server name `librepatch.lab`. Use a real DNS name, or
 12. On the build machine:
     ```bash
     GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o librepatch-agent.exe ./cmd/librepatch-agent
-    ls -l librepatch-agent.exe     # about 13 MB (budget: 15 MiB)
+    ls -l librepatch-agent.exe     # about 13 MB at the time of Phase 1 (budget now: 17 MiB)
     ```
     Copy `librepatch-agent.exe` to the Windows VM, for example to `C:\Temp`.
     > Phase 1 binaries are **not Authenticode-signed** yet (Phase 5), so SmartScreen may warn. Use **Unblock** in the file's Properties dialog.

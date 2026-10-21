@@ -155,7 +155,7 @@ internal/agent/
 |---|---|
 | Idle CPU about 0% | No polling loops. Wake-ups come from the gRPC stream, `RegNotifyChangeKeyValue`, `NotifyIpInterfaceChange`, session-change events and a few long timers (heartbeat every 5 min, reconcile daily). gRPC keepalive pings run every 90 s, which is enough to survive common NAT/firewall idle timeouts. |
 | RSS under 30 MB | `GOMEMLIMIT=24MiB`, streaming hashing and diffing (inventory is never held as one big JSON), bbolt mmap kept small, WUA COM only loaded when scanning. Measured in CI on a Windows runner. |
-| Binary about 15 MB | `-trimpath -ldflags="-s -w"`, no reflection-heavy dependencies, binary size checked against a budget in CI. |
+| Binary about 16 MB (budget 17 MiB, D129) | `-trimpath -ldflags="-s -w"`, no reflection-heavy dependencies, binary size checked against a budget in CI. |
 | Never slow the machine down | Scans call `SetPriorityClass(PROCESS_MODE_BACKGROUND_BEGIN)` on the agent itself, which lowers CPU, I/O and memory priority. Hashing is rate-limited. Installers start at `BELOW_NORMAL_PRIORITY_CLASS` inside a Job Object. Work is postponed during Windows active hours unless the job's policy says otherwise. Battery and metered-network checks are available as preconditions. |
 
 ### 3.2 Files and ACLs on the endpoint
