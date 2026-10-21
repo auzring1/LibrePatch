@@ -90,9 +90,14 @@ func (p *devPlatform) Run(ctx context.Context, s RunSpec) (RunResult, error) {
 		ctx, cancel = context.WithTimeout(ctx, s.Timeout)
 		defer cancel()
 	}
-	// #nosec G302 -- dev platform only: the staged test script must be executable
-	if err := os.Chmod(s.Exe, 0o700); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return RunResult{}, err
+	// A staged installer must be executable. A program that is not under the data directory (the shell that runs a
+	// test script) belongs to the system and is left alone: changing its mode needs root, and on a machine where
+	// the test agent runs as root it would damage the system's own shell.
+	if rel, err := filepath.Rel(p.dir, s.Exe); err == nil && !strings.HasPrefix(rel, "..") {
+		// #nosec G302 -- dev platform only: the staged test installer must be executable
+		if err := os.Chmod(s.Exe, 0o700); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return RunResult{}, err
+		}
 	}
 	cmd := exec.CommandContext(ctx, s.Exe, s.Args...) // #nosec G204 -- dev platform runs the staged, hash-verified test installer
 	cmd.Dir = s.Dir
