@@ -1,7 +1,6 @@
 # Phase 0 Plan: LibrePatch Endpoint Management Platform
 
-> Status: **awaiting approval**. Nothing past Phase 0 gets built until this plan is approved.
-> The product is called **Current** (it began as the working codename "Auzring", then "Renovatio"; see RENAME-PLAN.md and DECISIONS D89, D91 and D101). <!-- old-name -->
+> Status: **historical.** This is the plan that was approved before the build started; phases 1 to 6 are built and the status of every area is in [ARCHITECTURE.md](ARCHITECTURE.md) section 0. It is kept because the design documents below grew out of it. Where it differs from the code, ARCHITECTURE.md and DECISIONS.md win. The product was renamed along the way (see DECISIONS D108).
 
 This is the entry point for Phase 0. The detailed design is in:
 

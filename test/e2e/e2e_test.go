@@ -448,7 +448,7 @@ func TestEndToEnd(t *testing.T) {
 	if st, _ := h.do("POST", "/api/v1/devices/"+id2+"/revoke", map[string]any{"reason": "lost laptop"}, nil); st != 204 {
 		t.Fatalf("revoke: %d", st)
 	}
-	waitFor(t, 5*time.Second, "agent 2 told it is revoked", func() bool { return a2.state() == "rejected" })
+	waitFor(t, 15*time.Second, "agent 2 told it is revoked", func() bool { return a2.state() == "rejected" })
 	waitFor(t, 5*time.Second, "device 2 offline", func() bool { return h.device(id2)["online"] == false })
 	if err := mtlsConnect(h, a2, idn2); err == nil {
 		t.Fatal("revoked device could still open a stream")

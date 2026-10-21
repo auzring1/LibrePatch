@@ -72,7 +72,9 @@ export function Layout() {
             {rail ? <I.SidebarExpand size={20} aria-hidden /> : <I.SidebarCollapse size={20} aria-hidden />}
           </ActionIcon>
         )}
-        <Link to="/" className="lp-topbar__brand" aria-label={`${brand.product_name} home`}>
+        {/* No aria-label: a label that leaves out text people can see fails WCAG 2.5.3 (axe "label-content-name-mismatch").
+            The name comes from the visible product and organization names, plus a hidden "home". */}
+        <Link to="/" className="lp-topbar__brand">
           <BrandMark height={28} />
           <span className="lp-topbar__product" data-testid="product-name">
             {brand.product_name}
@@ -80,6 +82,7 @@ export function Layout() {
           <span className="lp-topbar__org" data-testid="org-name">
             {brand.org_name || session?.org.name}
           </span>
+          <span className="lp-visually-hidden"> home</span>
         </Link>
         <SiteSwitcher />
         <div className="lp-topbar__search">

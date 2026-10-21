@@ -167,7 +167,7 @@ export function SectionForm({ section, focus, after, itemActions }: Props) {
                   itemActions={itemActions ? (item) => itemActions(f, asObject(item)) : undefined}
                 />
                 {f.kind !== "secret" && f.kind !== "list" && JSON.stringify(values[f.key]) !== JSON.stringify(defaults[f.key]) && (
-                  <button type="button" className="lp-set-reset" onClick={() => set(f.key, JSON.parse(JSON.stringify(defaults[f.key] ?? "")))} aria-label={`Reset ${f.label} to its default`}>
+                  <button type="button" className="lp-set-reset" onClick={() => set(f.key, JSON.parse(JSON.stringify(defaults[f.key] ?? "")))} aria-label={`Reset to default: ${f.label}`}>
                     Reset to default
                   </button>
                 )}
