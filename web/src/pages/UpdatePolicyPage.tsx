@@ -148,7 +148,7 @@ function RingsCard({ canEdit }: { canEdit: boolean }) {
   return (
     <Card
       title="Rings"
-      description="Pilot first, then broader. A device belongs to the first ring (in order) that lists one of its groups. Devices in no ring are not updated automatically."
+      description="Pilot first, then broader. A device belongs to the first ring (in order) that lists one of its groups. For Windows updates, devices in no ring are not updated automatically. Software policies that roll out in stages (Software policies) use the same rings, and give devices in no ring their update last."
       actions={
         canEdit && (
           <Button size="xs" onClick={() => setEdit("new")} leftSection={<Icons.Plus size={14} aria-hidden />}>

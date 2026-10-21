@@ -21,9 +21,7 @@ import (
 
 	"github.com/auzring1/librepatch/gen/dbq"
 	"github.com/auzring1/librepatch/internal/server/audit"
-	"github.com/auzring1/librepatch/internal/server/catalog"
 	"github.com/auzring1/librepatch/internal/server/deploy"
-	"github.com/auzring1/librepatch/internal/server/inventory"
 	"github.com/auzring1/librepatch/internal/server/store"
 )
 
@@ -60,6 +58,12 @@ type Service struct {
 	Deploy *deploy.Service
 	Log    *slog.Logger
 	Now    func() time.Time
+	// OnHold is called when a ring misses its success threshold for a software version (hooked to a notification).
+	OnHold func(ctx context.Context, org uuid.UUID, title, ring, reason string)
+	// OnApprovalNeeded is called when a version waits for an administrator's decision (a notification; it de-duplicates).
+	OnApprovalNeeded func(ctx context.Context, org uuid.UUID, pkg, version string)
+
+	ringc ringCaches
 }
 
 func (s *Service) now() time.Time {
@@ -90,21 +94,30 @@ type Policy struct {
 	UnverifiedConfirmed bool           `json:"unverified_confirmed"`
 	Window              *deploy.Window `json:"window"`
 	Enabled             bool           `json:"enabled"`
-	CreatedAt           time.Time      `json:"created_at"`
-	Devices             int64          `json:"devices_attempted"`
+	UseRings            bool           `json:"use_rings"`
+	RequireApproval     bool           `json:"require_approval"`
+	// Prompts are the optional messages to the signed-in user (D124); null = silent.
+	Prompts   *deploy.Prompts `json:"prompts"`
+	CreatedAt time.Time       `json:"created_at"`
+	Devices   int64           `json:"devices_attempted"`
+	// Rollout is the state of the newest version for a policy that uses rings or approval; null otherwise.
+	Rollout *RolloutView `json:"rollout"`
 }
 
 // Input is what an administrator submits.
 type Input struct {
-	Name                string         `json:"name"`
-	Kind                string         `json:"kind"`
-	PackageID           uuid.UUID      `json:"package_id"`
-	GroupIDs            []uuid.UUID    `json:"group_ids"`
-	DelayDays           int32          `json:"delay_days"`
-	OnlyNewDevices      bool           `json:"only_new_devices"`
-	UnverifiedConfirmed bool           `json:"unverified_confirmed"`
-	Window              *deploy.Window `json:"window"`
-	Enabled             bool           `json:"enabled"`
+	Name                string          `json:"name"`
+	Kind                string          `json:"kind"`
+	PackageID           uuid.UUID       `json:"package_id"`
+	GroupIDs            []uuid.UUID     `json:"group_ids"`
+	DelayDays           int32           `json:"delay_days"`
+	OnlyNewDevices      bool            `json:"only_new_devices"`
+	UnverifiedConfirmed bool            `json:"unverified_confirmed"`
+	Window              *deploy.Window  `json:"window"`
+	Enabled             bool            `json:"enabled"`
+	UseRings            bool            `json:"use_rings"`
+	RequireApproval     bool            `json:"require_approval"`
+	Prompts             *deploy.Prompts `json:"prompts"`
 }
 
 func (s *Service) validate(ctx context.Context, org uuid.UUID, in *Input) ([]byte, error) {
@@ -118,6 +131,9 @@ func (s *Service) validate(ctx context.Context, org uuid.UUID, in *Input) ([]byt
 	if len(in.GroupIDs) == 0 || len(in.GroupIDs) > 50 {
 		return nil, invalid("choose 1 to 50 groups")
 	}
+	if in.UseRings && in.Kind != "keep_updated" {
+		return nil, invalid("rings apply to keep-updated policies; a baseline installs on new devices only")
+	}
 	if in.DelayDays < 0 || in.DelayDays > 365 {
 		return nil, invalid("the delay must be 0 to 365 days")
 	}
@@ -128,6 +144,14 @@ func (s *Service) validate(ctx context.Context, org uuid.UUID, in *Input) ([]byt
 	}
 	if pkg.Source == "winget" && !pkg.Verified && !in.UnverifiedConfirmed {
 		return nil, invalid("this winget package has not been verified on test machines; confirm that you accept that before automating it")
+	}
+	pr, err := in.Prompts.Validate()
+	if err != nil {
+		return nil, invalid("%v", strings.TrimPrefix(err.Error(), deploy.ErrInvalid.Error()+": "))
+	}
+	in.Prompts = pr
+	if err := s.Deploy.CheckPrograms(ctx, org, pkg, pr); err != nil {
+		return nil, invalid("%v", strings.TrimPrefix(err.Error(), deploy.ErrInvalid.Error()+": "))
 	}
 	for _, g := range in.GroupIDs {
 		if _, err := q.GetGroup(ctx, dbq.GetGroupParams{ID: g, OrgID: org}); err != nil {
@@ -158,10 +182,10 @@ func (s *Service) Create(ctx context.Context, a Actor, in Input) (uuid.UUID, err
 	id := uuid.New()
 	err = store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
 		if err := q.InsertSoftwarePolicy(ctx, dbq.InsertSoftwarePolicyParams{ID: id, OrgID: a.Org, Name: in.Name, Kind: in.Kind, PackageID: in.PackageID, GroupIds: in.GroupIDs,
-			DelayDays: in.DelayDays, OnlyNewDevices: in.OnlyNewDevices, UnverifiedConfirmed: in.UnverifiedConfirmed, MaintWindow: win, Enabled: in.Enabled, CreatedBy: &a.User}); err != nil {
+			DelayDays: in.DelayDays, OnlyNewDevices: in.OnlyNewDevices, UnverifiedConfirmed: in.UnverifiedConfirmed, MaintWindow: win, Enabled: in.Enabled, CreatedBy: &a.User, UseRings: in.UseRings, RequireApproval: in.RequireApproval, Prompts: deploy.MarshalPrompts(in.Prompts)}); err != nil {
 			return err
 		}
-		return s.audit(ctx, tx, a, "policy.create", id, map[string]any{"name": in.Name, "kind": in.Kind, "package": in.PackageID.String(), "groups": len(in.GroupIDs)})
+		return s.audit(ctx, tx, a, "policy.create", id, map[string]any{"name": in.Name, "kind": in.Kind, "package": in.PackageID.String(), "groups": len(in.GroupIDs), "rings": in.UseRings, "approval": in.RequireApproval, "prompts": !in.Prompts.Silent()})
 	})
 	if isUnique(err) {
 		return uuid.Nil, fmt.Errorf("%w: a policy with that name already exists", ErrConflict)
@@ -177,14 +201,14 @@ func (s *Service) Update(ctx context.Context, a Actor, id uuid.UUID, in Input) e
 	}
 	err = store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
 		n, err := q.UpdateSoftwarePolicy(ctx, dbq.UpdateSoftwarePolicyParams{ID: id, OrgID: a.Org, Name: in.Name, Kind: in.Kind, PackageID: in.PackageID, GroupIds: in.GroupIDs,
-			DelayDays: in.DelayDays, OnlyNewDevices: in.OnlyNewDevices, UnverifiedConfirmed: in.UnverifiedConfirmed, MaintWindow: win, Enabled: in.Enabled})
+			DelayDays: in.DelayDays, OnlyNewDevices: in.OnlyNewDevices, UnverifiedConfirmed: in.UnverifiedConfirmed, MaintWindow: win, Enabled: in.Enabled, UseRings: in.UseRings, RequireApproval: in.RequireApproval, Prompts: deploy.MarshalPrompts(in.Prompts)})
 		if err != nil {
 			return err
 		}
 		if n == 0 {
 			return ErrNotFound
 		}
-		return s.audit(ctx, tx, a, "policy.update", id, map[string]any{"name": in.Name, "enabled": in.Enabled})
+		return s.audit(ctx, tx, a, "policy.update", id, map[string]any{"name": in.Name, "enabled": in.Enabled, "rings": in.UseRings, "approval": in.RequireApproval, "prompts": !in.Prompts.Silent()})
 	})
 	if isUnique(err) {
 		return fmt.Errorf("%w: a policy with that name already exists", ErrConflict)
@@ -222,7 +246,7 @@ func (s *Service) List(ctx context.Context, org uuid.UUID) ([]Policy, error) {
 	out := make([]Policy, 0, len(rows))
 	for _, r := range rows {
 		p := Policy{ID: r.ID, Name: r.Name, Kind: r.Kind, PackageID: r.PackageID, PackageName: r.PackageName, PackageIdentifier: r.PackageIdentifier, GroupIDs: r.GroupIds,
-			DelayDays: r.DelayDays, OnlyNewDevices: r.OnlyNewDevices, UnverifiedConfirmed: r.UnverifiedConfirmed, Enabled: r.Enabled, CreatedAt: r.CreatedAt}
+			DelayDays: r.DelayDays, OnlyNewDevices: r.OnlyNewDevices, UnverifiedConfirmed: r.UnverifiedConfirmed, Enabled: r.Enabled, UseRings: r.UseRings, RequireApproval: r.RequireApproval, Prompts: deploy.ParsePrompts(r.Prompts), CreatedAt: r.CreatedAt}
 		if len(r.MaintWindow) > 0 {
 			var w deploy.Window
 			if json.Unmarshal(r.MaintWindow, &w) == nil {
@@ -231,6 +255,11 @@ func (s *Service) List(ctx context.Context, org uuid.UUID) ([]Policy, error) {
 		}
 		if st, err := q.PolicyAttemptStats(ctx, r.ID); err == nil {
 			p.Devices = st.Devices
+		}
+		if r.Enabled && (r.UseRings || r.RequireApproval) {
+			if ro, err := s.plan(ctx, policyRow(r), s.now()); err == nil {
+				p.Rollout = ro.view()
+			}
 		}
 		out = append(out, p)
 	}
@@ -255,113 +284,58 @@ func (s *Service) Tick(ctx context.Context) {
 }
 
 func (s *Service) run(ctx context.Context, p dbq.SoftwarePolicy) error {
-	q := dbq.New(s.Pool)
-	pkg, err := q.GetCatalogPackage(ctx, dbq.GetCatalogPackageParams{ID: p.PackageID, OrgID: p.OrgID})
-	if err != nil {
-		return nil
-	}
-	pin, enforce := "", false
-	if ov, err := q.GetPackageOverride(ctx, dbq.GetPackageOverrideParams{OrgID: p.OrgID, PackageID: pkg.ID}); err == nil {
-		if ov.Excluded {
-			return nil
-		}
-		pin, enforce = ov.Pin, ov.SelfUpdatePolicy == "enforce"
-	}
-	if p.Kind == "keep_updated" && pkg.SelfUpdating && !enforce {
-		return nil // left to the vendor's updater (D50)
-	}
-	vs, err := q.ListPackageVersions(ctx, pkg.ID)
-	if err != nil {
-		return err
-	}
-	ver, err := catalog.ChooseVersion(vs, "", pin)
-	if err != nil || ver == nil || ver.VersionKey == nil {
-		return nil
-	}
 	now := s.now()
-	if now.Before(ver.ImportedAt.Add(time.Duration(p.DelayDays) * 24 * time.Hour)) {
-		return nil // not old enough yet
-	}
-	devs, err := s.Deploy.ResolveTargets(ctx, p.OrgID, p.GroupIds, nil)
-	if err != nil || len(devs) == 0 {
+	ro, err := s.plan(ctx, p, now)
+	if err != nil || ro == nil || ro.ver == nil {
 		return err
 	}
-	ids := make([]uuid.UUID, len(devs))
-	for i, d := range devs {
-		ids[i] = d.ID
-	}
-	norm := inventory.NormalizeName(pkg.Name, "")
-	var cands []uuid.UUID
-	action := "update"
-	switch p.Kind {
-	case "keep_updated":
-		rows, err := q.ListOutdatedForPackage(ctx, dbq.ListOutdatedForPackageParams{DeviceIds: ids, NormalizedName: norm, VersionKey: ver.VersionKey})
-		if err != nil {
-			return err
-		}
-		for _, r := range rows {
-			cands = append(cands, r.DeviceID)
-		}
-	case "baseline":
-		action = "install"
-		have, err := q.ListDevicesWithPackage(ctx, dbq.ListDevicesWithPackageParams{DeviceIds: ids, NormalizedName: norm})
-		if err != nil {
-			return err
-		}
-		has := map[uuid.UUID]bool{}
-		for _, d := range have {
-			has[d] = true
-		}
-		enrolled := map[uuid.UUID]time.Time{}
-		if p.OnlyNewDevices {
-			ts, err := q.ListDeviceEnrollTimes(ctx, ids)
-			if err != nil {
-				return err
-			}
-			for _, t := range ts {
-				enrolled[t.ID] = t.EnrolledAt
-			}
-		}
-		for _, id := range ids {
-			if has[id] {
-				continue
-			}
-			if p.OnlyNewDevices && !enrolled[id].After(p.CreatedAt) {
-				continue
-			}
-			cands = append(cands, id)
+	// A ring that missed its threshold holds the version back from the later rings.
+	for _, st := range ro.stages {
+		if st.ring != nil && st.holdReason != "" {
+			s.raiseHold(ctx, ro, st, now)
 		}
 	}
-	if len(cands) == 0 {
+	if ro.blocked != "" {
+		if ro.blocked == blockPending && len(ro.all) > 0 && s.OnApprovalNeeded != nil {
+			s.OnApprovalNeeded(ctx, p.OrgID, ro.pkg.Name, ro.ver.Version)
+		}
 		return nil
-	}
-	eligible, fails, err := s.filterAttempts(ctx, p, ver.Version, cands, now)
-	if err != nil || len(eligible) == 0 {
-		return err
-	}
-	if len(eligible) > maxDevicesPerRun {
-		eligible = eligible[:maxDevicesPerRun]
 	}
 	if p.CreatedBy == nil {
 		return nil // the person who made the policy was deleted; deployments need an owner on record
 	}
-	var win *deploy.Window
-	if len(p.MaintWindow) > 0 {
-		var w deploy.Window
-		if json.Unmarshal(p.MaintWindow, &w) == nil {
-			win = &w
+	q := dbq.New(s.Pool)
+	budget := maxDevicesPerRun
+	for _, st := range ro.stages {
+		if !st.eligible || len(st.cands) == 0 || budget <= 0 {
+			continue
 		}
-	}
-	plan, err := s.Deploy.Create(ctx, p.OrgID, deploy.Request{Name: fmt.Sprintf("Policy %s: %s %s", p.Name, pkg.Name, ver.Version), Action: action, PackageID: pkg.ID,
-		Version: ver.Version, Scope: "machine", DeviceIDs: eligible, ExpiresIn: deployLifetime, Window: win, UnverifiedConfirmed: p.UnverifiedConfirmed,
-		Policy: p.ID.String(), UserID: *p.CreatedBy})
-	if err != nil {
-		return err
-	}
-	s.log().Debug("policy deployment created", "policy", p.Name, "devices", len(eligible), "jobs", plan.Jobs, "skipped", plan.Skipped)
-	for _, d := range eligible {
-		if err := q.UpsertPolicyAttempt(ctx, dbq.UpsertPolicyAttemptParams{PolicyID: p.ID, DeviceID: d, Version: ver.Version, DeploymentID: &plan.DeploymentID, Failures: fails[d], CreatedAt: now}); err != nil {
+		eligible, fails, err := s.filterAttempts(ctx, p, ro.ver.Version, st.cands, now)
+		if err != nil {
 			return err
+		}
+		if len(eligible) > budget {
+			eligible = eligible[:budget]
+		}
+		if len(eligible) == 0 {
+			continue
+		}
+		budget -= len(eligible)
+		name := fmt.Sprintf("Policy %s: %s %s", p.Name, ro.pkg.Name, ro.ver.Version)
+		if st.ring != nil {
+			name += " (" + st.ring.Name + ")"
+		}
+		plan, err := s.Deploy.Create(ctx, p.OrgID, deploy.Request{Name: name, Action: ro.action, PackageID: ro.pkg.ID,
+			Version: ro.ver.Version, Scope: "machine", DeviceIDs: eligible, ExpiresIn: deployLifetime, Window: windowOf(p, st), UnverifiedConfirmed: p.UnverifiedConfirmed,
+			Policy: p.ID.String(), UserID: *p.CreatedBy, Prompts: deploy.ParsePrompts(p.Prompts)})
+		if err != nil {
+			return err
+		}
+		s.log().Debug("policy deployment created", "policy", p.Name, "stage", st.name, "devices", len(eligible), "jobs", plan.Jobs, "skipped", plan.Skipped)
+		for _, d := range eligible {
+			if err := q.UpsertPolicyAttempt(ctx, dbq.UpsertPolicyAttemptParams{PolicyID: p.ID, DeviceID: d, Version: ro.ver.Version, DeploymentID: &plan.DeploymentID, Failures: fails[d], CreatedAt: now}); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

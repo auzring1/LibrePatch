@@ -48,7 +48,7 @@ func TestParseAllowedJobs(t *testing.T) {
 	if err != nil || len(got) != 2 || got[0] != "inventory" {
 		t.Fatalf("%v %v", got, err)
 	}
-	if _, err := ParseAllowedJobs("run_script"); err == nil {
+	if _, err := ParseAllowedJobs("format_disk"); err == nil {
 		t.Fatal("unknown job type accepted")
 	}
 }

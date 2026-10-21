@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -53,6 +54,18 @@ type Engine struct {
 	ReleaseKeys []ed25519.PublicKey
 	// RollbackWindow overrides the time a new version has to become healthy (tests).
 	RollbackWindow time.Duration
+	// LocalNets and SendUDP are the network of this computer and how a packet leaves it (Wake-on-LAN; tests replace both).
+	LocalNets func() []LocalNet
+	SendUDP   func(local net.IP, dest string, pkt []byte) error
+	// ScriptsEnabled: this computer's owner switched on running scripts (Config.AllowScripts). Without it every script job is
+	// refused, whatever the ceiling says.
+	ScriptsEnabled bool
+	// CacheFile, if set, is told about every installer that passed the hash check, so it can be kept for other computers.
+	CacheFile func(path string, sha []byte)
+	// Sleep waits d (default: a timer that ends with ctx). Tests replace it to move a fake clock.
+	Sleep func(ctx context.Context, d time.Duration)
+	// PromptPoll is how often the engine looks whether programs it asked a user to close are gone (default 5 s).
+	PromptPoll time.Duration
 	// Trust returns the pinned root, job-signing certificates and identity the
 	// user-context helper needs to re-verify a job.
 	Trust func() (root []byte, signing [][]byte, deviceID, orgID string)
@@ -80,18 +93,28 @@ const (
 func (l lane) handles(t agentv1.JobType) bool {
 	switch l {
 	case laneMain:
-		return t != agentv1.JobType_JOB_TYPE_REBOOT
+		return !controlJob(t)
 	case laneControl:
-		return t == agentv1.JobType_JOB_TYPE_REBOOT
+		return controlJob(t)
 	}
 	return true
+}
+
+// controlJob is a quick job that must not wait behind an installer: a restart request, a wake-up packet and a
+// read-only view.
+func controlJob(t agentv1.JobType) bool {
+	switch t {
+	case agentv1.JobType_JOB_TYPE_REBOOT, agentv1.JobType_JOB_TYPE_WAKE, agentv1.JobType_JOB_TYPE_INSPECT:
+		return true
+	}
+	return false
 }
 
 // interruptedByRestart reports whether a restart would break a job of this type halfway.
 func interruptedByRestart(t agentv1.JobType) bool {
 	switch t {
 	case agentv1.JobType_JOB_TYPE_SOFTWARE_INSTALL, agentv1.JobType_JOB_TYPE_SOFTWARE_UPDATE, agentv1.JobType_JOB_TYPE_SOFTWARE_UNINSTALL,
-		agentv1.JobType_JOB_TYPE_WU_INSTALL, agentv1.JobType_JOB_TYPE_AGENT_UPDATE:
+		agentv1.JobType_JOB_TYPE_WU_INSTALL, agentv1.JobType_JOB_TYPE_AGENT_UPDATE, agentv1.JobType_JOB_TYPE_RUN_SCRIPT:
 		return true
 	}
 	return false
@@ -143,6 +166,10 @@ func (e *Engine) allowed(t agentv1.JobType) bool {
 	name := ceilingName(t)
 	if name == "" {
 		return false
+	}
+	if t == agentv1.JobType_JOB_TYPE_RUN_SCRIPT {
+		// Scripts are never part of "everything": the owner of the computer switched them on, and a ceiling that is set names them.
+		return e.ScriptsEnabled && (len(e.Allowed) == 0 || e.Allowed[name])
 	}
 	if len(e.Allowed) == 0 {
 		return true
@@ -205,7 +232,11 @@ func (e *Engine) Accept(se *agentv1.SignedEnvelope, env *agentv1.JobEnvelope) {
 		return
 	}
 	if !e.allowed(env.Type) {
-		reject("job type not allowed by the local policy ceiling", agentv1.SecurityEventKind_SECURITY_EVENT_KIND_POLICY_CEILING)
+		why := "job type not allowed by the local policy ceiling"
+		if env.Type == agentv1.JobType_JOB_TYPE_RUN_SCRIPT && !e.ScriptsEnabled {
+			why = "scripts are not switched on on this computer (the agent was installed without --allow-scripts)"
+		}
+		reject(why, agentv1.SecurityEventKind_SECURITY_EVENT_KIND_POLICY_CEILING)
 		return
 	}
 	if err := ValidateWindow(env.Window); err != nil {
@@ -235,6 +266,36 @@ func (e *Engine) Accept(se *agentv1.SignedEnvelope, env *agentv1.JobEnvelope) {
 		e.setState(r, agentv1.JobState_JOB_STATE_ACCEPTED, "", nil)
 	case agentv1.JobType_JOB_TYPE_AGENT_UPDATE:
 		if err := ValidateAgentUpdate(env); err != nil {
+			reject(err.Error(), agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		e.setState(r, agentv1.JobState_JOB_STATE_ACCEPTED, "", nil)
+	case agentv1.JobType_JOB_TYPE_WAKE:
+		if env.TargetUserSid != "" {
+			reject("wake jobs are machine-scope", agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		if err := ValidateWake(env.GetWake()); err != nil {
+			reject(err.Error(), agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		e.setState(r, agentv1.JobState_JOB_STATE_ACCEPTED, "", nil)
+	case agentv1.JobType_JOB_TYPE_INSPECT:
+		if env.TargetUserSid != "" {
+			reject("inspect jobs are machine-scope", agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		if err := ValidateInspect(env.GetInspect()); err != nil {
+			reject(err.Error(), agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		e.setState(r, agentv1.JobState_JOB_STATE_ACCEPTED, "", nil)
+	case agentv1.JobType_JOB_TYPE_RUN_SCRIPT:
+		if env.TargetUserSid != "" {
+			reject("script jobs are machine-scope", agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		if err := ValidateRunScript(env.GetRunScript()); err != nil {
 			reject(err.Error(), agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
 			return
 		}
@@ -388,7 +449,7 @@ func (e *Engine) tickLane(ctx context.Context, l lane) time.Duration {
 			soonest(now.Add(userPoll))
 			continue
 		}
-		if l == laneControl && e.unsafe.Load() > 0 {
+		if l == laneControl && agentv1.JobType(r.Type) == agentv1.JobType_JOB_TYPE_REBOOT && e.unsafe.Load() > 0 {
 			// An installer or update is running: the restart starts when it has finished (runJob wakes this loop).
 			e.setState(r, agentv1.JobState_JOB_STATE_WAITING, "waiting_install_finish", nil)
 			continue
@@ -461,6 +522,12 @@ func (e *Engine) runJob(ctx context.Context, r *Record, env *agentv1.JobEnvelope
 		out = e.rebootJob(env)
 	case agentv1.JobType_JOB_TYPE_AGENT_UPDATE:
 		out = e.agentUpdate(jctx, r, env)
+	case agentv1.JobType_JOB_TYPE_WAKE:
+		out = e.sendWake(jctx, env)
+	case agentv1.JobType_JOB_TYPE_INSPECT:
+		out = e.inspect(jctx, env)
+	case agentv1.JobType_JOB_TYPE_RUN_SCRIPT:
+		out = e.runScript(jctx, r, env)
 	}
 	if out == nil {
 		out = fail("unsupported job type")
@@ -481,6 +548,10 @@ func (e *Engine) runJob(ctx context.Context, r *Record, env *agentv1.JobEnvelope
 	r.Finished = now.Unix()
 
 	switch {
+	case out.waitUntil > 0:
+		r.NextRun, r.Finished = out.waitUntil, 0
+		e.setState(r, agentv1.JobState_JOB_STATE_WAITING, out.waitReason, nil)
+		return
 	case out.waitUser:
 		e.setState(r, agentv1.JobState_JOB_STATE_WAITING, "waiting_user_logon", nil)
 		return
@@ -536,6 +607,10 @@ type outcome struct {
 	waitUser  bool
 	cancelled bool
 	deferred  bool // the job outcome is reported later (agent update waiting for its restart)
+	// waitUntil, when set (unix seconds), puts the job back to WAITING until then without using up a retry:
+	// programs the update replaces are open (see inUseGate). waitReason is shown as the status reason.
+	waitUntil  int64
+	waitReason string
 }
 
 func fail(format string, a ...any) *outcome {

@@ -167,6 +167,8 @@ type bindingView struct {
 	Role      string    `json:"role"`
 	ScopeType string    `json:"scope_type"`
 	ScopeID   uuid.UUID `json:"scope_id"`
+	// Source is "sso" for a role that follows the identity provider and "local" for one set by hand.
+	Source string `json:"source"`
 }
 
 type userView struct {
@@ -181,6 +183,8 @@ type userView struct {
 	HasTOTP            bool          `json:"has_totp"`
 	SecurityKeys       int           `json:"security_keys"`
 	Bindings           []bindingView `json:"bindings"`
+	// SSO is true for somebody who signs in with the organization's identity provider.
+	SSO bool `json:"sso"`
 }
 
 func (s *server) listUsers(w http.ResponseWriter, r *http.Request) {
@@ -197,7 +201,16 @@ func (s *server) listUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	by := map[uuid.UUID][]bindingView{}
 	for _, b := range binds {
-		by[b.UserID] = append(by[b.UserID], bindingView{ID: b.ID, Role: b.Role, ScopeType: b.ScopeType, ScopeID: b.ScopeID})
+		by[b.UserID] = append(by[b.UserID], bindingView{ID: b.ID, Role: b.Role, ScopeType: b.ScopeType, ScopeID: b.ScopeID, Source: b.Source})
+	}
+	ssoIDs, err := s.q().ListSSOUsers(r.Context(), ssoProvider)
+	if err != nil {
+		internalError(w)
+		return
+	}
+	viaSSO := map[uuid.UUID]bool{}
+	for _, id := range ssoIDs {
+		viaSSO[id] = true
 	}
 	items := make([]userView, 0, len(rows))
 	for _, u := range rows {
@@ -206,7 +219,7 @@ func (s *server) listUsers(w http.ResponseWriter, r *http.Request) {
 			bs = []bindingView{}
 		}
 		items = append(items, userView{ID: u.ID, Email: u.Email, DisplayName: u.DisplayName, Status: u.Status, LockedUntil: u.LockedUntil, LastLoginAt: u.LastLoginAt,
-			CreatedAt: u.CreatedAt, MustChangePassword: u.MustChangePassword, HasTOTP: u.HasTotp, SecurityKeys: int(u.WebauthnCount), Bindings: bs})
+			CreatedAt: u.CreatedAt, MustChangePassword: u.MustChangePassword, HasTOTP: u.HasTotp, SecurityKeys: int(u.WebauthnCount), Bindings: bs, SSO: viaSSO[u.ID]})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }

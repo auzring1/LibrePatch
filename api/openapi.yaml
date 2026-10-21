@@ -104,6 +104,57 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /auth/sso/info:
+    get:
+      tags: [auth]
+      summary: Whether the sign-in page offers single sign-on, and the address to register at the provider
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, label, redirect_uri]
+                properties:
+                  enabled: { type: boolean }
+                  label: { type: string, description: Text for the button ("Sign in with …") }
+                  redirect_uri: { type: string, description: The redirect (reply) address to register for this server at the provider }
+  /auth/sso/start:
+    get:
+      tags: [auth]
+      summary: Start a sign-in with the organization's OpenID Connect provider (redirects the browser to it)
+      description: Authorization code flow with PKCE and a one-time state and nonce stored on the server for ten minutes. Rate limited like password sign-in.
+      security: []
+      responses:
+        "302": { description: Redirect to the provider }
+        "200": { description: A page that sends the browser back to the sign-in page with an error code, when single sign-on is not available }
+  /auth/sso/callback:
+    get:
+      tags: [auth]
+      summary: Where the provider sends the person back (not for direct use)
+      description: |
+        Exchanges the code, verifies the ID token (issuer, audience, signature from the provider's published keys, expiry, nonce), finds or creates the account, brings its provider-managed roles in line with the provider, and starts a session. The answer is a small page that sends the browser on to the console (the session cookie is SameSite=Strict, so a plain redirect after a cross-site navigation would not carry it). Without the provider's proof of multi-factor, or with that setting off, the session is "MFA pending" and the sign-in page asks for the second factor kept here.
+      security: []
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+      responses:
+        "200": { description: A page that continues to the console or to the sign-in page with an error code }
+  /auth/sso/continue:
+    get:
+      tags: [auth]
+      summary: The second-factor step for a session that arrived through single sign-on
+      security: []
+      responses:
+        "200":
+          description: The same answer as a password sign-in gives (which second-factor methods, or the enrollment of a first one)
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "401": { $ref: "#/components/responses/Error" }
   /auth/login:
     post:
       tags: [auth]
@@ -2066,6 +2117,45 @@ paths:
       responses:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/Error" }
+  /software/approvals:
+    get:
+      tags: [policies]
+      summary: Software versions waiting for approval, recent decisions and open ring holds (requires deployments:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SoftwareApprovals" }
+    post:
+      tags: [policies]
+      summary: Approve or decline one version of a package, or put it back to waiting (requires deployments:write; audited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [package_id, version, decision]
+              properties:
+                package_id: { type: string, format: uuid }
+                version: { type: string }
+                decision: { type: string, enum: [approved, declined, reset] }
+                note: { type: string, maxLength: 1000 }
+      responses:
+        "204": { description: Recorded }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /software/holds/{id}/release:
+    post:
+      tags: [policies]
+      summary: Release a ring hold so the version moves on to the next ring (requires policies:write; audited)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "204": { description: Released }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /reports/overview:
     get:
       tags: [reports]
@@ -2094,6 +2184,190 @@ paths:
     get:
       tags: [reports]
       summary: Patch compliance per device as CSV (requires inventory:export; audited)
+      responses:
+        "200":
+          description: CSV
+          content:
+            text/csv:
+              schema: { type: string }
+  /vulnerabilities:
+    get:
+      tags: [vulnerabilities]
+      summary: Known vulnerabilities (CVEs) that affect devices, the exploited ones first, with a summary and the state of the data (requires reports:read)
+      parameters:
+        - { name: exploited, in: query, required: false, schema: { type: boolean }, description: Only vulnerabilities on the CISA list of known exploited vulnerabilities }
+        - { name: severity, in: query, required: false, schema: { type: string }, description: "Comma-separated: low, medium, high, critical" }
+        - { name: q, in: query, required: false, schema: { type: string }, description: Text in the CVE id, summary or software name }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 2000, default: 500 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VulnerabilityOverview" }
+  /vulnerabilities.csv:
+    get:
+      tags: [vulnerabilities]
+      summary: The same list as CSV (requires inventory:export; audited)
+      responses:
+        "200":
+          description: CSV
+          content:
+            text/csv:
+              schema: { type: string }
+  /vulnerabilities/{cve}/devices:
+    get:
+      tags: [vulnerabilities]
+      summary: The devices a CVE affects, and what to update (requires reports:read)
+      parameters: [{ name: cve, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/VulnerabilityDevice" } }
+        "400": { $ref: "#/components/responses/Error" }
+  /vulnerabilities/sync:
+    post:
+      tags: [vulnerabilities]
+      summary: Download the vulnerability feeds now (requires settings:integrations; audited as vulns.sync). The lookup must be turned on.
+      responses:
+        "200":
+          description: What the run did
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VulnerabilitySyncReport" }
+        "409": { $ref: "#/components/responses/Error" }
+  /vulnerabilities/import:
+    post:
+      tags: [vulnerabilities]
+      summary: Load a feed file by hand, for feeds the server cannot download (requires settings:integrations; audited as vulns.import)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind, data]
+              properties:
+                kind: { type: string, enum: [kev, nvd] }
+                data: { type: string, description: The text of the CISA catalog, or of one page of an NVD CVE API 2.0 answer }
+      responses:
+        "200":
+          description: Loaded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kind, items]
+                properties:
+                  kind: { type: string }
+                  items: { type: integer }
+        "422": { $ref: "#/components/responses/Error" }
+  /vulnerabilities/products:
+    get:
+      tags: [vulnerabilities]
+      summary: Which installed programs are looked up in the vulnerability data, and as what (requires reports:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/VulnerabilityProduct" } }
+    post:
+      tags: [vulnerabilities]
+      summary: Add a program to look up, by the vendor and product names the NVD uses (requires settings:integrations; audited as vulns.product_add)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, vendor, product]
+              properties:
+                name: { type: string, description: The program's name as the software inventory shows it }
+                vendor: { type: string }
+                product: { type: string }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VulnerabilityProduct" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /vulnerabilities/products/{id}:
+    put:
+      tags: [vulnerabilities]
+      summary: Switch a line on or off (requires settings:integrations; audited)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        "204": { description: Saved }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [vulnerabilities]
+      summary: Remove a line you added; lines that come with the product can only be switched off (requires settings:integrations; audited)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "204": { description: Removed }
+        "404": { $ref: "#/components/responses/Error" }
+  /devices/{id}/vulnerabilities:
+    get:
+      tags: [vulnerabilities]
+      summary: The known vulnerabilities that affect one device (requires devices:read for the device)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, enabled, has_data]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/DeviceVulnerability" } }
+                  enabled: { type: boolean }
+                  has_data: { type: boolean }
+        "404": { $ref: "#/components/responses/Error" }
+  /reports/lifecycle:
+    get:
+      tags: [reports]
+      summary: Which devices run an operating system that is out of support or soon will be (requires reports:read)
+      description: The end-of-support dates are a built-in table (data_as_of says when it was reviewed), not a lookup on the internet.
+      parameters:
+        - { name: warn_days, in: query, required: false, schema: { type: integer, minimum: 0, maximum: 3650, default: 180 }, description: How many days before the end of support a device counts as ending soon }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LifecycleReport" }
+  /reports/lifecycle.csv:
+    get:
+      tags: [reports]
+      summary: The operating system lifecycle report as CSV (requires inventory:export; audited)
+      parameters:
+        - { name: warn_days, in: query, required: false, schema: { type: integer, minimum: 0, maximum: 3650, default: 180 } }
       responses:
         "200":
           description: CSV
@@ -2258,6 +2532,263 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+  /devices/{id}/wake:
+    post:
+      tags: [devices]
+      summary: Wake a sleeping device with a Wake-on-LAN packet sent by another online device on the same network (requires devices:wake; audited)
+      description: |
+        The server picks an online device whose network contains the sleeping device's last address (it needs the current agent, which reports its networks) and queues a job for it; that device sends the packet to its own network's broadcast address, nothing else. The job belongs to the helper. Whether the computer wakes depends on its firmware and network card settings.
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "202":
+          description: A wake-up job was queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, helper]
+                properties:
+                  job_id: { type: string, format: uuid }
+                  helper: { type: string, description: Host name of the device that sends the packet }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /devices/{id}/inspect:
+    post:
+      tags: [devices]
+      summary: Ask an online device for a read-only view of itself (requires devices:inspect; audited)
+      description: Running programs, services or recent event log entries (System, Application or Setup; never Security). The answer is read with GET /devices/{id}/views/{job} and is kept for an hour.
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind]
+              properties:
+                kind: { type: string, enum: [processes, services, events] }
+                log: { type: string, enum: ["", System, Application, Setup] }
+                max_level: { type: integer, minimum: 0, maximum: 5, description: "Events: 1 critical to 5 verbose; 0 = 3" }
+                since_minutes: { type: integer, minimum: 0, maximum: 10080, description: "Events: look back this far; 0 = 1440" }
+                max_events: { type: integer, minimum: 0, maximum: 200, description: "Events: 0 = 100" }
+      responses:
+        "202": { $ref: "#/components/responses/JobQueued" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /devices/{id}/views/{job}:
+    get:
+      tags: [devices]
+      summary: The state and, when ready, the data of a read-only view (requires devices:inspect)
+      parameters:
+        - { $ref: "#/components/parameters/ID" }
+        - { name: job, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceView" }
+        "404": { $ref: "#/components/responses/Error" }
+  /scripts:
+    get:
+      tags: [scripts]
+      summary: The script library (requires scripts:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/ScriptItem" } }
+    post:
+      tags: [scripts]
+      summary: Add a script to the library (requires scripts:write; audited)
+      description: Administrators only, and never through an API token. A script is PowerShell text of 1 to 65536 bytes. Every save of different content is a new version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScriptInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id: { type: string, format: uuid }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /scripts/status:
+    get:
+      tags: [scripts]
+      summary: Whether runs need a second person's approval, and whether anyone else could approve (requires scripts:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [require_approval, other_approvers, max_devices]
+                properties:
+                  require_approval: { type: boolean }
+                  other_approvers: { type: integer, format: int64, description: Other active administrators who could approve a run you ask for }
+                  max_devices: { type: integer }
+  /scripts/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [scripts]
+      summary: A script with its content and versions (requires scripts:read)
+      parameters:
+        - { name: version, in: query, schema: { type: integer, minimum: 1 }, description: Default is the current version }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptDetail" }
+        "404": { $ref: "#/components/responses/Error" }
+    put:
+      tags: [scripts]
+      summary: Change a script; different content becomes a new version (requires scripts:write; audited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScriptInput" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version]
+                properties:
+                  version: { type: integer }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [scripts]
+      summary: Delete a script and its versions; earlier runs keep their own copy (requires scripts:write; audited)
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
+  /scripts/runs:
+    get:
+      tags: [scripts]
+      summary: The newest script runs (requires scripts:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/ScriptRun" } }
+    post:
+      tags: [scripts]
+      summary: Ask for a script to be run on devices (requires scripts:run; audited)
+      description: |
+        The content of the chosen version is copied into the run. When the organization requires approval the run waits (24 hours) for another administrator; otherwise one signed job per device is queued at once. A device only runs it if its agent was installed with scripts switched on; the others end the job as rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScriptRunRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptRun" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /scripts/runs/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [scripts]
+      summary: A run with its exact content and one row per device (requires scripts:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptRunDetail" }
+        "404": { $ref: "#/components/responses/Error" }
+  /scripts/runs/{id}/approve:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    post:
+      tags: [scripts]
+      summary: Approve a run someone else asked for; its jobs are queued (requires scripts:approve; audited)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScriptDecision" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptRun" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /scripts/runs/{id}/reject:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    post:
+      tags: [scripts]
+      summary: Reject a run that waits for approval (requires scripts:approve; audited)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScriptDecision" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptRun" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /scripts/runs/{id}/cancel:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    post:
+      tags: [scripts]
+      summary: Withdraw a run and cancel the jobs that have not started (requires scripts:run; audited)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptRun" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /scripts/runs/{id}/jobs/{job}/output:
+    get:
+      tags: [scripts]
+      summary: What the script printed on one device (requires scripts:read; kept 30 days, never shown on job pages)
+      parameters:
+        - { $ref: "#/components/parameters/ID" }
+        - { name: job, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptOutput" }
+        "404": { $ref: "#/components/responses/Error" }
   /catalog/packages:
     get:
       tags: [catalog]
@@ -2395,6 +2926,125 @@ paths:
         "204": { description: Saved }
         "404": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+  /catalog/overlays:
+    get:
+      tags: [catalog]
+      summary: Signed catalog overlay sources, highest priority first (requires catalog:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, builtin_entries]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/OverlaySource" } }
+                  builtin_entries: { type: integer }
+    post:
+      tags: [catalog]
+      summary: Add an overlay from an uploaded signed file or from a URL, under its author's public key (requires catalog:override; audited as catalog.overlay_add)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [public_key]
+              properties:
+                label: { type: string, maxLength: 100, description: Defaults to the name inside the document }
+                public_key: { type: string, description: 64 hexadecimal characters }
+                url: { type: string, description: Fetch the signed file from here (http or https) }
+                bundle: { type: string, description: The text of the signed .lpov file, when it is uploaded }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OverlaySource" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /catalog/overlays/{id}:
+    put:
+      tags: [catalog]
+      summary: Rename an overlay source, switch it on or off, change its priority or address (requires catalog:override; audited as catalog.overlay_update)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [label, enabled, priority]
+              properties:
+                label: { type: string, maxLength: 100 }
+                enabled: { type: boolean }
+                priority: { type: integer, minimum: 1, maximum: 1000 }
+                url: { type: string }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OverlaySource" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [catalog]
+      summary: Remove an overlay source (requires catalog:override; audited as catalog.overlay_delete)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "204": { description: Removed }
+        "404": { $ref: "#/components/responses/Error" }
+  /catalog/overlays/{id}/upload:
+    post:
+      tags: [catalog]
+      summary: Load a newer signed file into a source; an older document than the source has is refused (requires catalog:override; audited as catalog.overlay_replace)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [bundle]
+              properties:
+                bundle: { type: string }
+      responses:
+        "200":
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OverlayChange" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /catalog/overlays/{id}/refresh:
+    post:
+      tags: [catalog]
+      summary: Ask a URL source for a newer document now (requires catalog:override; audited as catalog.overlay_refresh)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200":
+          description: Checked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OverlayChange" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /catalog/overlay-template:
+    get:
+      tags: [catalog]
+      summary: An unsigned overlay document built from this organization's own overrides and verified marks, to edit and sign (requires catalog:override)
+      responses:
+        "200":
+          description: JSON document
+          content:
+            application/json:
+              schema: { type: object }
   /catalog/import:
     post:
       tags: [catalog]
@@ -3214,6 +3864,7 @@ components:
         must_change_password: { type: boolean }
         has_totp: { type: boolean }
         security_keys: { type: integer }
+        sso: { type: boolean, description: Signs in with the organization's identity provider }
         bindings:
           type: array
           items:
@@ -3224,6 +3875,7 @@ components:
               role: { type: string }
               scope_type: { type: string }
               scope_id: { type: string, format: uuid }
+              source: { type: string, enum: [local, sso], description: "sso = follows the identity provider at every sign-in; local = set by hand" }
     SoftwarePolicy:
       type: object
       required: [id, name, kind, package_id, package_name, group_ids, delay_days, only_new_devices, unverified_confirmed, enabled, created_at, devices_attempted]
@@ -3240,8 +3892,71 @@ components:
         unverified_confirmed: { type: boolean }
         window: { $ref: "#/components/schemas/MaintenanceWindow" }
         enabled: { type: boolean }
+        use_rings: { type: boolean, description: Roll new versions out through the update rings (keep-updated policies only) }
+        require_approval: { type: boolean, description: A new version waits for an administrator's approval before it goes out }
+        prompts: { allOf: [{ $ref: "#/components/schemas/InstallPrompts" }], nullable: true }
         created_at: { type: string, format: date-time }
         devices_attempted: { type: integer, format: int64 }
+        rollout: { allOf: [{ $ref: "#/components/schemas/SoftwareRollout" }], nullable: true, description: The state of the newest version; set only for a policy that uses rings or approval }
+    SoftwareRollout:
+      type: object
+      required: [version, imported_at, approval, waiting, stages]
+      properties:
+        version: { type: string }
+        imported_at: { type: string, format: date-time }
+        approval: { type: string, enum: [not_required, pending, approved, declined] }
+        approved_at: { type: string, format: date-time }
+        blocked: { type: string, enum: [excluded, self_updating, no_version, delay, pending_approval, declined], description: Why nothing goes out right now }
+        available_at: { type: string, format: date-time, description: The earliest moment the first ring may install }
+        waiting: { type: integer, description: Devices that still need the version }
+        stages:
+          type: array
+          items:
+            type: object
+            required: [name, ring, devices, waiting, installed, failed, state]
+            properties:
+              name: { type: string }
+              ring: { type: boolean, description: False for the devices that are in no ring }
+              devices: { type: integer }
+              waiting: { type: integer }
+              installed: { type: integer }
+              failed: { type: integer }
+              state: { type: string, enum: [waiting, running, passed, done, held] }
+              hold_id: { type: string, format: uuid }
+              reason: { type: string }
+    SoftwareApprovalItem:
+      type: object
+      required: [package_id, package_name, version, decision, note, decided_by, policies, devices]
+      properties:
+        package_id: { type: string, format: uuid }
+        package_name: { type: string }
+        version: { type: string }
+        decision: { type: string, enum: [pending, approved, declined] }
+        note: { type: string }
+        imported_at: { type: string, format: date-time }
+        decided_at: { type: string, format: date-time }
+        decided_by: { type: string }
+        policies: { type: array, items: { type: string } }
+        devices: { type: integer }
+    SoftwareHold:
+      type: object
+      required: [id, policy_id, policy, package_name, version, ring, reason, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        policy_id: { type: string, format: uuid }
+        policy: { type: string }
+        package_name: { type: string }
+        version: { type: string }
+        ring: { type: string }
+        reason: { type: string }
+        created_at: { type: string, format: date-time }
+    SoftwareApprovals:
+      type: object
+      required: [pending, recent, holds]
+      properties:
+        pending: { type: array, items: { $ref: "#/components/schemas/SoftwareApprovalItem" } }
+        recent: { type: array, items: { $ref: "#/components/schemas/SoftwareApprovalItem" } }
+        holds: { type: array, items: { $ref: "#/components/schemas/SoftwareHold" } }
     SoftwarePolicyInput:
       type: object
       additionalProperties: false
@@ -3255,6 +3970,9 @@ components:
         only_new_devices: { type: boolean }
         unverified_confirmed: { type: boolean }
         window: { $ref: "#/components/schemas/MaintenanceWindow" }
+        use_rings: { type: boolean, description: Roll new versions out through the update rings (keep-updated policies only) }
+        require_approval: { type: boolean, description: A new version waits for an administrator's approval }
+        prompts: { allOf: [{ $ref: "#/components/schemas/InstallPrompts" }], nullable: true }
         enabled: { type: boolean }
     ComplianceRow:
       type: object
@@ -3274,6 +3992,140 @@ components:
         failed_updates: { type: integer }
         reboot_pending: { type: boolean }
         state: { type: string, enum: [compliant, non_compliant, unknown] }
+    Vulnerability:
+      type: object
+      required: [id, summary, severity, exploited, exploited_name, ransomware, required_action, devices, products, fixed_in]
+      properties:
+        id: { type: string, example: CVE-2026-0001 }
+        published: { type: string, format: date-time, nullable: true }
+        summary: { type: string }
+        cvss: { type: number, nullable: true, description: CVSS base score, 0 to 10 }
+        severity: { type: string, enum: ["", low, medium, high, critical] }
+        exploited: { type: boolean, description: On the CISA list of known exploited vulnerabilities }
+        exploited_name: { type: string }
+        kev_added: { type: string, format: date-time, nullable: true }
+        kev_due: { type: string, format: date-time, nullable: true, description: The date CISA asks for it to be fixed by }
+        ransomware: { type: boolean, description: Known to be used in ransomware campaigns }
+        required_action: { type: string }
+        devices: { type: integer }
+        products: { type: array, items: { type: string } }
+        fixed_in: { type: array, items: { type: string }, description: What to update to, per product }
+    VulnerabilitySummary:
+      type: object
+      required: [cves, exploited, critical, high, devices, devices_covered, devices_active]
+      properties:
+        cves: { type: integer }
+        exploited: { type: integer }
+        critical: { type: integer }
+        high: { type: integer }
+        devices: { type: integer, description: Devices affected by at least one }
+        devices_covered: { type: integer, description: Devices that have something the lookup knows about }
+        devices_active: { type: integer }
+    VulnerabilityFeed:
+      type: object
+      required: [feed, last_ok, last_attempt, status, last_error, items]
+      properties:
+        feed: { type: string, description: "kev, or nvd:<vendor>:<product>" }
+        last_ok: { type: string, format: date-time, nullable: true }
+        last_attempt: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [new, ok, error] }
+        last_error: { type: string }
+        items: { type: integer }
+    VulnerabilityStatus:
+      type: object
+      required: [enabled, counts, feeds, tracked_products, kev_updated_at, nvd_updated_at, problems]
+      properties:
+        enabled: { type: boolean }
+        counts:
+          type: object
+          required: [cves, cves_with_versions, exploited]
+          properties:
+            cves: { type: integer }
+            cves_with_versions: { type: integer }
+            exploited: { type: integer }
+        feeds: { type: array, items: { $ref: "#/components/schemas/VulnerabilityFeed" } }
+        tracked_products: { type: integer, description: Programs and Windows releases of the fleet that are looked up }
+        kev_updated_at: { type: string, format: date-time, nullable: true }
+        nvd_updated_at: { type: string, format: date-time, nullable: true, description: The oldest successful refresh among the products the fleet has; null until every one has been downloaded }
+        problems: { type: integer }
+    VulnerabilityOverview:
+      type: object
+      required: [summary, items, status]
+      properties:
+        summary: { $ref: "#/components/schemas/VulnerabilitySummary" }
+        items: { type: array, items: { $ref: "#/components/schemas/Vulnerability" } }
+        status: { $ref: "#/components/schemas/VulnerabilityStatus" }
+    VulnerabilityDevice:
+      type: object
+      required: [device_id, hostname, product, installed, fixed_in]
+      properties:
+        device_id: { type: string, format: uuid }
+        hostname: { type: string }
+        product: { type: string }
+        installed: { type: string }
+        fixed_in: { type: string, description: The version that fixes it; empty when none is known }
+    DeviceVulnerability:
+      allOf:
+        - { $ref: "#/components/schemas/Vulnerability" }
+        - type: object
+          required: [product, installed]
+          properties:
+            product: { type: string }
+            installed: { type: string }
+    VulnerabilityProduct:
+      type: object
+      required: [id, name, vendor, product, source, enabled, devices]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, description: The normalized program name the software inventory uses }
+        vendor: { type: string }
+        product: { type: string }
+        source: { type: string, enum: [builtin, user] }
+        enabled: { type: boolean }
+        devices: { type: integer, description: Active devices that have the program }
+    VulnerabilitySyncReport:
+      type: object
+      required: [kev, kev_items, products, pending, cves, requests, errors]
+      properties:
+        kev: { type: string, enum: [downloaded, unchanged, skipped, failed] }
+        kev_items: { type: integer }
+        products: { type: integer }
+        pending: { type: integer, description: Products left for the next run }
+        cves: { type: integer }
+        requests: { type: integer }
+        errors: { type: array, items: { type: string } }
+    LifecycleRow:
+      type: object
+      required: [device_id, hostname, os, version, build, edition, product, release, end_of_support, days_left, status, note, last_seen_at]
+      properties:
+        device_id: { type: string, format: uuid }
+        hostname: { type: string }
+        os: { type: string, description: The product name the device reports, example Windows 11 Pro }
+        version: { type: string, description: The feature version the device reports, example 24H2 }
+        build: { type: integer }
+        edition: { type: string, description: The Windows edition id, example Professional }
+        product: { type: string, description: The operating system the table matched, example Windows 11 }
+        release: { type: string }
+        end_of_support: { type: string, format: date, nullable: true }
+        days_left: { type: integer, nullable: true, description: Negative once support has ended; null when the end date is not known }
+        status: { type: string, enum: [supported, ending_soon, unsupported, unknown] }
+        note: { type: string }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+    LifecycleReport:
+      type: object
+      required: [data_as_of, warn_days, items, summary]
+      properties:
+        data_as_of: { type: string, format: date }
+        warn_days: { type: integer }
+        items: { type: array, items: { $ref: "#/components/schemas/LifecycleRow" } }
+        summary:
+          type: object
+          required: [supported, ending_soon, unsupported, unknown]
+          properties:
+            supported: { type: integer }
+            ending_soon: { type: integer }
+            unsupported: { type: integer }
+            unknown: { type: integer }
     ReportOverview:
       type: object
       required: [devices, compliance, jobs_30d, generated]
@@ -3489,7 +4341,8 @@ components:
         license: { type: string }
         description: { type: string }
         verified: { type: boolean, description: Counts as verified - it passed the VM test matrix or an administrator marked it after testing it }
-        verified_source: { type: string, enum: ["", tests, organization], description: Why the package counts as verified }
+        verified_source: { type: string, enum: ["", tests, organization, overlay], description: Why the package counts as verified }
+        verified_by: { type: string, description: The overlay that vouches for the package, when verified_source is overlay }
         self_updating: { type: boolean }
         imported_at: { type: string, format: date-time }
         version_count: { type: integer }
@@ -3523,6 +4376,7 @@ components:
         excluded: { type: boolean }
         user_scope_policy: { type: string, enum: ["", report_only, update_in_place, convert_to_machine, remove] }
         self_update_policy: { type: string, enum: ["", defer_to_vendor, enforce] }
+        processes: { type: array, items: { type: string }, nullable: true, description: "Image names (for example chrome.exe) of the programs an update replaces. Omit to leave the stored list unchanged." }
     PackageDetail:
       type: object
       required: [package, versions, override, effective_user_scope_policy]
@@ -3549,6 +4403,47 @@ components:
             version: { type: string }
         effective_user_scope_policy: { type: string }
         effective_user_scope_policy_source: { type: string }
+        overlay:
+          description: What a signed catalog overlay says about the package (null when none does)
+          type: object
+          nullable: true
+          properties:
+            source: { type: string }
+            note: { type: string }
+            self_updating: { type: boolean, nullable: true }
+            verified: { type: boolean }
+            verified_note: { type: string }
+            silent_args: { type: array, items: { type: string } }
+            detection_rules: { type: integer }
+            processes: { type: array, items: { type: string } }
+    OverlayChange:
+      type: object
+      required: [changed, version, entries]
+      properties:
+        changed: { type: boolean }
+        version: { type: integer, format: int64 }
+        entries: { type: integer }
+    OverlaySource:
+      type: object
+      required: [id, label, kind, url, public_key, key_id, enabled, priority, doc_name, doc_version, doc_issued_at, entries, verified_entries, status, last_error]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        kind: { type: string, enum: [upload, url] }
+        url: { type: string }
+        public_key: { type: string, description: The hex Ed25519 public key the document must be signed with }
+        key_id: { type: string }
+        enabled: { type: boolean }
+        priority: { type: integer, minimum: 1, maximum: 1000, description: A lower number wins when two overlays name the same package }
+        doc_name: { type: string }
+        doc_version: { type: integer, format: int64 }
+        doc_issued_at: { type: string }
+        entries: { type: integer }
+        verified_entries: { type: integer }
+        fetched_at: { type: string, format: date-time, nullable: true }
+        checked_at: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [new, ok, error] }
+        last_error: { type: string }
     ImportResult:
       type: object
       required: [package_id, version_id, identifier, version, installers, deployable]
@@ -3597,6 +4492,141 @@ components:
         start_minute: { type: integer, minimum: 0, maximum: 1439 }
         duration_minutes: { type: integer, minimum: 1, maximum: 1440 }
         tz: { type: string, description: IANA name; empty = device-local time }
+    ScriptInput:
+      type: object
+      additionalProperties: false
+      required: [name, content]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 500 }
+        content: { type: string, maxLength: 65536, description: PowerShell text }
+        note: { type: string, maxLength: 200, description: What changed (kept with the version) }
+    ScriptItem:
+      type: object
+      required: [id, name, description, interpreter, version, updated_at, runs]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        interpreter: { type: string, enum: [powershell] }
+        version: { type: integer }
+        updated_at: { type: string, format: date-time }
+        runs: { type: integer, format: int64 }
+        last_run_at: { type: string, format: date-time, nullable: true }
+    ScriptDetail:
+      allOf:
+        - $ref: "#/components/schemas/ScriptItem"
+        - type: object
+          required: [content, sha256, versions]
+          properties:
+            content: { type: string }
+            sha256: { type: string, description: Fingerprint of the content shown }
+            versions:
+              type: array
+              items:
+                type: object
+                required: [version, sha256, note, created_at, created_by]
+                properties:
+                  version: { type: integer }
+                  sha256: { type: string }
+                  note: { type: string }
+                  created_at: { type: string, format: date-time }
+                  created_by: { type: string }
+    ScriptRunRequest:
+      type: object
+      additionalProperties: false
+      required: [script_id, reason]
+      properties:
+        script_id: { type: string, format: uuid }
+        version: { type: integer, minimum: 0, description: 0 = the current version }
+        group_ids: { type: array, items: { type: string, format: uuid } }
+        device_ids: { type: array, items: { type: string, format: uuid } }
+        timeout_s: { type: integer, minimum: 0, maximum: 3600, description: "0 = 300; otherwise 10 to 3600. The script and everything it started are ended when it is over." }
+        reason: { type: string, minLength: 1, maxLength: 200, description: Why; recorded with the run and in the audit log }
+    ScriptDecision:
+      type: object
+      additionalProperties: false
+      properties:
+        note: { type: string, maxLength: 200 }
+    ScriptRun:
+      type: object
+      required: [id, script_name, version, sha256, reason, status, devices, timeout_s, requested_at, requested_by, succeeded, failed, needs_approval]
+      properties:
+        id: { type: string, format: uuid }
+        script_id: { type: string, format: uuid, nullable: true }
+        script_name: { type: string }
+        version: { type: integer }
+        sha256: { type: string }
+        reason: { type: string }
+        status: { type: string, enum: [pending_approval, running, rejected, cancelled, expired] }
+        devices: { type: integer }
+        timeout_s: { type: integer }
+        requested_at: { type: string, format: date-time }
+        requested_by: { type: string }
+        requested_by_id: { type: string, format: uuid, nullable: true }
+        decided_at: { type: string, format: date-time, nullable: true }
+        decided_by: { type: string }
+        decision_note: { type: string }
+        succeeded: { type: integer, format: int64 }
+        failed: { type: integer, format: int64 }
+        needs_approval: { type: boolean }
+    ScriptRunDetail:
+      allOf:
+        - $ref: "#/components/schemas/ScriptRun"
+        - type: object
+          required: [content, jobs]
+          properties:
+            content: { type: string, description: Exactly what is sent to the devices }
+            jobs:
+              type: array
+              items:
+                type: object
+                required: [job_id, device_id, hostname, status, status_reason, has_output]
+                properties:
+                  job_id: { type: string, format: uuid }
+                  device_id: { type: string, format: uuid }
+                  hostname: { type: string }
+                  status: { $ref: "#/components/schemas/JobStatus" }
+                  status_reason: { type: string }
+                  exit_code: { type: integer, nullable: true }
+                  finished_at: { type: string, format: date-time, nullable: true }
+                  has_output: { type: boolean }
+    ScriptOutput:
+      type: object
+      required: [job_id, exit_code, output, created_at]
+      properties:
+        job_id: { type: string, format: uuid }
+        exit_code: { type: integer }
+        output: { type: string }
+        created_at: { type: string, format: date-time }
+    DeviceView:
+      type: object
+      required: [status, status_reason]
+      properties:
+        status: { $ref: "#/components/schemas/JobStatus" }
+        status_reason: { type: string }
+        kind: { type: string, enum: [processes, services, events] }
+        data:
+          type: object
+          description: "{kind, taken_at, truncated, total, items[]}; the item fields depend on kind"
+          properties:
+            kind: { type: string }
+            taken_at: { type: integer, format: int64 }
+            truncated: { type: boolean }
+            total: { type: integer }
+            items: { type: array, items: { type: object, additionalProperties: true } }
+    InstallPrompts:
+      type: object
+      additionalProperties: false
+      description: |
+        Optional messages to the signed-in user while software is installed. Omitted or all defaults = fully silent.
+        The programs to wait for, ask about or close are the package's `processes` (package override or signed overlay).
+      properties:
+        in_use: { type: string, enum: [ignore, skip, ask, close], default: ignore, description: "What to do when the package's programs are open: ignore = install silently; skip = wait until they are closed; ask = ask the user to let them be closed; close = warn, then close" }
+        ask_timeout_s: { type: integer, minimum: 0, maximum: 3600, description: "How long the question or warning stays up (0 = 300, otherwise 30 to 3600)" }
+        defer_minutes: { type: integer, minimum: 0, maximum: 1440, description: "How long skip and ask wait before looking again (0 = 60, otherwise 5 to 1440)" }
+        restart: { type: string, enum: [none, ask, countdown], default: none, description: "What happens when the installer says it needs a restart: none = only report it; ask = ask the user; countdown = restart after a countdown" }
+        restart_notify_minutes: { type: integer, minimum: 0, maximum: 1440, description: "Length of the restart countdown (0 = 5)" }
     DeploymentRequest:
       type: object
       additionalProperties: false
@@ -3613,6 +4643,7 @@ components:
         expires_in_hours: { type: integer, minimum: 1, maximum: 720, default: 72 }
         window: { $ref: "#/components/schemas/MaintenanceWindow" }
         unverified_confirmed: { type: boolean }
+        prompts: { allOf: [{ $ref: "#/components/schemas/InstallPrompts" }], nullable: true }
     DeploymentPlan:
       type: object
       required: [deployment_id, devices, jobs, user_jobs, skipped]
@@ -3667,6 +4698,7 @@ components:
         expires_at: { type: string, format: date-time }
         unverified_confirmed: { type: boolean }
         window: { $ref: "#/components/schemas/MaintenanceWindow" }
+        prompts: { allOf: [{ $ref: "#/components/schemas/InstallPrompts" }], nullable: true }
         job_counts: { type: object, additionalProperties: { type: integer } }
     JobStatus:
       type: string
@@ -3819,6 +4851,7 @@ components:
         uptime_s: { type: integer }
         pending_reboot: { type: boolean }
         logged_on_user: { type: string }
+        peer_port: { type: integer, description: "Port on which the device shares downloaded installers with others on its network (0 = not sharing)" }
         replaces_device_id: { type: string, format: uuid, nullable: true }
         chassis: { type: string }
         software_count: { type: integer }
@@ -3879,6 +4912,8 @@ components:
         last_logged_on_user: { type: string }
         pending_reboot: { type: boolean }
         pending_reboot_reasons: { type: array, items: { type: string } }
+        queued_file_delete_count: { type: integer, description: "Files queued for deletion at the next restart (installer leftovers). Listed on the device page; counted as a pending restart only when the device defaults say so" }
+        queued_file_deletes: { type: array, items: { type: string }, description: The first few of them }
         timezone: { type: string }
         boot_time: { type: string }
     InstallCommands:

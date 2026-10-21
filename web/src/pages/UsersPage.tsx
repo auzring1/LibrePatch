@@ -105,7 +105,7 @@ export function UsersPage() {
         cell: (u) => (
           <>
             {u.display_name}
-            <span className="lp-dt__cell-sub">{u.email}</span>
+            <span className="lp-dt__cell-sub">{u.email}{u.sso ? " · single sign-on" : ""}</span>
           </>
         ),
       },
@@ -151,7 +151,7 @@ export function UsersPage() {
             {u.bindings.map((b) => (
               <span key={b.id}>
                 <RolePill role={b.role} />
-                <span className="lp-muted"> — {scopeText(b)}</span>
+                <span className="lp-muted"> — {scopeText(b)}{b.source === "sso" ? " (follows the sign-in provider)" : ""}</span>
               </span>
             ))}
           </span>

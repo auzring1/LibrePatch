@@ -31,8 +31,11 @@ import (
 	"github.com/auzring1/librepatch/internal/server/pki"
 	"github.com/auzring1/librepatch/internal/server/policies"
 	"github.com/auzring1/librepatch/internal/server/reportsched"
+	"github.com/auzring1/librepatch/internal/server/scripts"
 	"github.com/auzring1/librepatch/internal/server/settings"
+	"github.com/auzring1/librepatch/internal/server/sso"
 	"github.com/auzring1/librepatch/internal/server/updates"
+	"github.com/auzring1/librepatch/internal/server/vulns"
 	"github.com/auzring1/librepatch/internal/server/wingetindex"
 )
 
@@ -68,6 +71,9 @@ type Deps struct {
 	Updates   *updates.Service
 	Releases  *agentrel.Service
 	Policies  *policies.Service
+	Scripts   *scripts.Service
+	SSO       *sso.Provider // single sign-on (D128); nil = not available
+	Vulns     *vulns.Service
 	Branding  *branding.Service
 	Settings  *settings.Service
 	Notify    *notify.Service
@@ -145,6 +151,10 @@ func (s *server) routes(r chi.Router) {
 	r.Post("/setup/begin", s.setupBegin)
 	r.Post("/setup/complete", s.setupComplete)
 
+	r.Get("/auth/sso/info", s.ssoInfo)
+	r.Get("/auth/sso/start", s.ssoStart)
+	r.Get("/auth/sso/callback", s.ssoCallback)
+	r.Get("/auth/sso/continue", s.ssoContinue)
 	r.Post("/auth/login", s.login)
 	r.Post("/auth/mfa", s.mfaVerify)
 	r.Post("/auth/mfa/enroll", s.mfaEnroll)
@@ -210,6 +220,9 @@ func (s *server) routes(r chi.Router) {
 	r.With(s.requireDevice(auth.PermUpdatesPolicy)).Post("/devices/{id}/windows-updates/install-online", s.installDeviceUpdatesOnline)
 	r.With(s.requireDevice(auth.PermUpdatesWrite)).Post("/devices/{id}/windows-updates/hide", s.hideDeviceUpdates)
 	r.With(s.requireDevice(auth.PermUpdatesWrite)).Post("/devices/{id}/reboot", s.rebootDevice)
+	r.With(s.requireDevice(auth.PermDevicesWake)).Post("/devices/{id}/wake", s.wakeDevice)
+	r.With(s.requireDevice(auth.PermDevicesInspect)).Post("/devices/{id}/inspect", s.inspectDevice)
+	r.With(s.requireDevice(auth.PermDevicesInspect)).Get("/devices/{id}/views/{job}", s.deviceView)
 	r.With(s.require(auth.PermReleasesRead)).Get("/agent-releases", s.listAgentReleases)
 	r.With(s.require(auth.PermReleasesWrite)).Post("/agent-releases", s.uploadAgentRelease)
 	r.With(s.require(auth.PermReleasesWrite)).Post("/agent-releases/{id}/status", s.setAgentReleaseStatus)
@@ -231,6 +244,13 @@ func (s *server) routes(r chi.Router) {
 	r.With(s.require(auth.PermCatalogOverride)).Put("/catalog/packages/{id}/overrides", s.putOverrides)
 	r.With(s.require(auth.PermCatalogOverride)).Put("/catalog/packages/{id}/verification", s.setPackageVerification)
 	r.With(s.require(auth.PermCatalogWrite)).Delete("/catalog/packages/{id}", s.deletePackage)
+	r.With(s.require(auth.PermCatalogRead)).Get("/catalog/overlays", s.listOverlays)
+	r.With(s.require(auth.PermCatalogOverride)).Post("/catalog/overlays", s.addOverlay)
+	r.With(s.require(auth.PermCatalogOverride)).Put("/catalog/overlays/{id}", s.updateOverlay)
+	r.With(s.require(auth.PermCatalogOverride)).Post("/catalog/overlays/{id}/upload", s.uploadOverlay)
+	r.With(s.require(auth.PermCatalogOverride)).Post("/catalog/overlays/{id}/refresh", s.refreshOverlay)
+	r.With(s.require(auth.PermCatalogOverride)).Delete("/catalog/overlays/{id}", s.deleteOverlay)
+	r.With(s.require(auth.PermCatalogOverride)).Get("/catalog/overlay-template", s.overlayTemplate)
 	r.With(s.require(auth.PermCatalogRead)).Get("/settings", s.getSettings)
 	r.With(s.require(auth.PermSettingsWrite)).Put("/settings", s.putSettings)
 
@@ -256,13 +276,41 @@ func (s *server) routes(r chi.Router) {
 	r.With(s.require(auth.PermAuditRead)).Get("/audit.csv", s.auditCSV)
 	r.With(s.requireAny(auth.PermDevicesRead)).Get("/events", s.events)
 
+	r.With(s.require(auth.PermScriptsRead)).Get("/scripts", s.listScripts)
+	r.With(s.require(auth.PermScriptsWrite)).Post("/scripts", s.createScript)
+	r.With(s.require(auth.PermScriptsRead)).Get("/scripts/status", s.scriptStatus)
+	r.With(s.require(auth.PermScriptsRun)).Post("/scripts/runs", s.requestScriptRun)
+	r.With(s.require(auth.PermScriptsRead)).Get("/scripts/runs", s.listScriptRuns)
+	r.With(s.require(auth.PermScriptsRead)).Get("/scripts/runs/{id}", s.getScriptRun)
+	r.With(s.require(auth.PermScriptsApprove)).Post("/scripts/runs/{id}/approve", s.approveScriptRun)
+	r.With(s.require(auth.PermScriptsApprove)).Post("/scripts/runs/{id}/reject", s.rejectScriptRun)
+	r.With(s.require(auth.PermScriptsRun)).Post("/scripts/runs/{id}/cancel", s.cancelScriptRun)
+	r.With(s.require(auth.PermScriptsRead)).Get("/scripts/runs/{id}/jobs/{job}/output", s.scriptRunOutput)
+	r.With(s.require(auth.PermScriptsRead)).Get("/scripts/{id}", s.getScript)
+	r.With(s.require(auth.PermScriptsWrite)).Put("/scripts/{id}", s.updateScript)
+	r.With(s.require(auth.PermScriptsWrite)).Delete("/scripts/{id}", s.deleteScript)
 	r.With(s.require(auth.PermPoliciesRead)).Get("/policies", s.listPolicies)
 	r.With(s.require(auth.PermPoliciesWrite)).Post("/policies", s.createPolicy)
 	r.With(s.require(auth.PermPoliciesWrite)).Put("/policies/{id}", s.updatePolicy)
 	r.With(s.require(auth.PermPoliciesWrite)).Delete("/policies/{id}", s.deletePolicy)
+	r.With(s.require(auth.PermDeploymentsRead)).Get("/software/approvals", s.softwareApprovals)
+	r.With(s.require(auth.PermDeploymentsWrite)).Post("/software/approvals", s.decideSoftware)
+	r.With(s.require(auth.PermPoliciesWrite)).Post("/software/holds/{id}/release", s.releaseSoftwareHold)
 	r.With(s.require(auth.PermReportsRead)).Get("/reports/overview", s.reportOverview)
 	r.With(s.require(auth.PermReportsRead)).Get("/reports/compliance", s.reportCompliance)
 	r.With(s.require(auth.PermInventoryExport)).Get("/reports/compliance.csv", s.complianceCSV)
+	r.With(s.require(auth.PermReportsRead)).Get("/vulnerabilities", s.listVulnerabilities)
+	r.With(s.require(auth.PermReportsRead)).Get("/vulnerabilities/products", s.listVulnProducts)
+	r.With(s.require(auth.PermReportsRead)).Get("/vulnerabilities/{cve}/devices", s.vulnerabilityDevices)
+	r.With(s.require(auth.PermInventoryExport)).Get("/vulnerabilities.csv", s.vulnerabilitiesCSV)
+	r.With(s.require(auth.PermSettingsIntegrations)).Post("/vulnerabilities/sync", s.syncVulnerabilities)
+	r.With(s.require(auth.PermSettingsIntegrations)).Post("/vulnerabilities/import", s.importVulnerabilities)
+	r.With(s.require(auth.PermSettingsIntegrations)).Post("/vulnerabilities/products", s.addVulnProduct)
+	r.With(s.require(auth.PermSettingsIntegrations)).Put("/vulnerabilities/products/{id}", s.setVulnProduct)
+	r.With(s.require(auth.PermSettingsIntegrations)).Delete("/vulnerabilities/products/{id}", s.deleteVulnProduct)
+	r.With(s.requireDevice(auth.PermDevicesRead)).Get("/devices/{id}/vulnerabilities", s.deviceVulnerabilities)
+	r.With(s.require(auth.PermReportsRead)).Get("/reports/lifecycle", s.reportLifecycle)
+	r.With(s.require(auth.PermInventoryExport)).Get("/reports/lifecycle.csv", s.lifecycleCSV)
 	r.With(s.require(auth.PermInventoryExport)).Get("/reports/compliance.html", s.complianceHTML)
 
 	r.With(s.require(auth.PermBrandingWrite)).Get("/settings/branding", s.getBranding)

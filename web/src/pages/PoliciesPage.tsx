@@ -1,8 +1,13 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Checkbox, Group, Modal, MultiSelect, NumberInput, Select, Stack, TextInput } from "@mantine/core";
-import { api, errorMessage, type Group as Grp, type Pkg, type SoftwarePolicy } from "../api/client";
+import { Alert, Button, Checkbox, Group, Modal, MultiSelect, NumberInput, Select, Stack, Text, TextInput } from "@mantine/core";
+import { api, errorMessage, type Group as Grp, type PackageDetail, type Pkg, type SoftwarePolicy } from "../api/client";
 import { useSession } from "../api/session";
+import { InstallPromptsFields } from "../components/InstallPromptsFields";
+import { describePrompts, fromPrompts, needsPrograms, toPrompts, type PromptsForm } from "../components/prompts";
+import { RolloutModal } from "../components/RolloutModal";
+import { summarizeRollout } from "../components/rollout";
+import { SoftwareApprovalsCard } from "../components/SoftwareApprovalsCard";
 import { DataTable, EmptyState, Icons, IconButton, Page, PageHeader, StatGrid, StatTile, StatusPill, TileSkeleton, toast, useConfirm, type Column } from "../ui";
 
 const kindLabel: Record<string, string> = { keep_updated: "Keep updated", baseline: "Install on new devices" };
@@ -15,6 +20,7 @@ export function PoliciesPage() {
   const q = useQuery({ queryKey: ["policies"], queryFn: () => api<{ items: SoftwarePolicy[] }>("GET", "/policies") });
   const groups = useQuery({ queryKey: ["groups"], queryFn: () => api<{ items: Grp[] }>("GET", "/groups") });
   const [edit, setEdit] = useState<SoftwarePolicy | "new" | null>(null);
+  const [viewing, setViewing] = useState<SoftwarePolicy | null>(null);
   const del = useMutation({
     mutationFn: (id: string) => api("DELETE", `/policies/${id}`),
     onSuccess: () => (toast.success("Policy deleted."), qc.invalidateQueries({ queryKey: ["policies"] })),
@@ -61,6 +67,29 @@ export function PoliciesPage() {
       { id: "package", header: "Package", value: (p) => p.package_name, width: 200 },
       // The group names resolve once the groups have loaded, so the value follows `groups.data`.
       { id: "groups", header: "Groups", value: (p) => p.group_ids.map(groupName).join(", "), width: 220, wrap: true },
+      {
+        id: "messages",
+        header: "Messages to the user",
+        width: 280,
+        wrap: true,
+        value: (p) => describePrompts(p.prompts) || "Silent",
+      },
+      {
+        id: "rollout",
+        header: "Rollout",
+        width: 320,
+        wrap: true,
+        value: (p) => summarizeRollout(p.rollout)?.text ?? [p.use_rings ? "rings" : "", p.require_approval ? "approval" : ""].filter(Boolean).join(" + "),
+        cell: (p) => {
+          const r = summarizeRollout(p.rollout);
+          if (!r) return <span className="lp-muted">{p.enabled ? (p.use_rings || p.require_approval ? "—" : "Straight to all devices") : "—"}</span>;
+          return (
+            <StatusPill kind={r.kind} size="sm">
+              {r.text}
+            </StatusPill>
+          );
+        },
+      },
       { id: "delay", header: "Delay", value: (p) => p.delay_days, align: "right", width: 90, cell: (p) => <span className="lp-num">{p.delay_days} d</span>, csv: (p) => String(p.delay_days) },
       { id: "handled", header: "Devices handled", value: (p) => p.devices_attempted, align: "right", width: 140, cell: (p) => <span className="lp-num">{p.devices_attempted}</span> },
     ],
@@ -94,6 +123,7 @@ export function PoliciesPage() {
           <StatTile label="Devices handled" value={handled} kind="info" icon={<Icons.NavDevices size={16} aria-hidden />} hint="attempts across all policies" />
         </StatGrid>
       ) : null}
+      <SoftwareApprovalsCard />
       <DataTable<SoftwarePolicy>
         id="policies"
         label="Software policies"
@@ -110,6 +140,7 @@ export function PoliciesPage() {
           canWrite
             ? (p) => (
                 <>
+                  {(p.use_rings || p.require_approval) && <IconButton label={`Show the rollout of ${p.name}`} icon={<Icons.NavDeployments size={16} aria-hidden />} size="sm" onClick={() => setViewing(p)} />}
                   <IconButton label={`Edit policy ${p.name}`} icon={<Icons.Edit size={16} aria-hidden />} size="sm" onClick={() => setEdit(p)} />
                   <IconButton
                     label={`Delete policy ${p.name}`}
@@ -132,6 +163,7 @@ export function PoliciesPage() {
         }
         empty={<EmptyState icon={<Icons.NavSoftwarePolicy size={26} />} title="No policies yet" description="Add a policy to keep a package current on a group, or to install it on devices that newly join one." />}
       />
+      {viewing && <RolloutModal policy={viewing} onClose={() => setViewing(null)} />}
       {edit && <PolicyModal policy={edit === "new" ? undefined : edit} groups={groups.data?.items ?? []} onClose={() => setEdit(null)} />}
     </Page>
   );
@@ -148,11 +180,17 @@ function PolicyModal({ policy, groups, onClose }: { policy?: SoftwarePolicy; gro
   const [onlyNew, setOnlyNew] = useState(policy?.only_new_devices ?? true);
   const [unverified, setUnverified] = useState(policy?.unverified_confirmed ?? false);
   const [enabled, setEnabled] = useState(policy?.enabled ?? true);
+  const [useRings, setUseRings] = useState(policy?.use_rings ?? false);
+  const [approval, setApproval] = useState(policy?.require_approval ?? false);
+  const [prompts, setPrompts] = useState<PromptsForm>(fromPrompts(policy?.prompts));
   const [error, setError] = useState("");
   const chosen = pkgs.data?.items.find((p) => p.id === pkg);
+  const detail = useQuery({ queryKey: ["catalog", "package", pkg], queryFn: () => api<PackageDetail>("GET", `/catalog/packages/${pkg}`), enabled: !!pkg });
+  const own = detail.data?.override.processes ?? [];
+  const programs = own.length > 0 ? own : (detail.data?.overlay?.processes ?? []);
   const save = useMutation({
     mutationFn: () => {
-      const body = { name: name.trim(), kind, package_id: pkg, group_ids: gs, delay_days: Number(delay) || 0, only_new_devices: onlyNew, unverified_confirmed: unverified, enabled };
+      const body = { name: name.trim(), kind, package_id: pkg, group_ids: gs, delay_days: Number(delay) || 0, only_new_devices: onlyNew, unverified_confirmed: unverified, enabled, use_rings: kind === "keep_updated" && useRings, require_approval: approval, prompts: toPrompts(prompts) };
       return policy ? api("PUT", `/policies/${policy.id}`, body) : api("POST", "/policies", body);
     },
     onSuccess: () => (toast.success("Policy saved."), void qc.invalidateQueries({ queryKey: ["policies"] }), onClose()),
@@ -177,6 +215,26 @@ function PolicyModal({ policy, groups, onClose }: { policy?: SoftwarePolicy; gro
           <MultiSelect label="Groups" data={groups.map((g) => ({ value: g.id, label: g.name }))} value={gs} onChange={setGs} searchable required />
           <NumberInput label="Wait after a new version appears (days)" min={0} max={365} value={delay} onChange={setDelay} />
           {kind === "baseline" && <Checkbox label="Only devices enrolled after this policy was created" checked={onlyNew} onChange={(e) => setOnlyNew(e.currentTarget.checked)} />}
+          {kind === "keep_updated" && (
+            <Checkbox
+              label="Roll new versions out in stages, through the update rings"
+              description="The first ring gets the version first; the next ring follows when the first has done well (see Update rings and rules). Devices that are in no ring get it last."
+              checked={useRings}
+              onChange={(e) => setUseRings(e.currentTarget.checked)}
+            />
+          )}
+          <Checkbox
+            label="Wait for my approval of each new version"
+            description="A new version is not rolled out until an administrator or operator approves it under Waiting for your approval. Leave this off to keep updates fully automatic."
+            checked={approval}
+            onChange={(e) => setApproval(e.currentTarget.checked)}
+          />
+          <Stack gap="xs">
+            <Text fw={500} size="sm">
+              Messages to the user (optional)
+            </Text>
+            <InstallPromptsFields value={prompts} onChange={setPrompts} programs={programs} packageId={pkg || undefined} />
+          </Stack>
           {chosen && chosen.source === "winget" && !chosen.verified && (
             <Checkbox label="I accept that this winget package has not been marked as verified" checked={unverified} onChange={(e) => setUnverified(e.currentTarget.checked)} />
           )}
@@ -190,7 +248,7 @@ function PolicyModal({ policy, groups, onClose }: { policy?: SoftwarePolicy; gro
             <Button variant="default" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" loading={save.isPending} disabled={!name.trim() || !pkg || gs.length === 0}>
+            <Button type="submit" loading={save.isPending} disabled={!name.trim() || !pkg || gs.length === 0 || (needsPrograms(prompts) && programs.length === 0)}>
               Save policy
             </Button>
           </Group>

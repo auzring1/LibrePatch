@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import { Alert, Button, Code, Group, Modal, ScrollArea, Stack, Table, Text } from "@mantine/core";
 import { api, errorMessage, type DeploymentDetail, type DeploymentJob, type JobDetail } from "../api/client";
 import { dateTime } from "../api/format";
+import { describePrompts } from "../components/prompts";
 import { useSession } from "../api/session";
 import { Card, DataTable, Icons, Page, PageHeader, Skel, StatusPill, toast, useConfirm, type Column } from "../ui";
 import { DeploymentStatus, JobBadge } from "./DeploymentsPage";
@@ -212,6 +213,12 @@ export function DeploymentPage() {
                 Maintenance window: {(x.window.days ?? []).map((n) => days[n]).join(", ") || "every day"} from {String(Math.floor(x.window.start_minute / 60)).padStart(2, "0")}:{String(x.window.start_minute % 60).padStart(2, "0")} for{" "}
                 {x.window.duration_minutes} minutes
                 {x.window.tz ? ` (${x.window.tz})` : ", device-local time"}
+              </Text>
+            )}
+            {describePrompts(x.prompts) && (
+              <Text size="sm">
+                <Icons.Info size={14} aria-hidden style={{ verticalAlign: "-2px", marginRight: 6 }} />
+                Messages to the user: {describePrompts(x.prompts)}
               </Text>
             )}
             {x.unverified_confirmed && (

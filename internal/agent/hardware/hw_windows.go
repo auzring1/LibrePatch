@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sys/windows/registry"
 
 	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
+	"github.com/auzring1/librepatch/internal/agent/rebootstate"
 )
 
 var (
@@ -83,8 +84,11 @@ func (Windows) Collect(ctx context.Context) (*agentv1.HardwareInventory, error) 
 		hw.LastLoggedOnUser = regString(k, "LastLoggedOnUser")
 		_ = k.Close()
 	}
-	hw.PendingRebootReasons = pendingReboot()
-	hw.PendingReboot = len(hw.PendingRebootReasons) > 0
+	rs := rebootstate.Check()
+	hw.PendingRebootReasons = rs.Reasons
+	hw.PendingReboot = rs.Pending()
+	hw.QueuedFileDeleteCount = uint32(rs.DeleteCount) // #nosec G115 -- a registry list, far below 2^32
+	hw.QueuedFileDeletes = rs.DeleteSamples
 	hw.Timezone, _ = time.Now().Zone()
 	hw.BootTime = time.Now().Add(-uptime()).Unix()
 	return hw, ctx.Err()
@@ -93,7 +97,9 @@ func (Windows) Collect(ctx context.Context) (*agentv1.HardwareInventory, error) 
 // Heartbeat implements Collector.
 func (Windows) Heartbeat(context.Context) (*agentv1.Heartbeat, error) {
 	hb := &agentv1.Heartbeat{UptimeS: uint64(uptime().Seconds()), LoggedOnUser: consoleUser()}
-	hb.PendingReboot = len(pendingReboot()) > 0
+	rs := rebootstate.Check()
+	hb.PendingReboot = rs.Pending()
+	hb.QueuedFileDeletes = rs.DeleteCount > 0
 	sys := os.Getenv("SystemDrive")
 	if sys == "" {
 		sys = "C:"
@@ -203,45 +209,6 @@ func fixedDisks() []*agentv1.Disk {
 		out = append(out, &agentv1.Disk{Mount: root[:2], Filesystem: windows.UTF16ToString(fs), SizeBytes: total, FreeBytes: free})
 	}
 	return out
-}
-
-func pendingReboot() []string {
-	var reasons []string
-	keyExists := func(path string) bool {
-		k, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE|registry.WOW64_64KEY)
-		if err != nil {
-			return false
-		}
-		_ = k.Close()
-		return true
-	}
-	if keyExists(`SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending`) {
-		reasons = append(reasons, "component_based_servicing")
-	}
-	if keyExists(`SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired`) {
-		reasons = append(reasons, "windows_update")
-	}
-	if k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Control\Session Manager`, registry.QUERY_VALUE); err == nil {
-		if v, _, err := k.GetStringsValue("PendingFileRenameOperations"); err == nil && len(v) > 0 {
-			reasons = append(reasons, "pending_file_rename")
-		}
-		_ = k.Close()
-	}
-	active := regValue(`SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName`, "ComputerName")
-	pending := regValue(`SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName`, "ComputerName")
-	if active != "" && pending != "" && !strings.EqualFold(active, pending) {
-		reasons = append(reasons, "computer_rename")
-	}
-	return reasons
-}
-
-func regValue(path, name string) string {
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE)
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = k.Close() }()
-	return regString(k, name)
 }
 
 // consoleUser returns DOMAIN\user of the active console session, if any.

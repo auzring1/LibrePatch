@@ -88,9 +88,11 @@ type Agent struct {
 	sent    map[uint64]bool // outbox entries already sent on the current stream
 	// offerMu serializes job-offer handling: offers are processed on the receive path of the current stream, and the
 	// previous stream's receiver may still be finishing one while a new stream starts.
-	offerMu sync.Mutex
-	clMu    sync.Mutex
-	client  agentv1.AgentChannelServiceClient // current connection, for content downloads
+	offerMu  sync.Mutex
+	clMu     sync.Mutex
+	peer     peerState // sharing downloaded installers with computers on the same network (D126)
+	peerPort atomic.Uint32
+	client   agentv1.AgentChannelServiceClient // current connection, for content downloads
 
 	bootID      string
 	clockOffset atomic.Int64 // nanoseconds; written on connect, read by the job engine's clock
@@ -416,6 +418,9 @@ func (a *Agent) session(ctx context.Context, id *store.Identity) (time.Duration,
 	}
 	if a.Jobs != nil {
 		caps = append(caps, "jobs/v1")
+		if a.Cfg.AllowScripts {
+			caps = append(caps, "scripts/v1")
+		}
 	}
 	a.hwPending, a.wuPending = nil, nil
 	if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_Hello{Hello: &agentv1.Hello{
@@ -443,6 +448,7 @@ func (a *Agent) session(ctx context.Context, id *store.Identity) (time.Duration,
 		a.Log.Warn("local clock differs from server", "offset", d.Round(time.Second))
 	}
 	a.acceptSigningCerts(ctx, stream, id, root, ack.JobSigningCertsDer)
+	a.applyPeerPolicy(ctx, ack.PeerCache, root, id.CertDER, id.IssuingDER, key)
 
 	// Read the stream from now on, before the first hardware and software inventory (which can take many seconds on
 	// a PC that has just started). Job offers are verified and handed to the job engine right here, so a command that
@@ -902,8 +908,12 @@ func (a *Agent) startJobs(ctx context.Context) {
 			a.Jobs.Allowed[n] = true
 		}
 	}
+	a.Jobs.ScriptsEnabled = a.Cfg.AllowScripts
 	if a.Jobs.Fetch == nil {
-		a.Jobs.Fetch = &jobs.MultiFetcher{Server: a.fetchFromServer}
+		a.Jobs.Fetch = &jobs.MultiFetcher{Server: a.fetchFromServer, Peer: a.fetchFromPeer}
+	}
+	if a.Jobs.CacheFile == nil {
+		a.Jobs.CacheFile = a.cachePut
 	}
 	go a.Jobs.Run(ctx)
 }
@@ -1040,7 +1050,8 @@ func (a *Agent) sendHeartbeat(ctx context.Context, stream agentv1.AgentChannelSe
 	if err != nil || hb == nil {
 		return nil
 	}
-	changed := a.lastHB == nil || a.lastHB.PendingReboot != hb.PendingReboot || a.lastHB.LoggedOnUser != hb.LoggedOnUser
+	hb.PeerPort = a.peerPort.Load()
+	changed := a.lastHB == nil || a.lastHB.PeerPort != hb.PeerPort || a.lastHB.PendingReboot != hb.PendingReboot || a.lastHB.QueuedFileDeletes != hb.QueuedFileDeletes || a.lastHB.LoggedOnUser != hb.LoggedOnUser
 	if !force && !changed && a.now().Sub(a.lastHBSent) < fullHeartbeatEvery {
 		return nil
 	}

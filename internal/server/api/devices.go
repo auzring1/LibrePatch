@@ -44,6 +44,7 @@ type deviceView struct {
 	UptimeS            int64             `json:"uptime_s"`
 	PendingReboot      bool              `json:"pending_reboot"`
 	LoggedOnUser       string            `json:"logged_on_user"`
+	PeerPort           int32             `json:"peer_port"`
 	ReplacesDeviceID   *uuid.UUID        `json:"replaces_device_id"`
 	Chassis            string            `json:"chassis"`
 	SoftwareCount      int32             `json:"software_count"`
@@ -147,7 +148,7 @@ func (s *server) getDevice(w http.ResponseWriter, r *http.Request) {
 	v := deviceView{ID: d.ID, SiteID: d.SiteID, Status: d.Status, StatusReason: d.StatusReason, Hostname: d.Hostname,
 		OSCaption: d.OsCaption, OSBuild: d.OsBuild, Arch: d.Arch, AgentVersion: d.AgentVersion, Serial: d.Serial,
 		Online: d.Online, LastSeenAt: d.LastSeenAt, LastIP: d.LastIp, EnrolledAt: d.EnrolledAt, ApprovedAt: d.ApprovedAt,
-		RevokedAt: d.RevokedAt, UptimeS: d.UptimeS, PendingReboot: d.PendingReboot, LoggedOnUser: d.LoggedOnUser,
+		RevokedAt: d.RevokedAt, UptimeS: d.UptimeS, PendingReboot: d.PendingReboot, LoggedOnUser: d.LoggedOnUser, PeerPort: d.PeerPort,
 		ReplacesDeviceID: d.ReplacesDeviceID, Certificates: []certView{}, Chassis: d.Chassis,
 		SoftwareCount: d.SoftwareCount, SoftwareUpdatedAt: d.SoftwareUpdatedAt, InventoryTruncated: d.InventoryTruncated}
 	if len(d.Hardware) > 0 {

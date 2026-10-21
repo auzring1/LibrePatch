@@ -5,6 +5,7 @@ import { ago, dateTime, duration } from "../api/format";
 import { Card, EmptyState, Icons, StatGrid, StatTile, StatusPill, TableSkeleton } from "../ui";
 import { CustomFieldsCard } from "./DeviceCustomFields";
 import { Field } from "./DeviceField";
+import { RestartCard } from "./DeviceRestart";
 
 const small = { fontSize: "var(--lp-text-lg)", overflowWrap: "anywhere" } as const;
 
@@ -31,9 +32,11 @@ export function OverviewTab({ device: d }: { device: Device }) {
         <Field label="Uptime" value={duration(d.uptime_s)} />
         <Field label="IP (last connection)" value={d.last_ip} />
         <Field label="Agent version" value={d.agent_version} />
+        <Field label="Shares downloads" value={d.peer_port ? `yes, on port ${d.peer_port}` : "no"} />
         <Field label="Enrolled" value={dateTime(d.enrolled_at)} />
         <Field label="Software inventory" value={d.software_updated_at ? `${d.software_count} items, updated ${ago(d.software_updated_at)}` : "not reported yet"} />
       </SimpleGrid>
+      <RestartCard device={d} />
       <CustomFieldsCard deviceId={d.id} />
       <Card title="User profiles" description="Accounts with a profile on this device.">
         <UsersList id={d.id} />

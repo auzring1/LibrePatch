@@ -36,6 +36,9 @@ const (
 	JobType_JOB_TYPE_AGENT_UPDATE       JobType = 9
 	JobType_JOB_TYPE_CANCEL             JobType = 10
 	JobType_JOB_TYPE_CONFIG             JobType = 11
+	JobType_JOB_TYPE_WAKE               JobType = 12 // send Wake-on-LAN packets for other devices on this one's network (D125)
+	JobType_JOB_TYPE_RUN_SCRIPT         JobType = 14 // run an administrator's script as SYSTEM; only on an agent whose owner switched scripts on (D127)
+	JobType_JOB_TYPE_INSPECT            JobType = 13 // read-only view: running programs, services or recent event log entries (D125)
 )
 
 // Enum value maps for JobType.
@@ -53,6 +56,9 @@ var (
 		9:  "JOB_TYPE_AGENT_UPDATE",
 		10: "JOB_TYPE_CANCEL",
 		11: "JOB_TYPE_CONFIG",
+		12: "JOB_TYPE_WAKE",
+		14: "JOB_TYPE_RUN_SCRIPT",
+		13: "JOB_TYPE_INSPECT",
 	}
 	JobType_value = map[string]int32{
 		"JOB_TYPE_UNSPECIFIED":        0,
@@ -67,6 +73,9 @@ var (
 		"JOB_TYPE_AGENT_UPDATE":       9,
 		"JOB_TYPE_CANCEL":             10,
 		"JOB_TYPE_CONFIG":             11,
+		"JOB_TYPE_WAKE":               12,
+		"JOB_TYPE_RUN_SCRIPT":         14,
+		"JOB_TYPE_INSPECT":            13,
 	}
 )
 
@@ -274,6 +283,9 @@ const (
 	ContentSourceKind_CONTENT_SOURCE_KIND_UNSPECIFIED ContentSourceKind = 0
 	ContentSourceKind_CONTENT_SOURCE_KIND_SERVER      ContentSourceKind = 1 // gateway FetchContent, authorized by this job
 	ContentSourceKind_CONTENT_SOURCE_KIND_VENDOR      ContentSourceKind = 2 // HTTPS URL from the catalog
+	// Another agent on the same network that has the file in its cache (D126): "https://<private IPv4>:<port>". Peers
+	// authenticate each other with their device certificates; the SHA-256 still decides.
+	ContentSourceKind_CONTENT_SOURCE_KIND_PEER ContentSourceKind = 3
 )
 
 // Enum value maps for ContentSourceKind.
@@ -282,11 +294,13 @@ var (
 		0: "CONTENT_SOURCE_KIND_UNSPECIFIED",
 		1: "CONTENT_SOURCE_KIND_SERVER",
 		2: "CONTENT_SOURCE_KIND_VENDOR",
+		3: "CONTENT_SOURCE_KIND_PEER",
 	}
 	ContentSourceKind_value = map[string]int32{
 		"CONTENT_SOURCE_KIND_UNSPECIFIED": 0,
 		"CONTENT_SOURCE_KIND_SERVER":      1,
 		"CONTENT_SOURCE_KIND_VENDOR":      2,
+		"CONTENT_SOURCE_KIND_PEER":        3,
 	}
 )
 
@@ -532,6 +546,214 @@ func (WuService) EnumDescriptor() ([]byte, []int) {
 	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{8}
 }
 
+// InUseAction says what an installation does when programs it replaces are open. Silent is the default: nothing
+// here changes how an installation runs unless an administrator chose one of the other values.
+type InUseAction int32
+
+const (
+	InUseAction_IN_USE_ACTION_UNSPECIFIED InUseAction = 0 // same as IGNORE
+	InUseAction_IN_USE_ACTION_IGNORE      InUseAction = 1 // install silently regardless (the installer deals with it)
+	InUseAction_IN_USE_ACTION_SKIP        InUseAction = 2 // do not prompt; try again later until the programs are closed
+	InUseAction_IN_USE_ACTION_ASK         InUseAction = 3 // ask the signed-in user; Yes closes the programs, No/no answer = try again later
+	InUseAction_IN_USE_ACTION_CLOSE       InUseAction = 4 // warn the signed-in user, then close the programs
+)
+
+// Enum value maps for InUseAction.
+var (
+	InUseAction_name = map[int32]string{
+		0: "IN_USE_ACTION_UNSPECIFIED",
+		1: "IN_USE_ACTION_IGNORE",
+		2: "IN_USE_ACTION_SKIP",
+		3: "IN_USE_ACTION_ASK",
+		4: "IN_USE_ACTION_CLOSE",
+	}
+	InUseAction_value = map[string]int32{
+		"IN_USE_ACTION_UNSPECIFIED": 0,
+		"IN_USE_ACTION_IGNORE":      1,
+		"IN_USE_ACTION_SKIP":        2,
+		"IN_USE_ACTION_ASK":         3,
+		"IN_USE_ACTION_CLOSE":       4,
+	}
+)
+
+func (x InUseAction) Enum() *InUseAction {
+	p := new(InUseAction)
+	*p = x
+	return p
+}
+
+func (x InUseAction) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (InUseAction) Descriptor() protoreflect.EnumDescriptor {
+	return file_librepatch_agent_v1_envelope_proto_enumTypes[9].Descriptor()
+}
+
+func (InUseAction) Type() protoreflect.EnumType {
+	return &file_librepatch_agent_v1_envelope_proto_enumTypes[9]
+}
+
+func (x InUseAction) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use InUseAction.Descriptor instead.
+func (InUseAction) EnumDescriptor() ([]byte, []int) {
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{9}
+}
+
+// RestartPrompt says what happens after an installer reports that it needs a restart.
+type RestartPrompt int32
+
+const (
+	RestartPrompt_RESTART_PROMPT_UNSPECIFIED RestartPrompt = 0 // same as NONE
+	RestartPrompt_RESTART_PROMPT_NONE        RestartPrompt = 1 // only report "restart required" (the administrator restarts it)
+	RestartPrompt_RESTART_PROMPT_ASK         RestartPrompt = 2 // ask the signed-in user; Yes restarts after a short countdown, No/no answer leaves it
+	RestartPrompt_RESTART_PROMPT_COUNTDOWN   RestartPrompt = 3 // restart after a countdown that signed-in users see
+)
+
+// Enum value maps for RestartPrompt.
+var (
+	RestartPrompt_name = map[int32]string{
+		0: "RESTART_PROMPT_UNSPECIFIED",
+		1: "RESTART_PROMPT_NONE",
+		2: "RESTART_PROMPT_ASK",
+		3: "RESTART_PROMPT_COUNTDOWN",
+	}
+	RestartPrompt_value = map[string]int32{
+		"RESTART_PROMPT_UNSPECIFIED": 0,
+		"RESTART_PROMPT_NONE":        1,
+		"RESTART_PROMPT_ASK":         2,
+		"RESTART_PROMPT_COUNTDOWN":   3,
+	}
+)
+
+func (x RestartPrompt) Enum() *RestartPrompt {
+	p := new(RestartPrompt)
+	*p = x
+	return p
+}
+
+func (x RestartPrompt) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RestartPrompt) Descriptor() protoreflect.EnumDescriptor {
+	return file_librepatch_agent_v1_envelope_proto_enumTypes[10].Descriptor()
+}
+
+func (RestartPrompt) Type() protoreflect.EnumType {
+	return &file_librepatch_agent_v1_envelope_proto_enumTypes[10]
+}
+
+func (x RestartPrompt) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RestartPrompt.Descriptor instead.
+func (RestartPrompt) EnumDescriptor() ([]byte, []int) {
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{10}
+}
+
+type InspectKind int32
+
+const (
+	InspectKind_INSPECT_KIND_UNSPECIFIED InspectKind = 0
+	InspectKind_INSPECT_KIND_PROCESSES   InspectKind = 1
+	InspectKind_INSPECT_KIND_SERVICES    InspectKind = 2
+	InspectKind_INSPECT_KIND_EVENTS      InspectKind = 3
+)
+
+// Enum value maps for InspectKind.
+var (
+	InspectKind_name = map[int32]string{
+		0: "INSPECT_KIND_UNSPECIFIED",
+		1: "INSPECT_KIND_PROCESSES",
+		2: "INSPECT_KIND_SERVICES",
+		3: "INSPECT_KIND_EVENTS",
+	}
+	InspectKind_value = map[string]int32{
+		"INSPECT_KIND_UNSPECIFIED": 0,
+		"INSPECT_KIND_PROCESSES":   1,
+		"INSPECT_KIND_SERVICES":    2,
+		"INSPECT_KIND_EVENTS":      3,
+	}
+)
+
+func (x InspectKind) Enum() *InspectKind {
+	p := new(InspectKind)
+	*p = x
+	return p
+}
+
+func (x InspectKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (InspectKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_librepatch_agent_v1_envelope_proto_enumTypes[11].Descriptor()
+}
+
+func (InspectKind) Type() protoreflect.EnumType {
+	return &file_librepatch_agent_v1_envelope_proto_enumTypes[11]
+}
+
+func (x InspectKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use InspectKind.Descriptor instead.
+func (InspectKind) EnumDescriptor() ([]byte, []int) {
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{11}
+}
+
+type ScriptInterpreter int32
+
+const (
+	ScriptInterpreter_SCRIPT_INTERPRETER_UNSPECIFIED ScriptInterpreter = 0
+	ScriptInterpreter_SCRIPT_INTERPRETER_POWERSHELL  ScriptInterpreter = 1 // Windows PowerShell 5.1
+)
+
+// Enum value maps for ScriptInterpreter.
+var (
+	ScriptInterpreter_name = map[int32]string{
+		0: "SCRIPT_INTERPRETER_UNSPECIFIED",
+		1: "SCRIPT_INTERPRETER_POWERSHELL",
+	}
+	ScriptInterpreter_value = map[string]int32{
+		"SCRIPT_INTERPRETER_UNSPECIFIED": 0,
+		"SCRIPT_INTERPRETER_POWERSHELL":  1,
+	}
+)
+
+func (x ScriptInterpreter) Enum() *ScriptInterpreter {
+	p := new(ScriptInterpreter)
+	*p = x
+	return p
+}
+
+func (x ScriptInterpreter) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ScriptInterpreter) Descriptor() protoreflect.EnumDescriptor {
+	return file_librepatch_agent_v1_envelope_proto_enumTypes[12].Descriptor()
+}
+
+func (ScriptInterpreter) Type() protoreflect.EnumType {
+	return &file_librepatch_agent_v1_envelope_proto_enumTypes[12]
+}
+
+func (x ScriptInterpreter) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ScriptInterpreter.Descriptor instead.
+func (ScriptInterpreter) EnumDescriptor() ([]byte, []int) {
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{12}
+}
+
 type UninstallMethod int32
 
 const (
@@ -565,11 +787,11 @@ func (x UninstallMethod) String() string {
 }
 
 func (UninstallMethod) Descriptor() protoreflect.EnumDescriptor {
-	return file_librepatch_agent_v1_envelope_proto_enumTypes[9].Descriptor()
+	return file_librepatch_agent_v1_envelope_proto_enumTypes[13].Descriptor()
 }
 
 func (UninstallMethod) Type() protoreflect.EnumType {
-	return &file_librepatch_agent_v1_envelope_proto_enumTypes[9]
+	return &file_librepatch_agent_v1_envelope_proto_enumTypes[13]
 }
 
 func (x UninstallMethod) Number() protoreflect.EnumNumber {
@@ -578,7 +800,7 @@ func (x UninstallMethod) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UninstallMethod.Descriptor instead.
 func (UninstallMethod) EnumDescriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{9}
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{13}
 }
 
 // SignedEnvelope carries a job. The signature covers exactly `payload`
@@ -671,6 +893,9 @@ type JobEnvelope struct {
 	//	*JobEnvelope_Inventory
 	//	*JobEnvelope_AgentUpdate
 	//	*JobEnvelope_Cancel
+	//	*JobEnvelope_Wake
+	//	*JobEnvelope_Inspect
+	//	*JobEnvelope_RunScript
 	Body          isJobEnvelope_Body `protobuf_oneof:"body"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -885,6 +1110,33 @@ func (x *JobEnvelope) GetCancel() *CancelBody {
 	return nil
 }
 
+func (x *JobEnvelope) GetWake() *WakeBody {
+	if x != nil {
+		if x, ok := x.Body.(*JobEnvelope_Wake); ok {
+			return x.Wake
+		}
+	}
+	return nil
+}
+
+func (x *JobEnvelope) GetInspect() *InspectBody {
+	if x != nil {
+		if x, ok := x.Body.(*JobEnvelope_Inspect); ok {
+			return x.Inspect
+		}
+	}
+	return nil
+}
+
+func (x *JobEnvelope) GetRunScript() *RunScriptBody {
+	if x != nil {
+		if x, ok := x.Body.(*JobEnvelope_RunScript); ok {
+			return x.RunScript
+		}
+	}
+	return nil
+}
+
 type isJobEnvelope_Body interface {
 	isJobEnvelope_Body()
 }
@@ -925,6 +1177,18 @@ type JobEnvelope_Cancel struct {
 	Cancel *CancelBody `protobuf:"bytes,28,opt,name=cancel,proto3,oneof"`
 }
 
+type JobEnvelope_Wake struct {
+	Wake *WakeBody `protobuf:"bytes,29,opt,name=wake,proto3,oneof"`
+}
+
+type JobEnvelope_Inspect struct {
+	Inspect *InspectBody `protobuf:"bytes,30,opt,name=inspect,proto3,oneof"`
+}
+
+type JobEnvelope_RunScript struct {
+	RunScript *RunScriptBody `protobuf:"bytes,31,opt,name=run_script,json=runScript,proto3,oneof"`
+}
+
 func (*JobEnvelope_Install) isJobEnvelope_Body() {}
 
 func (*JobEnvelope_Uninstall) isJobEnvelope_Body() {}
@@ -942,6 +1206,12 @@ func (*JobEnvelope_Inventory) isJobEnvelope_Body() {}
 func (*JobEnvelope_AgentUpdate) isJobEnvelope_Body() {}
 
 func (*JobEnvelope_Cancel) isJobEnvelope_Body() {}
+
+func (*JobEnvelope_Wake) isJobEnvelope_Body() {}
+
+func (*JobEnvelope_Inspect) isJobEnvelope_Body() {}
+
+func (*JobEnvelope_RunScript) isJobEnvelope_Body() {}
 
 // MaintenanceWindow is evaluated in device-local time unless tz is set.
 type MaintenanceWindow struct {
@@ -1827,6 +2097,364 @@ func (x *RebootBody) GetReason() string {
 	return ""
 }
 
+// InstallPrompts are the optional messages to the signed-in user. Absent or all-default = fully silent.
+type InstallPrompts struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	InUse InUseAction            `protobuf:"varint,1,opt,name=in_use,json=inUse,proto3,enum=librepatch.agent.v1.InUseAction" json:"in_use,omitempty"`
+	// Image names (for example "chrome.exe") of the programs the installation replaces. No paths. Only programs
+	// running in a signed-in user's session are asked about or closed.
+	Processes            []string      `protobuf:"bytes,2,rep,name=processes,proto3" json:"processes,omitempty"`
+	AskTimeoutS          uint32        `protobuf:"varint,3,opt,name=ask_timeout_s,json=askTimeoutS,proto3" json:"ask_timeout_s,omitempty"`  // how long the question (ASK) or the warning (CLOSE) is shown, 30..3600; 0 = 300
+	DeferMinutes         uint32        `protobuf:"varint,4,opt,name=defer_minutes,json=deferMinutes,proto3" json:"defer_minutes,omitempty"` // SKIP and ASK: wait this long before looking again, 5..1440; 0 = 60
+	Restart              RestartPrompt `protobuf:"varint,5,opt,name=restart,proto3,enum=librepatch.agent.v1.RestartPrompt" json:"restart,omitempty"`
+	RestartNotifyMinutes uint32        `protobuf:"varint,6,opt,name=restart_notify_minutes,json=restartNotifyMinutes,proto3" json:"restart_notify_minutes,omitempty"` // length of the restart countdown, 1..1440; 0 = 5
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *InstallPrompts) Reset() {
+	*x = InstallPrompts{}
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InstallPrompts) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InstallPrompts) ProtoMessage() {}
+
+func (x *InstallPrompts) ProtoReflect() protoreflect.Message {
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InstallPrompts.ProtoReflect.Descriptor instead.
+func (*InstallPrompts) Descriptor() ([]byte, []int) {
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *InstallPrompts) GetInUse() InUseAction {
+	if x != nil {
+		return x.InUse
+	}
+	return InUseAction_IN_USE_ACTION_UNSPECIFIED
+}
+
+func (x *InstallPrompts) GetProcesses() []string {
+	if x != nil {
+		return x.Processes
+	}
+	return nil
+}
+
+func (x *InstallPrompts) GetAskTimeoutS() uint32 {
+	if x != nil {
+		return x.AskTimeoutS
+	}
+	return 0
+}
+
+func (x *InstallPrompts) GetDeferMinutes() uint32 {
+	if x != nil {
+		return x.DeferMinutes
+	}
+	return 0
+}
+
+func (x *InstallPrompts) GetRestart() RestartPrompt {
+	if x != nil {
+		return x.Restart
+	}
+	return RestartPrompt_RESTART_PROMPT_UNSPECIFIED
+}
+
+func (x *InstallPrompts) GetRestartNotifyMinutes() uint32 {
+	if x != nil {
+		return x.RestartNotifyMinutes
+	}
+	return 0
+}
+
+// WakeTarget is one sleeping computer: the MAC address of a network card and the IPv4 address it last had.
+type WakeTarget struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Mac           string                 `protobuf:"bytes,1,opt,name=mac,proto3" json:"mac,omitempty"`                     // aa:bb:cc:dd:ee:ff
+	LastIp        string                 `protobuf:"bytes,2,opt,name=last_ip,json=lastIp,proto3" json:"last_ip,omitempty"` // IPv4; the agent only sends on an interface whose network contains it
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WakeTarget) Reset() {
+	*x = WakeTarget{}
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WakeTarget) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WakeTarget) ProtoMessage() {}
+
+func (x *WakeTarget) ProtoReflect() protoreflect.Message {
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WakeTarget.ProtoReflect.Descriptor instead.
+func (*WakeTarget) Descriptor() ([]byte, []int) {
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *WakeTarget) GetMac() string {
+	if x != nil {
+		return x.Mac
+	}
+	return ""
+}
+
+func (x *WakeTarget) GetLastIp() string {
+	if x != nil {
+		return x.LastIp
+	}
+	return ""
+}
+
+// WakeBody asks an online agent to send Wake-on-LAN "magic packets" on its own network. The agent never sends to
+// anything but the broadcast address of one of its own interfaces.
+type WakeBody struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Targets       []*WakeTarget          `protobuf:"bytes,1,rep,name=targets,proto3" json:"targets,omitempty"` // 1..4
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WakeBody) Reset() {
+	*x = WakeBody{}
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WakeBody) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WakeBody) ProtoMessage() {}
+
+func (x *WakeBody) ProtoReflect() protoreflect.Message {
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WakeBody.ProtoReflect.Descriptor instead.
+func (*WakeBody) Descriptor() ([]byte, []int) {
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *WakeBody) GetTargets() []*WakeTarget {
+	if x != nil {
+		return x.Targets
+	}
+	return nil
+}
+
+// InspectBody asks for a read-only view of the device. The answer is JSON in JobResult.data_json, size-capped.
+type InspectBody struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Kind          InspectKind            `protobuf:"varint,1,opt,name=kind,proto3,enum=librepatch.agent.v1.InspectKind" json:"kind,omitempty"`
+	Log           string                 `protobuf:"bytes,2,opt,name=log,proto3" json:"log,omitempty"`                                        // EVENTS: System | Application | Setup (never Security)
+	MaxLevel      uint32                 `protobuf:"varint,3,opt,name=max_level,json=maxLevel,proto3" json:"max_level,omitempty"`             // EVENTS: 1 critical .. 5 verbose; 0 = 3 (warnings and worse)
+	SinceMinutes  uint32                 `protobuf:"varint,4,opt,name=since_minutes,json=sinceMinutes,proto3" json:"since_minutes,omitempty"` // EVENTS: look back this far, 1..10080; 0 = 1440
+	MaxEvents     uint32                 `protobuf:"varint,5,opt,name=max_events,json=maxEvents,proto3" json:"max_events,omitempty"`          // EVENTS: 1..200; 0 = 100
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InspectBody) Reset() {
+	*x = InspectBody{}
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InspectBody) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InspectBody) ProtoMessage() {}
+
+func (x *InspectBody) ProtoReflect() protoreflect.Message {
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InspectBody.ProtoReflect.Descriptor instead.
+func (*InspectBody) Descriptor() ([]byte, []int) {
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *InspectBody) GetKind() InspectKind {
+	if x != nil {
+		return x.Kind
+	}
+	return InspectKind_INSPECT_KIND_UNSPECIFIED
+}
+
+func (x *InspectBody) GetLog() string {
+	if x != nil {
+		return x.Log
+	}
+	return ""
+}
+
+func (x *InspectBody) GetMaxLevel() uint32 {
+	if x != nil {
+		return x.MaxLevel
+	}
+	return 0
+}
+
+func (x *InspectBody) GetSinceMinutes() uint32 {
+	if x != nil {
+		return x.SinceMinutes
+	}
+	return 0
+}
+
+func (x *InspectBody) GetMaxEvents() uint32 {
+	if x != nil {
+		return x.MaxEvents
+	}
+	return 0
+}
+
+// RunScriptBody is a script from the library, with its content: what runs is exactly what the administrator saw (and, when
+// a second person approved the run, what that person approved). The agent refuses it unless scripts are switched on
+// locally, and checks that sha256 is the hash of content.
+type RunScriptBody struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`        // informational
+	Version       uint32                 `protobuf:"varint,2,opt,name=version,proto3" json:"version,omitempty"` // informational
+	Interpreter   ScriptInterpreter      `protobuf:"varint,3,opt,name=interpreter,proto3,enum=librepatch.agent.v1.ScriptInterpreter" json:"interpreter,omitempty"`
+	Content       string                 `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`                    // 1..65536 bytes of UTF-8 text
+	Sha256        []byte                 `protobuf:"bytes,5,opt,name=sha256,proto3" json:"sha256,omitempty"`                      // of content
+	TimeoutS      uint32                 `protobuf:"varint,6,opt,name=timeout_s,json=timeoutS,proto3" json:"timeout_s,omitempty"` // 10..3600; the script and everything it started are ended when it is over
+	RunId         string                 `protobuf:"bytes,7,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`           // informational
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RunScriptBody) Reset() {
+	*x = RunScriptBody{}
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunScriptBody) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunScriptBody) ProtoMessage() {}
+
+func (x *RunScriptBody) ProtoReflect() protoreflect.Message {
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunScriptBody.ProtoReflect.Descriptor instead.
+func (*RunScriptBody) Descriptor() ([]byte, []int) {
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *RunScriptBody) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RunScriptBody) GetVersion() uint32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *RunScriptBody) GetInterpreter() ScriptInterpreter {
+	if x != nil {
+		return x.Interpreter
+	}
+	return ScriptInterpreter_SCRIPT_INTERPRETER_UNSPECIFIED
+}
+
+func (x *RunScriptBody) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *RunScriptBody) GetSha256() []byte {
+	if x != nil {
+		return x.Sha256
+	}
+	return nil
+}
+
+func (x *RunScriptBody) GetTimeoutS() uint32 {
+	if x != nil {
+		return x.TimeoutS
+	}
+	return 0
+}
+
+func (x *RunScriptBody) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
 type InstallBody struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	PackageId      string                 `protobuf:"bytes,1,opt,name=package_id,json=packageId,proto3" json:"package_id,omitempty"` // catalog identifier, informational
@@ -1841,14 +2469,15 @@ type InstallBody struct {
 	RetryBackoffS  uint32                 `protobuf:"varint,10,opt,name=retry_backoff_s,json=retryBackoffS,proto3" json:"retry_backoff_s,omitempty"`
 	Reboot         RebootAllow            `protobuf:"varint,11,opt,name=reboot,proto3,enum=librepatch.agent.v1.RebootAllow" json:"reboot,omitempty"`
 	AllowDowngrade bool                   `protobuf:"varint,12,opt,name=allow_downgrade,json=allowDowngrade,proto3" json:"allow_downgrade,omitempty"`
-	Update         bool                   `protobuf:"varint,13,opt,name=update,proto3" json:"update,omitempty"` // an upgrade of an existing install (job type SOFTWARE_UPDATE)
+	Update         bool                   `protobuf:"varint,13,opt,name=update,proto3" json:"update,omitempty"`  // an upgrade of an existing install (job type SOFTWARE_UPDATE)
+	Prompts        *InstallPrompts        `protobuf:"bytes,14,opt,name=prompts,proto3" json:"prompts,omitempty"` // optional messages to the signed-in user (D124)
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
 func (x *InstallBody) Reset() {
 	*x = InstallBody{}
-	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[15]
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1860,7 +2489,7 @@ func (x *InstallBody) String() string {
 func (*InstallBody) ProtoMessage() {}
 
 func (x *InstallBody) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[15]
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1873,7 +2502,7 @@ func (x *InstallBody) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstallBody.ProtoReflect.Descriptor instead.
 func (*InstallBody) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{15}
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *InstallBody) GetPackageId() string {
@@ -1967,6 +2596,13 @@ func (x *InstallBody) GetUpdate() bool {
 	return false
 }
 
+func (x *InstallBody) GetPrompts() *InstallPrompts {
+	if x != nil {
+		return x.Prompts
+	}
+	return nil
+}
+
 // UninstallBody names an inventory row; the agent re-reads that row's
 // uninstall data from its own registry and never trusts command lines from the server.
 type UninstallBody struct {
@@ -1992,7 +2628,7 @@ type UninstallBody struct {
 
 func (x *UninstallBody) Reset() {
 	*x = UninstallBody{}
-	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[16]
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2004,7 +2640,7 @@ func (x *UninstallBody) String() string {
 func (*UninstallBody) ProtoMessage() {}
 
 func (x *UninstallBody) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[16]
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2017,7 +2653,7 @@ func (x *UninstallBody) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UninstallBody.ProtoReflect.Descriptor instead.
 func (*UninstallBody) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{16}
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *UninstallBody) GetPackageId() string {
@@ -2119,7 +2755,7 @@ type AgentUpdateBody struct {
 
 func (x *AgentUpdateBody) Reset() {
 	*x = AgentUpdateBody{}
-	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[17]
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2131,7 +2767,7 @@ func (x *AgentUpdateBody) String() string {
 func (*AgentUpdateBody) ProtoMessage() {}
 
 func (x *AgentUpdateBody) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[17]
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2144,7 +2780,7 @@ func (x *AgentUpdateBody) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentUpdateBody.ProtoReflect.Descriptor instead.
 func (*AgentUpdateBody) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{17}
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *AgentUpdateBody) GetManifest() []byte {
@@ -2184,7 +2820,7 @@ type CancelBody struct {
 
 func (x *CancelBody) Reset() {
 	*x = CancelBody{}
-	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[18]
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2196,7 +2832,7 @@ func (x *CancelBody) String() string {
 func (*CancelBody) ProtoMessage() {}
 
 func (x *CancelBody) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[18]
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2209,7 +2845,7 @@ func (x *CancelBody) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelBody.ProtoReflect.Descriptor instead.
 func (*CancelBody) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{18}
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *CancelBody) GetJobId() string {
@@ -2229,7 +2865,7 @@ type InventoryBody struct {
 
 func (x *InventoryBody) Reset() {
 	*x = InventoryBody{}
-	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[19]
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2241,7 +2877,7 @@ func (x *InventoryBody) String() string {
 func (*InventoryBody) ProtoMessage() {}
 
 func (x *InventoryBody) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[19]
+	mi := &file_librepatch_agent_v1_envelope_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2254,7 +2890,7 @@ func (x *InventoryBody) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InventoryBody.ProtoReflect.Descriptor instead.
 func (*InventoryBody) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{19}
+	return file_librepatch_agent_v1_envelope_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *InventoryBody) GetSections() []uint32 {
@@ -2272,7 +2908,7 @@ const file_librepatch_agent_v1_envelope_proto_rawDesc = "" +
 	"\x0eSignedEnvelope\x12\x18\n" +
 	"\apayload\x18\x01 \x01(\fR\apayload\x12\x1c\n" +
 	"\tsignature\x18\x02 \x01(\fR\tsignature\x12\x15\n" +
-	"\x06key_id\x18\x03 \x01(\fR\x05keyId\"\x88\b\n" +
+	"\x06key_id\x18\x03 \x01(\fR\x05keyId\"\xc0\t\n" +
 	"\vJobEnvelope\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\rR\aversion\x12\x15\n" +
 	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x12\x15\n" +
@@ -2299,7 +2935,11 @@ const file_librepatch_agent_v1_envelope_proto_rawDesc = "" +
 	"\x06reboot\x18\x19 \x01(\v2\x1f.librepatch.agent.v1.RebootBodyH\x00R\x06reboot\x12B\n" +
 	"\tinventory\x18\x1a \x01(\v2\".librepatch.agent.v1.InventoryBodyH\x00R\tinventory\x12I\n" +
 	"\fagent_update\x18\x1b \x01(\v2$.librepatch.agent.v1.AgentUpdateBodyH\x00R\vagentUpdate\x129\n" +
-	"\x06cancel\x18\x1c \x01(\v2\x1f.librepatch.agent.v1.CancelBodyH\x00R\x06cancelB\x06\n" +
+	"\x06cancel\x18\x1c \x01(\v2\x1f.librepatch.agent.v1.CancelBodyH\x00R\x06cancel\x123\n" +
+	"\x04wake\x18\x1d \x01(\v2\x1d.librepatch.agent.v1.WakeBodyH\x00R\x04wake\x12<\n" +
+	"\ainspect\x18\x1e \x01(\v2 .librepatch.agent.v1.InspectBodyH\x00R\ainspect\x12C\n" +
+	"\n" +
+	"run_script\x18\x1f \x01(\v2\".librepatch.agent.v1.RunScriptBodyH\x00R\trunScriptB\x06\n" +
 	"\x04body\"\x85\x01\n" +
 	"\x11MaintenanceWindow\x12\x12\n" +
 	"\x04days\x18\x01 \x03(\rR\x04days\x12!\n" +
@@ -2379,7 +3019,35 @@ const file_librepatch_agent_v1_envelope_proto_rawDesc = "" +
 	"\n" +
 	"RebootBody\x129\n" +
 	"\x06reboot\x18\x01 \x01(\v2!.librepatch.agent.v1.RebootPolicyR\x06reboot\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xba\x04\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xa4\x02\n" +
+	"\x0eInstallPrompts\x127\n" +
+	"\x06in_use\x18\x01 \x01(\x0e2 .librepatch.agent.v1.InUseActionR\x05inUse\x12\x1c\n" +
+	"\tprocesses\x18\x02 \x03(\tR\tprocesses\x12\"\n" +
+	"\rask_timeout_s\x18\x03 \x01(\rR\vaskTimeoutS\x12#\n" +
+	"\rdefer_minutes\x18\x04 \x01(\rR\fdeferMinutes\x12<\n" +
+	"\arestart\x18\x05 \x01(\x0e2\".librepatch.agent.v1.RestartPromptR\arestart\x124\n" +
+	"\x16restart_notify_minutes\x18\x06 \x01(\rR\x14restartNotifyMinutes\"7\n" +
+	"\n" +
+	"WakeTarget\x12\x10\n" +
+	"\x03mac\x18\x01 \x01(\tR\x03mac\x12\x17\n" +
+	"\alast_ip\x18\x02 \x01(\tR\x06lastIp\"E\n" +
+	"\bWakeBody\x129\n" +
+	"\atargets\x18\x01 \x03(\v2\x1f.librepatch.agent.v1.WakeTargetR\atargets\"\xb6\x01\n" +
+	"\vInspectBody\x124\n" +
+	"\x04kind\x18\x01 \x01(\x0e2 .librepatch.agent.v1.InspectKindR\x04kind\x12\x10\n" +
+	"\x03log\x18\x02 \x01(\tR\x03log\x12\x1b\n" +
+	"\tmax_level\x18\x03 \x01(\rR\bmaxLevel\x12#\n" +
+	"\rsince_minutes\x18\x04 \x01(\rR\fsinceMinutes\x12\x1d\n" +
+	"\n" +
+	"max_events\x18\x05 \x01(\rR\tmaxEvents\"\xed\x01\n" +
+	"\rRunScriptBody\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\rR\aversion\x12H\n" +
+	"\vinterpreter\x18\x03 \x01(\x0e2&.librepatch.agent.v1.ScriptInterpreterR\vinterpreter\x12\x18\n" +
+	"\acontent\x18\x04 \x01(\tR\acontent\x12\x16\n" +
+	"\x06sha256\x18\x05 \x01(\fR\x06sha256\x12\x1b\n" +
+	"\ttimeout_s\x18\x06 \x01(\rR\btimeoutS\x12\x15\n" +
+	"\x06run_id\x18\a \x01(\tR\x05runId\"\xf9\x04\n" +
 	"\vInstallBody\x12\x1d\n" +
 	"\n" +
 	"package_id\x18\x01 \x01(\tR\tpackageId\x12\x12\n" +
@@ -2396,7 +3064,8 @@ const file_librepatch_agent_v1_envelope_proto_rawDesc = "" +
 	" \x01(\rR\rretryBackoffS\x128\n" +
 	"\x06reboot\x18\v \x01(\x0e2 .librepatch.agent.v1.RebootAllowR\x06reboot\x12'\n" +
 	"\x0fallow_downgrade\x18\f \x01(\bR\x0eallowDowngrade\x12\x16\n" +
-	"\x06update\x18\r \x01(\bR\x06update\"\xc9\x03\n" +
+	"\x06update\x18\r \x01(\bR\x06update\x12=\n" +
+	"\aprompts\x18\x0e \x01(\v2#.librepatch.agent.v1.InstallPromptsR\aprompts\"\xc9\x03\n" +
 	"\rUninstallBody\x12\x1d\n" +
 	"\n" +
 	"package_id\x18\x01 \x01(\tR\tpackageId\x12\x12\n" +
@@ -2424,7 +3093,7 @@ const file_librepatch_agent_v1_envelope_proto_rawDesc = "" +
 	"CancelBody\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"+\n" +
 	"\rInventoryBody\x12\x1a\n" +
-	"\bsections\x18\x01 \x03(\rR\bsections*\xbd\x02\n" +
+	"\bsections\x18\x01 \x03(\rR\bsections*\xff\x02\n" +
 	"\aJobType\x12\x18\n" +
 	"\x14JOB_TYPE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17JOB_TYPE_INVENTORY_FULL\x10\x01\x12\x1d\n" +
@@ -2438,7 +3107,10 @@ const file_librepatch_agent_v1_envelope_proto_rawDesc = "" +
 	"\x15JOB_TYPE_AGENT_UPDATE\x10\t\x12\x13\n" +
 	"\x0fJOB_TYPE_CANCEL\x10\n" +
 	"\x12\x13\n" +
-	"\x0fJOB_TYPE_CONFIG\x10\v*`\n" +
+	"\x0fJOB_TYPE_CONFIG\x10\v\x12\x11\n" +
+	"\rJOB_TYPE_WAKE\x10\f\x12\x17\n" +
+	"\x13JOB_TYPE_RUN_SCRIPT\x10\x0e\x12\x14\n" +
+	"\x10JOB_TYPE_INSPECT\x10\r*`\n" +
 	"\fInstallScope\x12\x1d\n" +
 	"\x19INSTALL_SCOPE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15INSTALL_SCOPE_MACHINE\x10\x01\x12\x16\n" +
@@ -2459,11 +3131,12 @@ const file_librepatch_agent_v1_envelope_proto_rawDesc = "" +
 	"\x13JOB_OUTCOME_SUCCESS\x10\x01\x12\x1f\n" +
 	"\x1bJOB_OUTCOME_REBOOT_REQUIRED\x10\x02\x12\x19\n" +
 	"\x15JOB_OUTCOME_RETRYABLE\x10\x03\x12\x16\n" +
-	"\x12JOB_OUTCOME_FAILED\x10\x04*x\n" +
+	"\x12JOB_OUTCOME_FAILED\x10\x04*\x96\x01\n" +
 	"\x11ContentSourceKind\x12#\n" +
 	"\x1fCONTENT_SOURCE_KIND_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aCONTENT_SOURCE_KIND_SERVER\x10\x01\x12\x1e\n" +
-	"\x1aCONTENT_SOURCE_KIND_VENDOR\x10\x02*\x9e\x01\n" +
+	"\x1aCONTENT_SOURCE_KIND_VENDOR\x10\x02\x12\x1c\n" +
+	"\x18CONTENT_SOURCE_KIND_PEER\x10\x03*\x9e\x01\n" +
 	"\rDetectionKind\x12\x1e\n" +
 	"\x1aDETECTION_KIND_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aDETECTION_KIND_MSI_PRODUCT\x10\x01\x12\x1b\n" +
@@ -2485,7 +3158,26 @@ const file_librepatch_agent_v1_envelope_proto_rawDesc = "" +
 	"\x16WU_SERVICE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12WU_SERVICE_DEFAULT\x10\x01\x12\x1d\n" +
 	"\x19WU_SERVICE_WINDOWS_UPDATE\x10\x02\x12\x1f\n" +
-	"\x1bWU_SERVICE_MICROSOFT_UPDATE\x10\x03*q\n" +
+	"\x1bWU_SERVICE_MICROSOFT_UPDATE\x10\x03*\x8e\x01\n" +
+	"\vInUseAction\x12\x1d\n" +
+	"\x19IN_USE_ACTION_UNSPECIFIED\x10\x00\x12\x18\n" +
+	"\x14IN_USE_ACTION_IGNORE\x10\x01\x12\x16\n" +
+	"\x12IN_USE_ACTION_SKIP\x10\x02\x12\x15\n" +
+	"\x11IN_USE_ACTION_ASK\x10\x03\x12\x17\n" +
+	"\x13IN_USE_ACTION_CLOSE\x10\x04*~\n" +
+	"\rRestartPrompt\x12\x1e\n" +
+	"\x1aRESTART_PROMPT_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13RESTART_PROMPT_NONE\x10\x01\x12\x16\n" +
+	"\x12RESTART_PROMPT_ASK\x10\x02\x12\x1c\n" +
+	"\x18RESTART_PROMPT_COUNTDOWN\x10\x03*{\n" +
+	"\vInspectKind\x12\x1c\n" +
+	"\x18INSPECT_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16INSPECT_KIND_PROCESSES\x10\x01\x12\x19\n" +
+	"\x15INSPECT_KIND_SERVICES\x10\x02\x12\x17\n" +
+	"\x13INSPECT_KIND_EVENTS\x10\x03*Z\n" +
+	"\x11ScriptInterpreter\x12\"\n" +
+	"\x1eSCRIPT_INTERPRETER_UNSPECIFIED\x10\x00\x12!\n" +
+	"\x1dSCRIPT_INTERPRETER_POWERSHELL\x10\x01*q\n" +
 	"\x0fUninstallMethod\x12 \n" +
 	"\x1cUNINSTALL_METHOD_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15UNINSTALL_METHOD_AUTO\x10\x01\x12!\n" +
@@ -2503,8 +3195,8 @@ func file_librepatch_agent_v1_envelope_proto_rawDescGZIP() []byte {
 	return file_librepatch_agent_v1_envelope_proto_rawDescData
 }
 
-var file_librepatch_agent_v1_envelope_proto_enumTypes = make([]protoimpl.EnumInfo, 10)
-var file_librepatch_agent_v1_envelope_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_librepatch_agent_v1_envelope_proto_enumTypes = make([]protoimpl.EnumInfo, 14)
+var file_librepatch_agent_v1_envelope_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_librepatch_agent_v1_envelope_proto_goTypes = []any{
 	(JobType)(0),              // 0: librepatch.agent.v1.JobType
 	(InstallScope)(0),         // 1: librepatch.agent.v1.InstallScope
@@ -2515,71 +3207,89 @@ var file_librepatch_agent_v1_envelope_proto_goTypes = []any{
 	(VersionCmp)(0),           // 6: librepatch.agent.v1.VersionCmp
 	(RebootAllow)(0),          // 7: librepatch.agent.v1.RebootAllow
 	(WuService)(0),            // 8: librepatch.agent.v1.WuService
-	(UninstallMethod)(0),      // 9: librepatch.agent.v1.UninstallMethod
-	(*SignedEnvelope)(nil),    // 10: librepatch.agent.v1.SignedEnvelope
-	(*JobEnvelope)(nil),       // 11: librepatch.agent.v1.JobEnvelope
-	(*MaintenanceWindow)(nil), // 12: librepatch.agent.v1.MaintenanceWindow
-	(*ContentSource)(nil),     // 13: librepatch.agent.v1.ContentSource
-	(*SignerPin)(nil),         // 14: librepatch.agent.v1.SignerPin
-	(*Installer)(nil),         // 15: librepatch.agent.v1.Installer
-	(*Detection)(nil),         // 16: librepatch.agent.v1.Detection
-	(*Preconditions)(nil),     // 17: librepatch.agent.v1.Preconditions
-	(*ActiveHours)(nil),       // 18: librepatch.agent.v1.ActiveHours
-	(*RebootPolicy)(nil),      // 19: librepatch.agent.v1.RebootPolicy
-	(*WuScanBody)(nil),        // 20: librepatch.agent.v1.WuScanBody
-	(*WuUpdateRef)(nil),       // 21: librepatch.agent.v1.WuUpdateRef
-	(*WuInstallBody)(nil),     // 22: librepatch.agent.v1.WuInstallBody
-	(*WuHideBody)(nil),        // 23: librepatch.agent.v1.WuHideBody
-	(*RebootBody)(nil),        // 24: librepatch.agent.v1.RebootBody
-	(*InstallBody)(nil),       // 25: librepatch.agent.v1.InstallBody
-	(*UninstallBody)(nil),     // 26: librepatch.agent.v1.UninstallBody
-	(*AgentUpdateBody)(nil),   // 27: librepatch.agent.v1.AgentUpdateBody
-	(*CancelBody)(nil),        // 28: librepatch.agent.v1.CancelBody
-	(*InventoryBody)(nil),     // 29: librepatch.agent.v1.InventoryBody
-	nil,                       // 30: librepatch.agent.v1.Installer.CodeMapEntry
+	(InUseAction)(0),          // 9: librepatch.agent.v1.InUseAction
+	(RestartPrompt)(0),        // 10: librepatch.agent.v1.RestartPrompt
+	(InspectKind)(0),          // 11: librepatch.agent.v1.InspectKind
+	(ScriptInterpreter)(0),    // 12: librepatch.agent.v1.ScriptInterpreter
+	(UninstallMethod)(0),      // 13: librepatch.agent.v1.UninstallMethod
+	(*SignedEnvelope)(nil),    // 14: librepatch.agent.v1.SignedEnvelope
+	(*JobEnvelope)(nil),       // 15: librepatch.agent.v1.JobEnvelope
+	(*MaintenanceWindow)(nil), // 16: librepatch.agent.v1.MaintenanceWindow
+	(*ContentSource)(nil),     // 17: librepatch.agent.v1.ContentSource
+	(*SignerPin)(nil),         // 18: librepatch.agent.v1.SignerPin
+	(*Installer)(nil),         // 19: librepatch.agent.v1.Installer
+	(*Detection)(nil),         // 20: librepatch.agent.v1.Detection
+	(*Preconditions)(nil),     // 21: librepatch.agent.v1.Preconditions
+	(*ActiveHours)(nil),       // 22: librepatch.agent.v1.ActiveHours
+	(*RebootPolicy)(nil),      // 23: librepatch.agent.v1.RebootPolicy
+	(*WuScanBody)(nil),        // 24: librepatch.agent.v1.WuScanBody
+	(*WuUpdateRef)(nil),       // 25: librepatch.agent.v1.WuUpdateRef
+	(*WuInstallBody)(nil),     // 26: librepatch.agent.v1.WuInstallBody
+	(*WuHideBody)(nil),        // 27: librepatch.agent.v1.WuHideBody
+	(*RebootBody)(nil),        // 28: librepatch.agent.v1.RebootBody
+	(*InstallPrompts)(nil),    // 29: librepatch.agent.v1.InstallPrompts
+	(*WakeTarget)(nil),        // 30: librepatch.agent.v1.WakeTarget
+	(*WakeBody)(nil),          // 31: librepatch.agent.v1.WakeBody
+	(*InspectBody)(nil),       // 32: librepatch.agent.v1.InspectBody
+	(*RunScriptBody)(nil),     // 33: librepatch.agent.v1.RunScriptBody
+	(*InstallBody)(nil),       // 34: librepatch.agent.v1.InstallBody
+	(*UninstallBody)(nil),     // 35: librepatch.agent.v1.UninstallBody
+	(*AgentUpdateBody)(nil),   // 36: librepatch.agent.v1.AgentUpdateBody
+	(*CancelBody)(nil),        // 37: librepatch.agent.v1.CancelBody
+	(*InventoryBody)(nil),     // 38: librepatch.agent.v1.InventoryBody
+	nil,                       // 39: librepatch.agent.v1.Installer.CodeMapEntry
 }
 var file_librepatch_agent_v1_envelope_proto_depIdxs = []int32{
 	0,  // 0: librepatch.agent.v1.JobEnvelope.type:type_name -> librepatch.agent.v1.JobType
-	12, // 1: librepatch.agent.v1.JobEnvelope.window:type_name -> librepatch.agent.v1.MaintenanceWindow
-	25, // 2: librepatch.agent.v1.JobEnvelope.install:type_name -> librepatch.agent.v1.InstallBody
-	26, // 3: librepatch.agent.v1.JobEnvelope.uninstall:type_name -> librepatch.agent.v1.UninstallBody
-	20, // 4: librepatch.agent.v1.JobEnvelope.wu_scan:type_name -> librepatch.agent.v1.WuScanBody
-	22, // 5: librepatch.agent.v1.JobEnvelope.wu_install:type_name -> librepatch.agent.v1.WuInstallBody
-	23, // 6: librepatch.agent.v1.JobEnvelope.wu_hide:type_name -> librepatch.agent.v1.WuHideBody
-	24, // 7: librepatch.agent.v1.JobEnvelope.reboot:type_name -> librepatch.agent.v1.RebootBody
-	29, // 8: librepatch.agent.v1.JobEnvelope.inventory:type_name -> librepatch.agent.v1.InventoryBody
-	27, // 9: librepatch.agent.v1.JobEnvelope.agent_update:type_name -> librepatch.agent.v1.AgentUpdateBody
-	28, // 10: librepatch.agent.v1.JobEnvelope.cancel:type_name -> librepatch.agent.v1.CancelBody
-	4,  // 11: librepatch.agent.v1.ContentSource.kind:type_name -> librepatch.agent.v1.ContentSourceKind
-	2,  // 12: librepatch.agent.v1.Installer.type:type_name -> librepatch.agent.v1.InstallerType
-	2,  // 13: librepatch.agent.v1.Installer.nested_type:type_name -> librepatch.agent.v1.InstallerType
-	14, // 14: librepatch.agent.v1.Installer.signer_pin:type_name -> librepatch.agent.v1.SignerPin
-	13, // 15: librepatch.agent.v1.Installer.sources:type_name -> librepatch.agent.v1.ContentSource
-	30, // 16: librepatch.agent.v1.Installer.code_map:type_name -> librepatch.agent.v1.Installer.CodeMapEntry
-	5,  // 17: librepatch.agent.v1.Detection.kind:type_name -> librepatch.agent.v1.DetectionKind
-	6,  // 18: librepatch.agent.v1.Detection.cmp:type_name -> librepatch.agent.v1.VersionCmp
-	7,  // 19: librepatch.agent.v1.RebootPolicy.allow:type_name -> librepatch.agent.v1.RebootAllow
-	18, // 20: librepatch.agent.v1.RebootPolicy.active_hours:type_name -> librepatch.agent.v1.ActiveHours
-	8,  // 21: librepatch.agent.v1.WuScanBody.service:type_name -> librepatch.agent.v1.WuService
-	8,  // 22: librepatch.agent.v1.WuInstallBody.service:type_name -> librepatch.agent.v1.WuService
-	21, // 23: librepatch.agent.v1.WuInstallBody.updates:type_name -> librepatch.agent.v1.WuUpdateRef
-	19, // 24: librepatch.agent.v1.WuInstallBody.reboot:type_name -> librepatch.agent.v1.RebootPolicy
-	8,  // 25: librepatch.agent.v1.WuHideBody.service:type_name -> librepatch.agent.v1.WuService
-	21, // 26: librepatch.agent.v1.WuHideBody.updates:type_name -> librepatch.agent.v1.WuUpdateRef
-	19, // 27: librepatch.agent.v1.RebootBody.reboot:type_name -> librepatch.agent.v1.RebootPolicy
-	1,  // 28: librepatch.agent.v1.InstallBody.scope:type_name -> librepatch.agent.v1.InstallScope
-	15, // 29: librepatch.agent.v1.InstallBody.installer:type_name -> librepatch.agent.v1.Installer
-	16, // 30: librepatch.agent.v1.InstallBody.detection:type_name -> librepatch.agent.v1.Detection
-	17, // 31: librepatch.agent.v1.InstallBody.preconditions:type_name -> librepatch.agent.v1.Preconditions
-	7,  // 32: librepatch.agent.v1.InstallBody.reboot:type_name -> librepatch.agent.v1.RebootAllow
-	1,  // 33: librepatch.agent.v1.UninstallBody.scope:type_name -> librepatch.agent.v1.InstallScope
-	9,  // 34: librepatch.agent.v1.UninstallBody.method:type_name -> librepatch.agent.v1.UninstallMethod
-	3,  // 35: librepatch.agent.v1.Installer.CodeMapEntry.value:type_name -> librepatch.agent.v1.JobOutcome
-	36, // [36:36] is the sub-list for method output_type
-	36, // [36:36] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	16, // 1: librepatch.agent.v1.JobEnvelope.window:type_name -> librepatch.agent.v1.MaintenanceWindow
+	34, // 2: librepatch.agent.v1.JobEnvelope.install:type_name -> librepatch.agent.v1.InstallBody
+	35, // 3: librepatch.agent.v1.JobEnvelope.uninstall:type_name -> librepatch.agent.v1.UninstallBody
+	24, // 4: librepatch.agent.v1.JobEnvelope.wu_scan:type_name -> librepatch.agent.v1.WuScanBody
+	26, // 5: librepatch.agent.v1.JobEnvelope.wu_install:type_name -> librepatch.agent.v1.WuInstallBody
+	27, // 6: librepatch.agent.v1.JobEnvelope.wu_hide:type_name -> librepatch.agent.v1.WuHideBody
+	28, // 7: librepatch.agent.v1.JobEnvelope.reboot:type_name -> librepatch.agent.v1.RebootBody
+	38, // 8: librepatch.agent.v1.JobEnvelope.inventory:type_name -> librepatch.agent.v1.InventoryBody
+	36, // 9: librepatch.agent.v1.JobEnvelope.agent_update:type_name -> librepatch.agent.v1.AgentUpdateBody
+	37, // 10: librepatch.agent.v1.JobEnvelope.cancel:type_name -> librepatch.agent.v1.CancelBody
+	31, // 11: librepatch.agent.v1.JobEnvelope.wake:type_name -> librepatch.agent.v1.WakeBody
+	32, // 12: librepatch.agent.v1.JobEnvelope.inspect:type_name -> librepatch.agent.v1.InspectBody
+	33, // 13: librepatch.agent.v1.JobEnvelope.run_script:type_name -> librepatch.agent.v1.RunScriptBody
+	4,  // 14: librepatch.agent.v1.ContentSource.kind:type_name -> librepatch.agent.v1.ContentSourceKind
+	2,  // 15: librepatch.agent.v1.Installer.type:type_name -> librepatch.agent.v1.InstallerType
+	2,  // 16: librepatch.agent.v1.Installer.nested_type:type_name -> librepatch.agent.v1.InstallerType
+	18, // 17: librepatch.agent.v1.Installer.signer_pin:type_name -> librepatch.agent.v1.SignerPin
+	17, // 18: librepatch.agent.v1.Installer.sources:type_name -> librepatch.agent.v1.ContentSource
+	39, // 19: librepatch.agent.v1.Installer.code_map:type_name -> librepatch.agent.v1.Installer.CodeMapEntry
+	5,  // 20: librepatch.agent.v1.Detection.kind:type_name -> librepatch.agent.v1.DetectionKind
+	6,  // 21: librepatch.agent.v1.Detection.cmp:type_name -> librepatch.agent.v1.VersionCmp
+	7,  // 22: librepatch.agent.v1.RebootPolicy.allow:type_name -> librepatch.agent.v1.RebootAllow
+	22, // 23: librepatch.agent.v1.RebootPolicy.active_hours:type_name -> librepatch.agent.v1.ActiveHours
+	8,  // 24: librepatch.agent.v1.WuScanBody.service:type_name -> librepatch.agent.v1.WuService
+	8,  // 25: librepatch.agent.v1.WuInstallBody.service:type_name -> librepatch.agent.v1.WuService
+	25, // 26: librepatch.agent.v1.WuInstallBody.updates:type_name -> librepatch.agent.v1.WuUpdateRef
+	23, // 27: librepatch.agent.v1.WuInstallBody.reboot:type_name -> librepatch.agent.v1.RebootPolicy
+	8,  // 28: librepatch.agent.v1.WuHideBody.service:type_name -> librepatch.agent.v1.WuService
+	25, // 29: librepatch.agent.v1.WuHideBody.updates:type_name -> librepatch.agent.v1.WuUpdateRef
+	23, // 30: librepatch.agent.v1.RebootBody.reboot:type_name -> librepatch.agent.v1.RebootPolicy
+	9,  // 31: librepatch.agent.v1.InstallPrompts.in_use:type_name -> librepatch.agent.v1.InUseAction
+	10, // 32: librepatch.agent.v1.InstallPrompts.restart:type_name -> librepatch.agent.v1.RestartPrompt
+	30, // 33: librepatch.agent.v1.WakeBody.targets:type_name -> librepatch.agent.v1.WakeTarget
+	11, // 34: librepatch.agent.v1.InspectBody.kind:type_name -> librepatch.agent.v1.InspectKind
+	12, // 35: librepatch.agent.v1.RunScriptBody.interpreter:type_name -> librepatch.agent.v1.ScriptInterpreter
+	1,  // 36: librepatch.agent.v1.InstallBody.scope:type_name -> librepatch.agent.v1.InstallScope
+	19, // 37: librepatch.agent.v1.InstallBody.installer:type_name -> librepatch.agent.v1.Installer
+	20, // 38: librepatch.agent.v1.InstallBody.detection:type_name -> librepatch.agent.v1.Detection
+	21, // 39: librepatch.agent.v1.InstallBody.preconditions:type_name -> librepatch.agent.v1.Preconditions
+	7,  // 40: librepatch.agent.v1.InstallBody.reboot:type_name -> librepatch.agent.v1.RebootAllow
+	29, // 41: librepatch.agent.v1.InstallBody.prompts:type_name -> librepatch.agent.v1.InstallPrompts
+	1,  // 42: librepatch.agent.v1.UninstallBody.scope:type_name -> librepatch.agent.v1.InstallScope
+	13, // 43: librepatch.agent.v1.UninstallBody.method:type_name -> librepatch.agent.v1.UninstallMethod
+	3,  // 44: librepatch.agent.v1.Installer.CodeMapEntry.value:type_name -> librepatch.agent.v1.JobOutcome
+	45, // [45:45] is the sub-list for method output_type
+	45, // [45:45] is the sub-list for method input_type
+	45, // [45:45] is the sub-list for extension type_name
+	45, // [45:45] is the sub-list for extension extendee
+	0,  // [0:45] is the sub-list for field type_name
 }
 
 func init() { file_librepatch_agent_v1_envelope_proto_init() }
@@ -2597,14 +3307,17 @@ func file_librepatch_agent_v1_envelope_proto_init() {
 		(*JobEnvelope_Inventory)(nil),
 		(*JobEnvelope_AgentUpdate)(nil),
 		(*JobEnvelope_Cancel)(nil),
+		(*JobEnvelope_Wake)(nil),
+		(*JobEnvelope_Inspect)(nil),
+		(*JobEnvelope_RunScript)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_librepatch_agent_v1_envelope_proto_rawDesc), len(file_librepatch_agent_v1_envelope_proto_rawDesc)),
-			NumEnums:      10,
-			NumMessages:   21,
+			NumEnums:      14,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

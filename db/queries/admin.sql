@@ -23,7 +23,7 @@ UPDATE users SET password_hash = $2, must_change_password = $3, password_changed
 DELETE FROM users WHERE id = $1 AND org_id = $2;
 
 -- name: ListRoleBindingsInOrg :many
-SELECT b.id, b.user_id, b.role, b.scope_type, b.scope_id
+SELECT b.id, b.user_id, b.role, b.scope_type, b.scope_id, b.source
 FROM role_bindings b JOIN users u ON u.id = b.user_id WHERE u.org_id = $1
 ORDER BY b.user_id, b.role, b.scope_type, b.scope_id;
 

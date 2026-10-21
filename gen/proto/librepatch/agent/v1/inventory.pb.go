@@ -889,8 +889,12 @@ type HardwareInventory struct {
 	PendingRebootReasons []string               `protobuf:"bytes,24,rep,name=pending_reboot_reasons,json=pendingRebootReasons,proto3" json:"pending_reboot_reasons,omitempty"`
 	Timezone             string                 `protobuf:"bytes,25,opt,name=timezone,proto3" json:"timezone,omitempty"`
 	BootTime             int64                  `protobuf:"varint,26,opt,name=boot_time,json=bootTime,proto3" json:"boot_time,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Files queued for deletion at the next boot (PendingFileRenameOperations). Housekeeping by installers and
+	// updaters: reported, but never part of pending_reboot (the server may count them, by setting).
+	QueuedFileDeleteCount uint32   `protobuf:"varint,27,opt,name=queued_file_delete_count,json=queuedFileDeleteCount,proto3" json:"queued_file_delete_count,omitempty"`
+	QueuedFileDeletes     []string `protobuf:"bytes,28,rep,name=queued_file_deletes,json=queuedFileDeletes,proto3" json:"queued_file_deletes,omitempty"` // the first few, for display
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *HardwareInventory) Reset() {
@@ -1105,6 +1109,20 @@ func (x *HardwareInventory) GetBootTime() int64 {
 	return 0
 }
 
+func (x *HardwareInventory) GetQueuedFileDeleteCount() uint32 {
+	if x != nil {
+		return x.QueuedFileDeleteCount
+	}
+	return 0
+}
+
+func (x *HardwareInventory) GetQueuedFileDeletes() []string {
+	if x != nil {
+		return x.QueuedFileDeletes
+	}
+	return nil
+}
+
 type Disk struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Mount      string                 `protobuf:"bytes,1,opt,name=mount,proto3" json:"mount,omitempty"`
@@ -1183,10 +1201,12 @@ func (x *Disk) GetBitlocker() string {
 }
 
 type NetInterface struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Mac           string                 `protobuf:"bytes,2,opt,name=mac,proto3" json:"mac,omitempty"`
-	Addresses     []string               `protobuf:"bytes,3,rep,name=addresses,proto3" json:"addresses,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Name      string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Mac       string                 `protobuf:"bytes,2,opt,name=mac,proto3" json:"mac,omitempty"`
+	Addresses []string               `protobuf:"bytes,3,rep,name=addresses,proto3" json:"addresses,omitempty"`
+	// The same addresses with their network, "192.168.1.20/24", so another agent on that network can wake this one up.
+	Cidrs         []string `protobuf:"bytes,4,rep,name=cidrs,proto3" json:"cidrs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1238,6 +1258,13 @@ func (x *NetInterface) GetMac() string {
 func (x *NetInterface) GetAddresses() []string {
 	if x != nil {
 		return x.Addresses
+	}
+	return nil
+}
+
+func (x *NetInterface) GetCidrs() []string {
+	if x != nil {
+		return x.Cidrs
 	}
 	return nil
 }
@@ -1670,7 +1697,7 @@ const file_librepatch_agent_v1_inventory_proto_rawDesc = "" +
 	"\x06loaded\x18\x06 \x01(\bR\x06loaded\x12\x19\n" +
 	"\bis_admin\x18\a \x01(\bR\aisAdmin\"G\n" +
 	"\x0eUsersInventory\x125\n" +
-	"\x05users\x18\x01 \x03(\v2\x1f.librepatch.agent.v1.DeviceUserR\x05users\"\xfb\x06\n" +
+	"\x05users\x18\x01 \x03(\v2\x1f.librepatch.agent.v1.DeviceUserR\x05users\"\xe4\a\n" +
 	"\x11HardwareInventory\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x12\n" +
 	"\x04fqdn\x18\x02 \x01(\tR\x04fqdn\x12\x16\n" +
@@ -1704,7 +1731,9 @@ const file_librepatch_agent_v1_inventory_proto_rawDesc = "" +
 	"\x0epending_reboot\x18\x17 \x01(\bR\rpendingReboot\x124\n" +
 	"\x16pending_reboot_reasons\x18\x18 \x03(\tR\x14pendingRebootReasons\x12\x1a\n" +
 	"\btimezone\x18\x19 \x01(\tR\btimezone\x12\x1b\n" +
-	"\tboot_time\x18\x1a \x01(\x03R\bbootTime\"\x98\x01\n" +
+	"\tboot_time\x18\x1a \x01(\x03R\bbootTime\x127\n" +
+	"\x18queued_file_delete_count\x18\x1b \x01(\rR\x15queuedFileDeleteCount\x12.\n" +
+	"\x13queued_file_deletes\x18\x1c \x03(\tR\x11queuedFileDeletes\"\x98\x01\n" +
 	"\x04Disk\x12\x14\n" +
 	"\x05mount\x18\x01 \x01(\tR\x05mount\x12\x1e\n" +
 	"\n" +
@@ -1714,11 +1743,12 @@ const file_librepatch_agent_v1_inventory_proto_rawDesc = "" +
 	"size_bytes\x18\x03 \x01(\x04R\tsizeBytes\x12\x1d\n" +
 	"\n" +
 	"free_bytes\x18\x04 \x01(\x04R\tfreeBytes\x12\x1c\n" +
-	"\tbitlocker\x18\x05 \x01(\tR\tbitlocker\"R\n" +
+	"\tbitlocker\x18\x05 \x01(\tR\tbitlocker\"h\n" +
 	"\fNetInterface\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03mac\x18\x02 \x01(\tR\x03mac\x12\x1c\n" +
-	"\taddresses\x18\x03 \x03(\tR\taddresses\"\xb6\x04\n" +
+	"\taddresses\x18\x03 \x03(\tR\taddresses\x12\x14\n" +
+	"\x05cidrs\x18\x04 \x03(\tR\x05cidrs\"\xb6\x04\n" +
 	"\bWuUpdate\x12\x1b\n" +
 	"\tupdate_id\x18\x01 \x01(\tR\bupdateId\x12\x1a\n" +
 	"\brevision\x18\x02 \x01(\x05R\brevision\x12\x14\n" +

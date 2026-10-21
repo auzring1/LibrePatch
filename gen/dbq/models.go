@@ -142,24 +142,49 @@ type CatalogInstaller struct {
 	Unsupported     string
 }
 
+type CatalogOverlay struct {
+	ID          uuid.UUID
+	OrgID       uuid.UUID
+	Label       string
+	Kind        string
+	Url         string
+	PublicKey   string
+	Enabled     bool
+	Priority    int32
+	DocName     string
+	DocVersion  int64
+	DocIssuedAt string
+	Document    []byte
+	Entries     int32
+	FetchedAt   *time.Time
+	CheckedAt   *time.Time
+	Status      string
+	LastError   string
+	Etag        string
+	CreatedBy   *uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type CatalogPackage struct {
-	ID              uuid.UUID
-	OrgID           uuid.UUID
-	Source          string
-	Identifier      string
-	Name            string
-	Publisher       string
-	Homepage        string
-	License         string
-	Description     string
-	Verified        bool
-	SelfUpdating    bool
-	ImportedAt      time.Time
-	ImportedBy      *uuid.UUID
-	VerifiedByOrg   bool
-	VerifiedBy      *uuid.UUID
-	VerifiedAt      *time.Time
-	VerifiedVersion string
+	ID                uuid.UUID
+	OrgID             uuid.UUID
+	Source            string
+	Identifier        string
+	Name              string
+	Publisher         string
+	Homepage          string
+	License           string
+	Description       string
+	Verified          bool
+	SelfUpdating      bool
+	ImportedAt        time.Time
+	ImportedBy        *uuid.UUID
+	VerifiedByOrg     bool
+	VerifiedBy        *uuid.UUID
+	VerifiedAt        *time.Time
+	VerifiedVersion   string
+	VerifiedByOverlay string
 }
 
 type CatalogVersion struct {
@@ -169,6 +194,21 @@ type CatalogVersion struct {
 	VersionKey     []byte
 	ManifestSha256 []byte
 	ImportedAt     time.Time
+}
+
+type Cfe struct {
+	ID            string
+	Published     *time.Time
+	Modified      *time.Time
+	Summary       string
+	Cvss          *float32
+	Severity      string
+	Kev           bool
+	KevName       string
+	KevAdded      pgtype.Date
+	KevDue        pgtype.Date
+	KevRansomware bool
+	KevAction     string
 }
 
 type ComplianceSnapshot struct {
@@ -190,6 +230,29 @@ type ContentBlob struct {
 	CreatedAt  time.Time
 }
 
+type CveProduct struct {
+	ID             uuid.UUID
+	OrgID          uuid.UUID
+	NormalizedName string
+	Vendor         string
+	Product        string
+	Source         string
+	Enabled        bool
+	CreatedAt      time.Time
+}
+
+type CveRange struct {
+	CveID     string
+	Vendor    string
+	Product   string
+	StartKey  []byte
+	StartIncl bool
+	StartText string
+	EndKey    []byte
+	EndIncl   bool
+	EndText   string
+}
+
 type Deployment struct {
 	ID                  uuid.UUID
 	OrgID               uuid.UUID
@@ -207,57 +270,60 @@ type Deployment struct {
 	Status              string
 	CreatedBy           uuid.UUID
 	CreatedAt           time.Time
+	Prompts             []byte
 }
 
 type Device struct {
-	ID                 uuid.UUID
-	OrgID              uuid.UUID
-	SiteID             uuid.UUID
-	Status             string
-	StatusReason       string
-	Hostname           string
-	SmbiosUuid         string
-	Serial             string
-	OsCaption          string
-	OsBuild            string
-	Arch               string
-	AgentVersion       string
-	EnrolledVia        *uuid.UUID
-	ReplacesDeviceID   *uuid.UUID
-	EnrollTicketHash   []byte
-	PendingCsr         []byte
-	EnrolledAt         time.Time
-	ApprovedBy         *uuid.UUID
-	ApprovedAt         *time.Time
-	RevokedBy          *uuid.UUID
-	RevokedAt          *time.Time
-	LastSeenAt         *time.Time
-	Online             bool
-	LastIp             string
-	Hardware           []byte
-	HardwareRev        int64
-	HardwareUpdatedAt  *time.Time
-	UptimeS            int64
-	PendingReboot      bool
-	LoggedOnUser       string
-	SoftwareRev        int64
-	UsersRev           int64
-	SoftwareUpdatedAt  *time.Time
-	SoftwareCount      int32
-	InventoryTruncated bool
-	Chassis            string
-	Manufacturer       string
-	Model              string
-	RamBytes           int64
-	OsBuildNum         int32
-	WuRev              int64
-	WuScannedAt        *time.Time
-	WuScanError        string
-	WuRebootRequired   bool
-	WuPolicy           []byte
-	WuService          int32
-	WuTruncated        bool
-	WuSettingsRev      int32
+	ID                   uuid.UUID
+	OrgID                uuid.UUID
+	SiteID               uuid.UUID
+	Status               string
+	StatusReason         string
+	Hostname             string
+	SmbiosUuid           string
+	Serial               string
+	OsCaption            string
+	OsBuild              string
+	Arch                 string
+	AgentVersion         string
+	EnrolledVia          *uuid.UUID
+	ReplacesDeviceID     *uuid.UUID
+	EnrollTicketHash     []byte
+	PendingCsr           []byte
+	EnrolledAt           time.Time
+	ApprovedBy           *uuid.UUID
+	ApprovedAt           *time.Time
+	RevokedBy            *uuid.UUID
+	RevokedAt            *time.Time
+	LastSeenAt           *time.Time
+	Online               bool
+	LastIp               string
+	Hardware             []byte
+	HardwareRev          int64
+	HardwareUpdatedAt    *time.Time
+	UptimeS              int64
+	PendingReboot        bool
+	LoggedOnUser         string
+	SoftwareRev          int64
+	UsersRev             int64
+	SoftwareUpdatedAt    *time.Time
+	SoftwareCount        int32
+	InventoryTruncated   bool
+	Chassis              string
+	Manufacturer         string
+	Model                string
+	RamBytes             int64
+	OsBuildNum           int32
+	WuRev                int64
+	WuScannedAt          *time.Time
+	WuScanError          string
+	WuRebootRequired     bool
+	WuPolicy             []byte
+	WuService            int32
+	WuTruncated          bool
+	WuSettingsRev        int32
+	SystemDriveFreeBytes *int64
+	PeerPort             int32
 }
 
 type DeviceCert struct {
@@ -297,6 +363,15 @@ type DeviceUser struct {
 	LastLogonAt *time.Time
 	Loaded      bool
 	IsAdmin     bool
+}
+
+type DeviceView struct {
+	JobID     uuid.UUID
+	OrgID     uuid.UUID
+	DeviceID  uuid.UUID
+	Kind      string
+	Data      []byte
+	CreatedAt time.Time
 }
 
 type EnrollmentToken struct {
@@ -360,6 +435,7 @@ type Job struct {
 	CancelPending   bool
 	Result          []byte
 	DependsWhen     string
+	ScriptRunID     *uuid.UUID
 }
 
 type JobEvent struct {
@@ -435,6 +511,13 @@ type PackageOverride struct {
 	SelfUpdatePolicy string
 	UpdatedBy        *uuid.UUID
 	UpdatedAt        time.Time
+	Processes        []string
+}
+
+type PeerContent struct {
+	DeviceID uuid.UUID
+	Sha256   []byte
+	SeenAt   time.Time
 }
 
 type PkiMaterial struct {
@@ -477,6 +560,59 @@ type RoleBinding struct {
 	Role      string
 	ScopeType string
 	ScopeID   uuid.UUID
+	Source    string
+}
+
+type Script struct {
+	ID             uuid.UUID
+	OrgID          uuid.UUID
+	Name           string
+	Description    string
+	Interpreter    string
+	CurrentVersion int32
+	CreatedBy      *uuid.UUID
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type ScriptOutput struct {
+	JobID     uuid.UUID
+	RunID     uuid.UUID
+	ExitCode  int32
+	Output    string
+	CreatedAt time.Time
+}
+
+type ScriptRun struct {
+	ID              uuid.UUID
+	OrgID           uuid.UUID
+	ScriptID        *uuid.UUID
+	ScriptName      string
+	Version         int32
+	Interpreter     string
+	Content         string
+	Sha256          []byte
+	TimeoutS        int32
+	Reason          string
+	TargetGroupIds  []uuid.UUID
+	TargetDeviceIds []uuid.UUID
+	Status          string
+	RequestedBy     *uuid.UUID
+	RequestedAt     time.Time
+	DecidedBy       *uuid.UUID
+	DecidedAt       *time.Time
+	DecisionNote    string
+	Devices         int32
+}
+
+type ScriptVersion struct {
+	ScriptID  uuid.UUID
+	Version   int32
+	Content   string
+	Sha256    []byte
+	Note      string
+	CreatedBy *uuid.UUID
+	CreatedAt time.Time
 }
 
 type Session struct {
@@ -519,6 +655,16 @@ type Site struct {
 	CreatedAt time.Time
 }
 
+type SoftwareApproval struct {
+	OrgID     uuid.UUID
+	PackageID uuid.UUID
+	Version   string
+	Decision  string
+	Note      string
+	DecidedBy *uuid.UUID
+	DecidedAt time.Time
+}
+
 type SoftwareHistory struct {
 	ID         int64
 	DeviceID   uuid.UUID
@@ -530,6 +676,18 @@ type SoftwareHistory struct {
 	OldVersion string
 	NewVersion string
 	ObservedAt time.Time
+}
+
+type SoftwareHold struct {
+	ID         uuid.UUID
+	OrgID      uuid.UUID
+	PolicyID   uuid.UUID
+	Version    string
+	RingID     uuid.UUID
+	Reason     string
+	CreatedAt  time.Time
+	ReleasedAt *time.Time
+	ReleasedBy *uuid.UUID
 }
 
 type SoftwareInstall struct {
@@ -568,6 +726,9 @@ type SoftwarePolicy struct {
 	CreatedBy           *uuid.UUID
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+	UseRings            bool
+	RequireApproval     bool
+	Prompts             []byte
 }
 
 type SoftwareTitle struct {
@@ -578,6 +739,14 @@ type SoftwareTitle struct {
 	DisplayName         string
 	DisplayPublisher    string
 	CreatedAt           time.Time
+}
+
+type SsoFlow struct {
+	StateHash   []byte
+	Nonce       string
+	Verifier    string
+	BindingHash []byte
+	CreatedAt   time.Time
 }
 
 type User struct {
@@ -607,6 +776,16 @@ type UserPreference struct {
 	UserID    uuid.UUID
 	Data      []byte
 	UpdatedAt time.Time
+}
+
+type VulnFeed struct {
+	Feed        string
+	LastOk      *time.Time
+	LastAttempt *time.Time
+	Status      string
+	LastError   string
+	Etag        string
+	Items       int32
 }
 
 type WebauthnCeremony struct {

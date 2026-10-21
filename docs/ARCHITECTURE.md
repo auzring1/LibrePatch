@@ -155,7 +155,7 @@ internal/agent/
 |---|---|
 | Idle CPU about 0% | No polling loops. Wake-ups come from the gRPC stream, `RegNotifyChangeKeyValue`, `NotifyIpInterfaceChange`, session-change events and a few long timers (heartbeat every 5 min, reconcile daily). gRPC keepalive pings run every 90 s, which is enough to survive common NAT/firewall idle timeouts. |
 | RSS under 30 MB | `GOMEMLIMIT=24MiB`, streaming hashing and diffing (inventory is never held as one big JSON), bbolt mmap kept small, WUA COM only loaded when scanning. Measured in CI on a Windows runner. |
-| Binary about 15 MB | `-trimpath -ldflags="-s -w"`, no reflection-heavy dependencies, binary size checked against a budget in CI. |
+| Binary about 16 MB (budget 17 MiB, D129) | `-trimpath -ldflags="-s -w"`, no reflection-heavy dependencies, binary size checked against a budget in CI. |
 | Never slow the machine down | Scans call `SetPriorityClass(PROCESS_MODE_BACKGROUND_BEGIN)` on the agent itself, which lowers CPU, I/O and memory priority. Hashing is rate-limited. Installers start at `BELOW_NORMAL_PRIORITY_CLASS` inside a Job Object. Work is postponed during Windows active hours unless the job's policy says otherwise. Battery and metered-network checks are available as preconditions. |
 
 ### 3.2 Files and ACLs on the endpoint
@@ -269,7 +269,7 @@ The ring promoter moves to the next ring once the time has passed and the succes
 
 The agent tries an ordered list of `ContentSource`s, and **every source is untrusted**. The bytes must match the SHA-256 in the signed job no matter where they came from. That's what makes adding peer-to-peer later safe.
 
-1. *Peer cache* (interface stub only in v1).
+1. *Peer cache* (D126): other agents on the same network that have the file, offered by the server as `PEER` sources in the signed job; off unless the organization turns it on.
 2. Server content endpoint (`/v1/content/{sha256}`, over mTLS, supports ranges and resume), used when cached or custom.
 3. Vendor URL from the manifest (HTTPS, system trust store, with a size limit taken from the catalog).
 

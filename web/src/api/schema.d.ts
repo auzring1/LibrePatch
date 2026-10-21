@@ -146,6 +146,172 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/sso/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the sign-in page offers single sign-on, and the address to register at the provider */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            enabled: boolean;
+                            /** @description Text for the button ("Sign in with …") */
+                            label: string;
+                            /** @description The redirect (reply) address to register for this server at the provider */
+                            redirect_uri: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sso/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Start a sign-in with the organization's OpenID Connect provider (redirects the browser to it)
+         * @description Authorization code flow with PKCE and a one-time state and nonce stored on the server for ten minutes. Rate limited like password sign-in.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description A page that sends the browser back to the sign-in page with an error code */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Redirect to the provider */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sso/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where the provider sends the person back (not for direct use)
+         * @description Exchanges the code, verifies the ID token (issuer, audience, signature from the provider's published keys, expiry, nonce), finds or creates the account, brings its provider-managed roles in line with the provider, and starts a session. The answer is a small page that sends the browser on to the console (the session cookie is SameSite=Strict, so a plain redirect after a cross-site navigation would not carry it). Without the provider's proof of multi-factor, or with that setting off, the session is "MFA pending" and the sign-in page asks for the second factor kept here.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    code?: string;
+                    state?: string;
+                    error?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description A page that continues to the console or to the sign-in page with an error code */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sso/continue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The second-factor step for a session that arrived through single sign-on */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The same answer as a password sign-in gives (which second-factor methods, or the enrollment of a first one) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                401: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -4895,6 +5061,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/software/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Software versions waiting for approval, recent decisions and open ring holds (requires deployments:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SoftwareApprovals"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Approve or decline one version of a package, or put it back to waiting (requires deployments:write; audited) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        package_id: string;
+                        version: string;
+                        /** @enum {string} */
+                        decision: "approved" | "declined" | "reset";
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Recorded */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/software/holds/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release a ring hold so the version moves on to the next ring (requires policies:write; audited) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Released */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/reports/overview": {
         parameters: {
             query?: never;
@@ -4980,6 +5251,469 @@ export interface paths {
         get: {
             parameters: {
                 query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description CSV */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/csv": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Known vulnerabilities (CVEs) that affect devices, the exploited ones first, with a summary and the state of the data (requires reports:read) */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Only vulnerabilities on the CISA list of known exploited vulnerabilities */
+                    exploited?: boolean;
+                    /** @description Comma-separated: low, medium, high, critical */
+                    severity?: string;
+                    /** @description Text in the CVE id */
+                    q?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VulnerabilityOverview"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The same list as CSV (requires inventory:export; audited) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description CSV */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/csv": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities/{cve}/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The devices a CVE affects, and what to update (requires reports:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    cve: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["VulnerabilityDevice"][];
+                        };
+                    };
+                };
+                400: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Download the vulnerability feeds now (requires settings:integrations; audited as vulns.sync). The lookup must be turned on. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What the run did */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VulnerabilitySyncReport"];
+                    };
+                };
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Load a feed file by hand, for feeds the server cannot download (requires settings:integrations; audited as vulns.import) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        kind: "kev" | "nvd";
+                        /** @description The text of the CISA catalog */
+                        data: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Loaded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            kind: string;
+                            items: number;
+                        };
+                    };
+                };
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which installed programs are looked up in the vulnerability data, and as what (requires reports:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["VulnerabilityProduct"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Add a program to look up, by the vendor and product names the NVD uses (requires settings:integrations; audited as vulns.product_add) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description The program's name as the software inventory shows it */
+                        name: string;
+                        vendor: string;
+                        product: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Added */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VulnerabilityProduct"];
+                    };
+                };
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities/products/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Switch a line on or off (requires settings:integrations; audited) */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Saved */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        post?: never;
+        /** Remove a line you added; lines that come with the product can only be switched off (requires settings:integrations; audited) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{id}/vulnerabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The known vulnerabilities that affect one device (requires devices:read for the device) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["DeviceVulnerability"][];
+                            enabled: boolean;
+                            has_data: boolean;
+                        };
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports/lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which devices run an operating system that is out of support or soon will be (requires reports:read)
+         * @description The end-of-support dates are a built-in table (data_as_of says when it was reviewed), not a lookup on the internet.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description How many days before the end of support a device counts as ending soon */
+                    warn_days?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LifecycleReport"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports/lifecycle.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The operating system lifecycle report as CSV (requires inventory:export; audited) */
+        get: {
+            parameters: {
+                query?: {
+                    warn_days?: number;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -5361,6 +6095,638 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/devices/{id}/wake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wake a sleeping device with a Wake-on-LAN packet sent by another online device on the same network (requires devices:wake; audited)
+         * @description The server picks an online device whose network contains the sleeping device's last address (it needs the current agent, which reports its networks) and queues a job for it; that device sends the packet to its own network's broadcast address, nothing else. The job belongs to the helper. Whether the computer wakes depends on its firmware and network card settings.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description A wake-up job was queued */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            job_id: string;
+                            /** @description Host name of the device that sends the packet */
+                            helper: string;
+                        };
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{id}/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask an online device for a read-only view of itself (requires devices:inspect; audited)
+         * @description Running programs, services or recent event log entries (System, Application or Setup; never Security). The answer is read with GET /devices/{id}/views/{job} and is kept for an hour.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        kind: "processes" | "services" | "events";
+                        /** @enum {string} */
+                        log?: "" | "System" | "Application" | "Setup";
+                        /** @description Events: 1 critical to 5 verbose; 0 = 3 */
+                        max_level?: number;
+                        /** @description Events: look back this far; 0 = 1440 */
+                        since_minutes?: number;
+                        /** @description Events: 0 = 100 */
+                        max_events?: number;
+                    };
+                };
+            };
+            responses: {
+                202: components["responses"]["JobQueued"];
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{id}/views/{job}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The state and, when ready, the data of a read-only view (requires devices:inspect) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    job: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceView"];
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The script library (requires scripts:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["ScriptItem"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Add a script to the library (requires scripts:write; audited)
+         * @description Administrators only, and never through an API token. A script is PowerShell text of 1 to 65536 bytes. Every save of different content is a new version.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ScriptInput"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                        };
+                    };
+                };
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether runs need a second person's approval, and whether anyone else could approve (requires scripts:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            require_approval: boolean;
+                            /**
+                             * Format: int64
+                             * @description Other active administrators who could approve a run you ask for
+                             */
+                            other_approvers: number;
+                            max_devices: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        /** A script with its content and versions (requires scripts:read) */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Default is the current version */
+                    version?: number;
+                };
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptDetail"];
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        /** Change a script; different content becomes a new version (requires scripts:write; audited) */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ScriptInput"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            version: number;
+                        };
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        post?: never;
+        /** Delete a script and its versions; earlier runs keep their own copy (requires scripts:write; audited) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The newest script runs (requires scripts:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["ScriptRun"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Ask for a script to be run on devices (requires scripts:run; audited)
+         * @description The content of the chosen version is copied into the run. When the organization requires approval the run waits (24 hours) for another administrator; otherwise one signed job per device is queued at once. A device only runs it if its agent was installed with scripts switched on; the others end the job as rejected.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ScriptRunRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptRun"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        /** A run with its exact content and one row per device (requires scripts:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptRunDetail"];
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/runs/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a run someone else asked for; its jobs are queued (requires scripts:approve; audited) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ScriptDecision"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptRun"];
+                    };
+                };
+                403: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/runs/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a run that waits for approval (requires scripts:approve; audited) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ScriptDecision"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptRun"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/runs/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a run and cancel the jobs that have not started (requires scripts:run; audited) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptRun"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/runs/{id}/jobs/{job}/output": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What the script printed on one device (requires scripts:read; kept 30 days, never shown on job pages) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    job: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScriptOutput"];
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/catalog/packages": {
         parameters: {
             query?: never;
@@ -5675,6 +7041,273 @@ export interface paths {
                 422: components["responses"]["Error"];
             };
         };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalog/overlays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Signed catalog overlay sources, highest priority first (requires catalog:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["OverlaySource"][];
+                            builtin_entries: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Add an overlay from an uploaded signed file or from a URL, under its author's public key (requires catalog:override; audited as catalog.overlay_add) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Defaults to the name inside the document */
+                        label?: string;
+                        /** @description 64 hexadecimal characters */
+                        public_key: string;
+                        /** @description Fetch the signed file from here (http or https) */
+                        url?: string;
+                        /** @description The text of the signed .lpov file */
+                        bundle?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Added */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OverlaySource"];
+                    };
+                };
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalog/overlays/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename an overlay source, switch it on or off, change its priority or address (requires catalog:override; audited as catalog.overlay_update) */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        label: string;
+                        enabled: boolean;
+                        priority: number;
+                        url?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Saved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OverlaySource"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        post?: never;
+        /** Remove an overlay source (requires catalog:override; audited as catalog.overlay_delete) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalog/overlays/{id}/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Load a newer signed file into a source; an older document than the source has is refused (requires catalog:override; audited as catalog.overlay_replace) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        bundle: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OverlayChange"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalog/overlays/{id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask a URL source for a newer document now (requires catalog:override; audited as catalog.overlay_refresh) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Checked */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OverlayChange"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalog/overlay-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An unsigned overlay document built from this organization's own overrides and verified marks, to edit and sign (requires catalog:override) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description JSON document */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -6790,6 +8423,8 @@ export interface components {
             must_change_password: boolean;
             has_totp: boolean;
             security_keys: number;
+            /** @description Signs in with the organization's identity provider */
+            sso?: boolean;
             bindings: {
                 /** Format: uuid */
                 id: string;
@@ -6797,6 +8432,11 @@ export interface components {
                 scope_type: string;
                 /** Format: uuid */
                 scope_id: string;
+                /**
+                 * @description sso = follows the identity provider at every sign-in; local = set by hand
+                 * @enum {string}
+                 */
+                source?: "local" | "sso";
             }[];
         };
         SoftwarePolicy: {
@@ -6815,10 +8455,86 @@ export interface components {
             unverified_confirmed: boolean;
             window?: components["schemas"]["MaintenanceWindow"];
             enabled: boolean;
+            /** @description Roll new versions out through the update rings (keep-updated policies only) */
+            use_rings?: boolean;
+            /** @description A new version waits for an administrator's approval before it goes out */
+            require_approval?: boolean;
+            prompts?: components["schemas"]["InstallPrompts"] | null;
             /** Format: date-time */
             created_at: string;
             /** Format: int64 */
             devices_attempted: number;
+            /** @description The state of the newest version; set only for a policy that uses rings or approval */
+            rollout?: components["schemas"]["SoftwareRollout"] | null;
+        };
+        SoftwareRollout: {
+            version: string;
+            /** Format: date-time */
+            imported_at: string;
+            /** @enum {string} */
+            approval: "not_required" | "pending" | "approved" | "declined";
+            /** Format: date-time */
+            approved_at?: string;
+            /**
+             * @description Why nothing goes out right now
+             * @enum {string}
+             */
+            blocked?: "excluded" | "self_updating" | "no_version" | "delay" | "pending_approval" | "declined";
+            /**
+             * Format: date-time
+             * @description The earliest moment the first ring may install
+             */
+            available_at?: string;
+            /** @description Devices that still need the version */
+            waiting: number;
+            stages: {
+                name: string;
+                /** @description False for the devices that are in no ring */
+                ring: boolean;
+                devices: number;
+                waiting: number;
+                installed: number;
+                failed: number;
+                /** @enum {string} */
+                state: "waiting" | "running" | "passed" | "done" | "held";
+                /** Format: uuid */
+                hold_id?: string;
+                reason?: string;
+            }[];
+        };
+        SoftwareApprovalItem: {
+            /** Format: uuid */
+            package_id: string;
+            package_name: string;
+            version: string;
+            /** @enum {string} */
+            decision: "pending" | "approved" | "declined";
+            note: string;
+            /** Format: date-time */
+            imported_at?: string;
+            /** Format: date-time */
+            decided_at?: string;
+            decided_by: string;
+            policies: string[];
+            devices: number;
+        };
+        SoftwareHold: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            policy_id: string;
+            policy: string;
+            package_name: string;
+            version: string;
+            ring: string;
+            reason: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        SoftwareApprovals: {
+            pending: components["schemas"]["SoftwareApprovalItem"][];
+            recent: components["schemas"]["SoftwareApprovalItem"][];
+            holds: components["schemas"]["SoftwareHold"][];
         };
         SoftwarePolicyInput: {
             name: string;
@@ -6831,6 +8547,11 @@ export interface components {
             only_new_devices?: boolean;
             unverified_confirmed?: boolean;
             window?: components["schemas"]["MaintenanceWindow"];
+            /** @description Roll new versions out through the update rings (keep-updated policies only) */
+            use_rings?: boolean;
+            /** @description A new version waits for an administrator's approval */
+            require_approval?: boolean;
+            prompts?: components["schemas"]["InstallPrompts"] | null;
             enabled?: boolean;
         };
         ComplianceRow: {
@@ -6853,6 +8574,154 @@ export interface components {
             reboot_pending: boolean;
             /** @enum {string} */
             state: "compliant" | "non_compliant" | "unknown";
+        };
+        Vulnerability: {
+            /** @example CVE-2026-0001 */
+            id: string;
+            /** Format: date-time */
+            published?: string | null;
+            summary: string;
+            /** @description CVSS base score */
+            cvss?: number | null;
+            /** @enum {string} */
+            severity: "" | "low" | "medium" | "high" | "critical";
+            /** @description On the CISA list of known exploited vulnerabilities */
+            exploited: boolean;
+            exploited_name: string;
+            /** Format: date-time */
+            kev_added?: string | null;
+            /**
+             * Format: date-time
+             * @description The date CISA asks for it to be fixed by
+             */
+            kev_due?: string | null;
+            /** @description Known to be used in ransomware campaigns */
+            ransomware: boolean;
+            required_action: string;
+            devices: number;
+            products: string[];
+            /** @description What to update to */
+            fixed_in: string[];
+        };
+        VulnerabilitySummary: {
+            cves: number;
+            exploited: number;
+            critical: number;
+            high: number;
+            /** @description Devices affected by at least one */
+            devices: number;
+            /** @description Devices that have something the lookup knows about */
+            devices_covered: number;
+            devices_active: number;
+        };
+        VulnerabilityFeed: {
+            /** @description kev, or nvd:<vendor>:<product> */
+            feed: string;
+            /** Format: date-time */
+            last_ok: string | null;
+            /** Format: date-time */
+            last_attempt: string | null;
+            /** @enum {string} */
+            status: "new" | "ok" | "error";
+            last_error: string;
+            items: number;
+        };
+        VulnerabilityStatus: {
+            enabled: boolean;
+            counts: {
+                cves: number;
+                cves_with_versions: number;
+                exploited: number;
+            };
+            feeds: components["schemas"]["VulnerabilityFeed"][];
+            /** @description Programs and Windows releases of the fleet that are looked up */
+            tracked_products: number;
+            /** Format: date-time */
+            kev_updated_at: string | null;
+            /**
+             * Format: date-time
+             * @description The oldest successful refresh among the products the fleet has; null until every one has been downloaded
+             */
+            nvd_updated_at: string | null;
+            problems: number;
+        };
+        VulnerabilityOverview: {
+            summary: components["schemas"]["VulnerabilitySummary"];
+            items: components["schemas"]["Vulnerability"][];
+            status: components["schemas"]["VulnerabilityStatus"];
+        };
+        VulnerabilityDevice: {
+            /** Format: uuid */
+            device_id: string;
+            hostname: string;
+            product: string;
+            installed: string;
+            /** @description The version that fixes it; empty when none is known */
+            fixed_in: string;
+        };
+        DeviceVulnerability: components["schemas"]["Vulnerability"] & {
+            product: string;
+            installed: string;
+        };
+        VulnerabilityProduct: {
+            /** Format: uuid */
+            id: string;
+            /** @description The normalized program name the software inventory uses */
+            name: string;
+            vendor: string;
+            product: string;
+            /** @enum {string} */
+            source: "builtin" | "user";
+            enabled: boolean;
+            /** @description Active devices that have the program */
+            devices: number;
+        };
+        VulnerabilitySyncReport: {
+            /** @enum {string} */
+            kev: "downloaded" | "unchanged" | "skipped" | "failed";
+            kev_items: number;
+            products: number;
+            /** @description Products left for the next run */
+            pending: number;
+            cves: number;
+            requests: number;
+            errors: string[];
+        };
+        LifecycleRow: {
+            /** Format: uuid */
+            device_id: string;
+            hostname: string;
+            /** @description The product name the device reports */
+            os: string;
+            /** @description The feature version the device reports */
+            version: string;
+            build: number;
+            /** @description The Windows edition id */
+            edition: string;
+            /** @description The operating system the table matched */
+            product: string;
+            release: string;
+            /** Format: date */
+            end_of_support: string | null;
+            /** @description Negative once support has ended; null when the end date is not known */
+            days_left: number | null;
+            /** @enum {string} */
+            status: "supported" | "ending_soon" | "unsupported" | "unknown";
+            note: string;
+            /** Format: date-time */
+            last_seen_at: string | null;
+        };
+        LifecycleReport: {
+            /** Format: date */
+            data_as_of: string;
+            warn_days: number;
+            items: components["schemas"]["LifecycleRow"][];
+            summary: {
+                supported: number;
+                ending_soon: number;
+                unsupported: number;
+                unknown: number;
+            };
         };
         ReportOverview: {
             devices: {
@@ -7075,7 +8944,9 @@ export interface components {
              * @description Why the package counts as verified
              * @enum {string}
              */
-            verified_source?: "" | "tests" | "organization";
+            verified_source?: "" | "tests" | "organization" | "overlay";
+            /** @description The overlay that vouches for the package */
+            verified_by?: string;
             self_updating: boolean;
             /** Format: date-time */
             imported_at?: string;
@@ -7115,6 +8986,8 @@ export interface components {
             user_scope_policy?: "" | "report_only" | "update_in_place" | "convert_to_machine" | "remove";
             /** @enum {string} */
             self_update_policy?: "" | "defer_to_vendor" | "enforce";
+            /** @description Image names (for example chrome.exe) of the programs an update replaces. Omit to leave the stored list unchanged. */
+            processes?: string[] | null;
         };
         PackageDetail: {
             package: components["schemas"]["Package"];
@@ -7136,6 +9009,50 @@ export interface components {
             } | null;
             effective_user_scope_policy: string;
             effective_user_scope_policy_source?: string;
+            /** @description What a signed catalog overlay says about the package (null when none does) */
+            overlay?: {
+                source?: string;
+                note?: string;
+                self_updating?: boolean | null;
+                verified?: boolean;
+                verified_note?: string;
+                silent_args?: string[];
+                detection_rules?: number;
+                processes?: string[];
+            } | null;
+        };
+        OverlayChange: {
+            changed: boolean;
+            /** Format: int64 */
+            version: number;
+            entries: number;
+        };
+        OverlaySource: {
+            /** Format: uuid */
+            id: string;
+            label: string;
+            /** @enum {string} */
+            kind: "upload" | "url";
+            url: string;
+            /** @description The hex Ed25519 public key the document must be signed with */
+            public_key: string;
+            key_id: string;
+            enabled: boolean;
+            /** @description A lower number wins when two overlays name the same package */
+            priority: number;
+            doc_name: string;
+            /** Format: int64 */
+            doc_version: number;
+            doc_issued_at: string;
+            entries: number;
+            verified_entries: number;
+            /** Format: date-time */
+            fetched_at?: string | null;
+            /** Format: date-time */
+            checked_at?: string | null;
+            /** @enum {string} */
+            status: "new" | "ok" | "error";
+            last_error: string;
         };
         ImportResult: {
             /** Format: uuid */
@@ -7183,6 +9100,151 @@ export interface components {
             /** @description IANA name; empty = device-local time */
             tz?: string;
         };
+        ScriptInput: {
+            name: string;
+            description?: string;
+            /** @description PowerShell text */
+            content: string;
+            /** @description What changed (kept with the version) */
+            note?: string;
+        };
+        ScriptItem: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            /** @enum {string} */
+            interpreter: "powershell";
+            version: number;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: int64 */
+            runs: number;
+            /** Format: date-time */
+            last_run_at?: string | null;
+        };
+        ScriptDetail: components["schemas"]["ScriptItem"] & {
+            content: string;
+            /** @description Fingerprint of the content shown */
+            sha256: string;
+            versions: {
+                version: number;
+                sha256: string;
+                note: string;
+                /** Format: date-time */
+                created_at: string;
+                created_by: string;
+            }[];
+        };
+        ScriptRunRequest: {
+            /** Format: uuid */
+            script_id: string;
+            /** @description 0 = the current version */
+            version?: number;
+            group_ids?: string[];
+            device_ids?: string[];
+            /** @description 0 = 300; otherwise 10 to 3600. The script and everything it started are ended when it is over. */
+            timeout_s?: number;
+            /** @description Why; recorded with the run and in the audit log */
+            reason: string;
+        };
+        ScriptDecision: {
+            note?: string;
+        };
+        ScriptRun: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            script_id?: string | null;
+            script_name: string;
+            version: number;
+            sha256: string;
+            reason: string;
+            /** @enum {string} */
+            status: "pending_approval" | "running" | "rejected" | "cancelled" | "expired";
+            devices: number;
+            timeout_s: number;
+            /** Format: date-time */
+            requested_at: string;
+            requested_by: string;
+            /** Format: uuid */
+            requested_by_id?: string | null;
+            /** Format: date-time */
+            decided_at?: string | null;
+            decided_by?: string;
+            decision_note?: string;
+            /** Format: int64 */
+            succeeded: number;
+            /** Format: int64 */
+            failed: number;
+            needs_approval: boolean;
+        };
+        ScriptRunDetail: components["schemas"]["ScriptRun"] & {
+            /** @description Exactly what is sent to the devices */
+            content: string;
+            jobs: {
+                /** Format: uuid */
+                job_id: string;
+                /** Format: uuid */
+                device_id: string;
+                hostname: string;
+                status: components["schemas"]["JobStatus"];
+                status_reason: string;
+                exit_code?: number | null;
+                /** Format: date-time */
+                finished_at?: string | null;
+                has_output: boolean;
+            }[];
+        };
+        ScriptOutput: {
+            /** Format: uuid */
+            job_id: string;
+            exit_code: number;
+            output: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        DeviceView: {
+            status: components["schemas"]["JobStatus"];
+            status_reason: string;
+            /** @enum {string} */
+            kind?: "processes" | "services" | "events";
+            /** @description {kind, taken_at, truncated, total, items[]}; the item fields depend on kind */
+            data?: {
+                kind?: string;
+                /** Format: int64 */
+                taken_at?: number;
+                truncated?: boolean;
+                total?: number;
+                items?: {
+                    [key: string]: unknown;
+                }[];
+            };
+        };
+        /**
+         * @description Optional messages to the signed-in user while software is installed. Omitted or all defaults = fully silent.
+         *     The programs to wait for, ask about or close are the package's `processes` (package override or signed overlay).
+         */
+        InstallPrompts: {
+            /**
+             * @description What to do when the package's programs are open: ignore = install silently; skip = wait until they are closed; ask = ask the user to let them be closed; close = warn, then close
+             * @default ignore
+             * @enum {string}
+             */
+            in_use: "ignore" | "skip" | "ask" | "close";
+            /** @description How long the question or warning stays up (0 = 300, otherwise 30 to 3600) */
+            ask_timeout_s?: number;
+            /** @description How long skip and ask wait before looking again (0 = 60, otherwise 5 to 1440) */
+            defer_minutes?: number;
+            /**
+             * @description What happens when the installer says it needs a restart: none = only report it; ask = ask the user; countdown = restart after a countdown
+             * @default none
+             * @enum {string}
+             */
+            restart: "none" | "ask" | "countdown";
+            /** @description Length of the restart countdown (0 = 5) */
+            restart_notify_minutes?: number;
+        };
         DeploymentRequest: {
             name: string;
             /** @enum {string} */
@@ -7201,6 +9263,7 @@ export interface components {
             expires_in_hours: number;
             window?: components["schemas"]["MaintenanceWindow"];
             unverified_confirmed?: boolean;
+            prompts?: components["schemas"]["InstallPrompts"] | null;
         };
         DeploymentPlan: {
             /** Format: uuid */
@@ -7256,6 +9319,7 @@ export interface components {
             expires_at?: string;
             unverified_confirmed?: boolean;
             window?: components["schemas"]["MaintenanceWindow"];
+            prompts?: components["schemas"]["InstallPrompts"] | null;
             job_counts: {
                 [key: string]: number;
             };
@@ -7427,6 +9491,8 @@ export interface components {
             uptime_s?: number;
             pending_reboot?: boolean;
             logged_on_user?: string;
+            /** @description Port on which the device shares downloaded installers with others on its network (0 = not sharing) */
+            peer_port?: number;
             /** Format: uuid */
             replaces_device_id?: string | null;
             chassis?: string;
@@ -7483,6 +9549,10 @@ export interface components {
             last_logged_on_user?: string;
             pending_reboot?: boolean;
             pending_reboot_reasons?: string[];
+            /** @description Files queued for deletion at the next restart (installer leftovers). Listed on the device page; counted as a pending restart only when the device defaults say so */
+            queued_file_delete_count?: number;
+            /** @description The first few of them */
+            queued_file_deletes?: string[];
             timezone?: string;
             boot_time?: string;
         };

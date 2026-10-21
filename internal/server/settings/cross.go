@@ -58,8 +58,15 @@ func crossNotifications(vals map[string]any, secrets map[string]bool, _ Actor) F
 		if r.Bool("enabled") && !r.Bool("email") && !r.Bool("webhook") {
 			errs[fmt.Sprintf("rules[%d].email", i)] = "choose e-mail, webhooks or both"
 		}
-		if r.Bool("enabled") && r.Int("threshold") == 0 && r.Str("event") == "device_offline" {
-			errs[fmt.Sprintf("rules[%d].threshold", i)] = "must be at least 1 hour"
+		if r.Bool("enabled") && r.Int("threshold") == 0 {
+			switch r.Str("event") {
+			case "device_offline":
+				errs[fmt.Sprintf("rules[%d].threshold", i)] = "must be at least 1 hour"
+			case "restart_pending_long":
+				errs[fmt.Sprintf("rules[%d].threshold", i)] = "must be at least 1 day"
+			case "low_disk":
+				errs[fmt.Sprintf("rules[%d].threshold", i)] = "must be at least 1 GB"
+			}
 		}
 	}
 	return errs

@@ -92,6 +92,7 @@ func (g *Gateway) Connect(stream agentv1.AgentChannelService_ConnectServer) erro
 		HeartbeatIntervalS: uint32(g.cfg.HeartbeatInterval.Seconds()),
 		RenewCertificate:   renewDue(ident, g.cfg.DeviceCertLifetime, now),
 	}
+	ack.PeerCache = g.peerPolicy(ctx, dev.OrgID)
 	if dev.HardwareRev < 0 || hello.Revs["hardware"] != uint64(dev.HardwareRev) { // #nosec G115 -- negative values handled first
 		ack.ResyncSections = append(ack.ResyncSections, agentv1.InventorySection_INVENTORY_SECTION_HARDWARE)
 	}
@@ -170,6 +171,19 @@ func renewDue(ident *pki.DeviceIdentity, lifetime time.Duration, now time.Time) 
 	return ident.Cert.NotAfter.Sub(now) < lifetime/3
 }
 
+// restartPending is what the console, the filters and the compliance report call "restart pending": what the agent
+// says Windows needs, plus files queued for deletion at the next boot when the organization's device defaults say they
+// count. Those are housekeeping by installers and updaters and recur daily, so by default they do not.
+func (g *Gateway) restartPending(ctx context.Context, org uuid.UUID, pending, queuedDeletes bool) bool {
+	if pending {
+		return true
+	}
+	if !queuedDeletes || g.settings == nil {
+		return false
+	}
+	return g.settings.Peek(ctx, org, "devices").Bool("queued_deletes_need_restart")
+}
+
 func (g *Gateway) handle(ctx context.Context, c *conn, dev dbq.Device, m *agentv1.ConnectRequest) error {
 	q := dbq.New(g.pool)
 	now := g.now()
@@ -182,7 +196,8 @@ func (g *Gateway) handle(ctx context.Context, c *conn, dev dbq.Device, m *agentv
 		}
 		hb := msg.Heartbeat
 		if err := q.UpdateDeviceHeartbeat(ctx, dbq.UpdateDeviceHeartbeatParams{ID: dev.ID, LastSeenAt: &now,
-			UptimeS: clampI64(hb.UptimeS), PendingReboot: hb.PendingReboot, LoggedOnUser: cleanField(hb.LoggedOnUser, 256)}); err != nil {
+			UptimeS: clampI64(hb.UptimeS), PendingReboot: g.restartPending(ctx, dev.OrgID, hb.PendingReboot, hb.QueuedFileDeletes), LoggedOnUser: cleanField(hb.LoggedOnUser, 256),
+			SystemDriveFreeBytes: freeBytes(hb), PeerPort: int32(min(hb.PeerPort, 65535))}); err != nil { // #nosec G115 -- capped
 			return err
 		}
 		g.events.Publish(dev.OrgID, events.Event{Type: events.DeviceUpdated, DeviceID: dev.ID})
@@ -215,7 +230,7 @@ func (g *Gateway) handle(ctx context.Context, c *conn, dev dbq.Device, m *agentv
 		if _, err := q.UpdateDeviceHardware(ctx, dbq.UpdateDeviceHardwareParams{ID: dev.ID, Hardware: j,
 			HardwareRev: clampI64(inv.Rev), HardwareUpdatedAt: &now, Hostname: cleanField(hw.Hostname, 255),
 			OsCaption: cleanField(hw.OsCaption, 256), OsBuild: osBuild, Arch: cleanField(hw.Arch, 32),
-			Serial: cleanField(hw.Serial, 128), PendingReboot: hw.PendingReboot}); err != nil {
+			Serial: cleanField(hw.Serial, 128), PendingReboot: g.restartPending(ctx, dev.OrgID, hw.PendingReboot, hw.QueuedFileDeleteCount > 0)}); err != nil {
 			return err
 		}
 		if err := c.send(&agentv1.ConnectResponse{Msg: &agentv1.ConnectResponse_Ack{Ack: &agentv1.Ack{Seq: inv.Seq}}}); err != nil {
@@ -285,4 +300,16 @@ func (g *Gateway) securityAudit(ctx context.Context, dev dbq.Device, reason stri
 	_ = audit.Log(ctx, g.pool, audit.Entry{OrgID: &dev.OrgID, ActorType: audit.ActorDevice, ActorID: dev.ID.String(),
 		ActorIP: peerIP(ctx), Action: "gateway.protocol_violation", TargetType: "device", TargetIDs: []string{dev.ID.String()},
 		Outcome: audit.Denied, Details: map[string]any{"reason": reason}})
+}
+
+// peerPolicy is the organization's choice about sharing downloaded installers between devices (D126).
+func (g *Gateway) peerPolicy(ctx context.Context, org uuid.UUID) *agentv1.PeerCachePolicy {
+	if g.settings == nil {
+		return nil
+	}
+	v := g.settings.Peek(ctx, org, "downloads")
+	if !v.Bool("peer_cache") {
+		return nil
+	}
+	return &agentv1.PeerCachePolicy{Enabled: true, Port: uint32(v.Int("peer_cache_port")), MaxMb: uint32(v.Int("peer_cache_mb"))} // #nosec G115 -- validated ranges
 }

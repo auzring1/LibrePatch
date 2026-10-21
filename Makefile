@@ -4,7 +4,7 @@ SHELL := /bin/bash
 VERSION ?= 0.1.0-dev
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -s -w -X github.com/auzring1/librepatch/internal/shared/version.Version=$(VERSION) -X github.com/auzring1/librepatch/internal/shared/version.Commit=$(COMMIT)
-AGENT_MAX_BYTES := 15728640   # 15 MiB budget (ARCHITECTURE §3.1)
+AGENT_MAX_BYTES := 17825792   # 17 MiB budget (ARCHITECTURE §3.1, D129)
 TEST_PG ?= postgres://postgres:devpostgres@127.0.0.1:55432/postgres?sslmode=disable
 
 .PHONY: help

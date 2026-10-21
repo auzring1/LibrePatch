@@ -169,6 +169,9 @@ func TestOverrideValidation(t *testing.T) {
 		{ExtraDetection: []Detection{{Kind: "file", Key: `%ProgramFiles%\..\x`}}},
 		{ExtraDetection: []Detection{{Kind: "msi", Key: "7-Zip"}}},
 		{ExtraDetection: []Detection{{Kind: "registry", Key: "k", Version: "???", Cmp: "ge"}}},
+		{Processes: &[]string{`C:\Program Files\x\a.exe`}},
+		{Processes: &[]string{"*.exe"}},
+		{Processes: &[]string{"svchost.exe"}},
 	}
 	for i, o := range bad {
 		if err := s.SetOverride(context.Background(), org, user, res.PackageID, o); !errors.Is(err, ErrInvalid) {
@@ -178,6 +181,24 @@ func TestOverrideValidation(t *testing.T) {
 	good := Override{Pin: "< 25.0", Excluded: false, UserScopePolicy: "convert_to_machine", SelfUpdate: "enforce"}
 	if err := s.SetOverride(context.Background(), org, user, res.PackageID, good); err != nil {
 		t.Fatal(err)
+	}
+	// Program names are stored, and an override saved by a client that does not send them keeps them.
+	progs := []string{"7zFM.exe"}
+	if err := s.SetOverride(context.Background(), org, user, res.PackageID, Override{Processes: &progs}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetOverride(context.Background(), org, user, res.PackageID, Override{Pin: "< 26.0"}); err != nil {
+		t.Fatal(err)
+	}
+	if ov, err := dbq.New(db.Pool).GetPackageOverride(context.Background(), dbq.GetPackageOverrideParams{OrgID: org, PackageID: res.PackageID}); err != nil || len(ov.Processes) != 1 || ov.Processes[0] != "7zFM.exe" || ov.Pin != "< 26.0" {
+		t.Fatalf("programs must survive a save that does not mention them: %v %+v", err, ov)
+	}
+	empty := []string{}
+	if err := s.SetOverride(context.Background(), org, user, res.PackageID, Override{Processes: &empty}); err != nil {
+		t.Fatal(err)
+	}
+	if ov, _ := dbq.New(db.Pool).GetPackageOverride(context.Background(), dbq.GetPackageOverrideParams{OrgID: org, PackageID: res.PackageID}); len(ov.Processes) != 0 {
+		t.Fatalf("an empty list clears them: %+v", ov.Processes)
 	}
 	// another organization cannot override this package
 	org2, user2 := newOrg(t, db.Pool)

@@ -26,9 +26,15 @@ const (
 // Events are the things that can notify someone or call a webhook.
 var Events = []Option{
 	{"failed_install", "An install or update failed on a device"},
-	{"update_held", "An update was held because a ring missed its success threshold"},
+	{"update_held", "An update or software version was held because a ring missed its success threshold"},
+	{"software_approval_needed", "A new software version is waiting for your approval"},
 	{"device_offline", "A device has not reported for a while"},
 	{"agent_out_of_date", "A device runs an older agent than the target release"},
+	{"restart_pending_long", "A device has needed a restart for too long"},
+	{"low_disk", "The system drive of a device is nearly full"},
+	{"bitlocker_off", "A disk on a device is not protected by BitLocker"},
+	{"os_end_of_support", "A device runs an operating system that is out of support or about to be"},
+	{"exploited_vulnerability", "A vulnerability that is known to be exploited affects devices"},
 }
 
 // EventDoc documents an event for the integrations page: when it fires and the shape of its payload.
@@ -55,12 +61,24 @@ func EventReference() []EventDoc {
 	return []EventDoc{
 		doc("failed_install", "A job that installs, updates or removes software or a Windows update ends in failure.",
 			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "job": map[string]any{"id": "…", "title": "Install 7-Zip 24.08", "reason": "exit code 1603"}}),
-		doc("update_held", "A ring missed its success threshold, so the update is held back from later rings.",
+		doc("update_held", "A ring missed its success threshold, so the Windows update or software version is held back from later rings.",
 			map[string]any{"update": map[string]any{"id": "…", "title": "2026-01 Cumulative Update (KB5099999)"}, "ring": "Pilot", "reason": "3 of 10 devices failed"}),
+		doc("software_approval_needed", "A new version of a package that a software policy keeps updated is waiting for an administrator's approval (sent once per package and version).",
+			map[string]any{"package": map[string]any{"name": "7-Zip"}, "version": "24.09"}),
 		doc("device_offline", "A device has not reported for at least the configured number of hours (sent once per outage).",
 			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "hours_offline": 30}),
 		doc("agent_out_of_date", "A device reports an agent version older than the rollout's target release (sent once per device and release).",
 			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "agent_version": "1.2.0", "target_version": "1.3.0"}),
+		doc("restart_pending_long", "A device that is online needs a restart and has not restarted for at least the configured number of days (sent at most once a week per device).",
+			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "days_without_restart": 12}),
+		doc("low_disk", "The system drive of an online device has less than the configured number of gigabytes free (sent at most once a week per device).",
+			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "free_gb": 4.2}),
+		doc("bitlocker_off", "A disk on a device reports that BitLocker is off (sent at most once a month per device).",
+			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "disks": "C:"}),
+		doc("os_end_of_support", "A device runs an operating system whose support has ended, or ends within the configured number of days (sent once per device and operating system release).",
+			map[string]any{"device": map[string]any{"id": "…", "hostname": "PC-0142"}, "os": "Windows 11 24H2", "end_of_support": "2026-10-13", "days_left": -6}),
+		doc("exploited_vulnerability", "A vulnerability on the CISA list of known exploited vulnerabilities affects at least one device (sent once per CVE; needs the vulnerability lookup turned on).",
+			map[string]any{"cve": "CVE-2026-0001", "name": "Google Chromium V8 Type Confusion Vulnerability", "devices": 4, "fix_due": "2026-10-22", "ransomware": false}),
 		doc("test", "An administrator pressed 'Send test' on a webhook.", map[string]any{"message": "This is a test delivery."}),
 	}
 }
@@ -69,7 +87,7 @@ func EventReference() []EventDoc {
 // audit trail, search and the console's form follow; a test checks that every field has a label, help and a default
 // that passes its own validation.
 var Sections = []Section{
-	appearance, security, notifications, updates, devices, reports, data, integrations,
+	appearance, security, notifications, sso, updates, devices, downloads, scripts, reports, data, integrations, vulnerabilities,
 }
 
 // ByID returns a section.
@@ -176,8 +194,14 @@ var notifications = Section{
 			Default: []any{
 				ruleDefault("failed_install", false, 0),
 				ruleDefault("update_held", false, 0),
+				ruleDefault("software_approval_needed", false, 0),
 				ruleDefault("device_offline", false, 24),
 				ruleDefault("agent_out_of_date", false, 7),
+				ruleDefault("restart_pending_long", false, 7),
+				ruleDefault("low_disk", false, 10),
+				ruleDefault("bitlocker_off", false, 0),
+				ruleDefault("os_end_of_support", false, 90),
+				ruleDefault("exploited_vulnerability", false, 0),
 			},
 			Fields: []Field{
 				{Key: "event", Label: "Event", Kind: Enum, Required: true, Options: Events, Default: "failed_install", Effect: Live, Help: "What happened."},
@@ -186,7 +210,7 @@ var notifications = Section{
 				{Key: "webhook", Label: "To webhooks", Kind: Bool, Default: true, Effect: Live, Help: "Call every enabled webhook that listens for this event."},
 				{Key: "recipients", Label: "Recipients", Kind: Emails, Default: []any{}, Max: 20, Effect: Live, Placeholder: "oncall@example.org", Help: "E-mail addresses. Required when the rule sends e-mail."},
 				{Key: "threshold", Label: "Threshold", Kind: Int, Default: 0, Min: 0, Max: 720, Effect: Live,
-					Help: "Device offline: hours without a report. Agent out of date: days after a release before devices count as late. Other events ignore it."},
+					Help: "Device offline: hours without a report. Agent out of date: days after a release before devices count as late. Restart pending too long: days without a restart. Low disk: gigabytes free on the system drive. Operating system end of support: days before the end to warn (0 warns only once support has ended). Other events ignore it."},
 				{Key: "quiet_hours", Label: "Hold during quiet hours", Kind: Bool, Default: true, Effect: Live, Help: "Wait for the end of quiet hours instead of sending at once."},
 			}},
 	},
@@ -240,10 +264,12 @@ var DeviceColumns = []Option{
 
 var devices = Section{
 	ID: "devices", Label: "Device defaults", Perm: PermDevices,
-	Description: "When a device counts as offline or stale, how devices are named, extra fields you want to record, and which columns the device list starts with.",
+	Description: "When a device counts as offline or stale, whether queued file deletions count as a pending restart, how devices are named, extra fields you want to record, and which columns the device list starts with.",
 	Fields: []Field{
 		{Key: "offline_hours", Label: "Offline after", Kind: Int, Default: 24, Min: 1, Max: 720, Unit: "hours", Effect: Live,
 			Help: "A device that has not reported for this long is listed as needing attention on the dashboard."},
+		{Key: "queued_deletes_need_restart", Label: "Queued file deletions count as a pending restart", Kind: Bool, Default: false, Effect: Live,
+			Help: "Installers and updaters (Edge, Firefox, Office, antivirus) queue leftover files for deletion at the next restart, and queue new ones again within hours, so counting them makes PCs show \"restart pending\" several times a day. Off (recommended): they are listed on the device page but do not mark it as needing a restart, change compliance or trigger a restart. Takes effect as each device next reports, within about 30 minutes. Renames and replacements queued for the next restart always count."},
 		{Key: "stale_cleanup_days", Label: "Delete revoked devices after", Kind: Int, Default: 0, Min: 0, Max: 3650, Unit: "days", Effect: Live,
 			Help: "Revoked or retired devices not seen for this long are deleted, with everything stored about them (the audit log keeps the record). 0 keeps them forever. Active devices are never deleted by this."},
 		{Key: "naming_pattern", Label: "Expected device name pattern", Kind: Regex, Default: "", Max: 200, Placeholder: "^(PC|LT)-[0-9]{4}$", Effect: Live,
@@ -269,6 +295,67 @@ var devices = Section{
 			}},
 		{Key: "default_columns", Label: "Device list columns", Kind: Multi, Default: []any{"hostname", "status", "connection", "os", "user", "seen", "agent"}, Min: 1, Options: DeviceColumns, Effect: Live,
 			Help: "The columns the device list shows for people who have not arranged their own."},
+	},
+}
+
+var downloads = Section{
+	ID: "downloads", Label: "Downloads", Perm: PermDevices,
+	Description: "How devices get the installers they install. By default each device downloads from the vendor (or from this server) itself.",
+	Fields: []Field{
+		{Key: "peer_cache", Label: "Share downloads between computers on the same network", Kind: Bool, Default: false, Effect: Live,
+			Help: "A device that has installed a program keeps the installer and hands it to other devices on the same network, so a few hundred PCs do not each download it from the internet. Every file is still checked against the fingerprint signed into the job, wherever it came from, and devices only talk to each other with their own certificates. It opens a port on each device (the agent adds the Windows Firewall rule for private and domain networks) and uses disk space on each. Takes effect as devices reconnect; an agent installed with a limit on its allowed jobs that leaves out peer_cache never shares."},
+		{Key: "peer_cache_mb", Label: "Disk space for shared installers on each device", Kind: Int, Default: 2048, Min: 256, Max: 20480, Unit: "MB", ShowIf: "peer_cache", Effect: Live,
+			Help: "The oldest installers are removed first when the limit is reached; installers unused for two weeks are removed. Turning sharing off empties the cache."},
+		{Key: "peer_cache_port", Label: "Port for sharing", Kind: Int, Default: 7421, Min: 1024, Max: 65535, ShowIf: "peer_cache", Effect: Live,
+			Help: "TCP port each device listens on, for other devices on the same network only. Change it only if something else uses it."},
+	},
+}
+
+var sso = Section{
+	ID: "sso", Label: "Single sign-on", Perm: PermSecurity,
+	Description: "Let people sign in with your company account (Microsoft Entra ID, or any provider that speaks OpenID Connect) instead of a password stored here. Register this server as an application with your provider first; the sign-in address to give it is shown on the Single sign-on page. A local administrator account with its own password always keeps working, so a broken provider can never lock you out.",
+	Fields: []Field{
+		{Key: "enabled", Label: "Allow sign-in with a company account", Kind: Bool, Default: false, Effect: Live,
+			Help: "Adds a button to the sign-in page. Local accounts keep working."},
+		{Key: "label", Label: "Button text", Kind: String, Default: "Microsoft", Max: 40, ShowIf: "enabled", Effect: Live, Help: "The button reads “Sign in with …”."},
+		{Key: "issuer", Label: "Issuer address", Kind: URL, Default: "", Max: 300, ShowIf: "enabled", Effect: Live,
+			Placeholder: "https://login.microsoftonline.com/<directory id>/v2.0",
+			Help:        "For Microsoft Entra ID: https://login.microsoftonline.com/ + your directory (tenant) ID + /v2.0. It must be a specific directory, not “common”. Must start with https://.",
+			Validate: func(v any, all map[string]any) error {
+				s, _ := v.(string)
+				if on, _ := all["enabled"].(bool); on && !strings.HasPrefix(s, "https://") {
+					return errors.New("the issuer address must start with https://")
+				}
+				return nil
+			}},
+		{Key: "client_id", Label: "Application (client) ID", Kind: String, Default: "", Max: 200, ShowIf: "enabled", Effect: Live, Help: "From the application registration at your provider."},
+		{Key: "client_secret", Label: "Client secret", Kind: Secret, Max: 500, ShowIf: "enabled", Effect: Live, Help: "A client secret created for this application. Stored encrypted and never shown again; leave empty to keep the saved one."},
+		{Key: "role_claim", Label: "Where roles come from", Kind: Enum, Default: "roles", ShowIf: "enabled", Effect: Live,
+			Options: []Option{{"roles", "App roles (the roles claim)"}, {"groups", "Groups (the groups claim, object IDs for Entra ID)"}},
+			Help:    "Which claim of the sign-in token is matched against the list below. App roles are the tidier choice for Entra ID; groups are limited to about 200 per person."},
+		{Key: "role_map", Label: "Who gets which role", Kind: List, Default: []any{}, Max: 50, ItemKey: "value", ShowIf: "enabled", Effect: Live,
+			Help: "A person gets the highest role of every line that matches what the provider says about them. Nobody who matches no line, and has no role set here by hand, can sign in.",
+			Fields: []Field{
+				{Key: "value", Label: "Role or group value", Kind: String, Required: true, Default: "", Min: 1, Max: 200, Effect: Live, Help: "The text the provider sends, for example the app role name or the group's object ID."},
+				{Key: "role", Label: "Role here", Kind: Enum, Default: "readonly", Required: true, Effect: Live,
+					Options: []Option{{"admin", "Administrator"}, {"operator", "Operator"}, {"readonly", "Read-only"}}, Help: "Applies to the whole organization."},
+			}},
+		{Key: "auto_create", Label: "Create accounts on first sign-in", Kind: Bool, Default: true, ShowIf: "enabled", Effect: Live,
+			Help: "A person the provider lets in and the list above gives a role gets an account the first time. Off: only people who already have an account here (and have been linked) can sign in."},
+		{Key: "link_by_email", Label: "Link existing accounts by email address", Kind: Bool, Default: false, ShowIf: "enabled", Effect: Live,
+			Help: "If a local account has the same email address as the person signing in, connect the two on first sign-in. Turn this on only if your provider guarantees that people cannot choose their own email address (a single Entra ID directory does). Off: such a person is turned away and an administrator has to sort it out."},
+		{Key: "allowed_domains", Label: "Only these email domains", Kind: Tags, Default: []any{}, Max: 20, ShowIf: "enabled", Effect: Live, Help: "Optional extra limit, for example example.org. Empty means any domain."},
+		{Key: "idp_mfa_counts", Label: "The provider's multi-factor check replaces the second factor here", Kind: Bool, Default: false, ShowIf: "enabled", Effect: Live,
+			Help: "Off (recommended): after signing in with the company account, people still confirm with an authenticator app or security key kept here. On: if the provider says the person used multi-factor (the amr claim contains “mfa”), no second step is asked; if it does not say so, it is asked."},
+	},
+}
+
+var scripts = Section{
+	ID: "scripts", Label: "Scripts", Perm: PermSecurity,
+	Description: "Running scripts on devices is the most powerful thing this product can do: code you wrote runs as SYSTEM on the computers you choose. Only administrators can use it, every step is in the audit log, and a device only accepts a script if the agent on it was installed with scripts switched on (--allow-scripts, or ALLOWSCRIPTS=1 in the MSI); the server cannot switch that on.",
+	Fields: []Field{
+		{Key: "require_approval", Label: "A second administrator must approve every run", Kind: Bool, Default: false, Effect: Live,
+			Help: "A run waits until another administrator (not the person who asked) approves exactly the script that was requested. Recommended whenever you have two or more administrators. With only one administrator nobody could approve, so it is off by default."},
 	},
 }
 
@@ -310,6 +397,21 @@ var data = Section{
 			Help: "How far back the dashboard's compliance chart can go. Older daily snapshots are deleted."},
 		{Key: "notification_log_days", Label: "Keep the notification log for", Kind: Int, Default: 90, Min: 7, Max: 730, Unit: "days", Effect: Live,
 			Help: "Sent and failed e-mails and webhook deliveries, with the error if there was one."},
+	},
+}
+
+var vulnerabilities = Section{
+	ID: "vulnerabilities", Label: "Vulnerability data", Perm: PermIntegrations,
+	Description: "Where the server gets the public lists of known vulnerabilities to match against what is installed on your devices. Nothing about your devices is sent: the server only downloads the lists and does the matching itself.",
+	Fields: []Field{
+		{Key: "enabled", Label: "Look up known vulnerabilities", Kind: Bool, Default: false, Effect: Live,
+			Help: "Turns on the daily download of the CISA list of exploited vulnerabilities and, for the programs and Windows versions your devices have, of the NIST National Vulnerability Database. The Vulnerabilities page works with whatever has been downloaded."},
+		{Key: "kev_url", Label: "CISA exploited-vulnerabilities list", Kind: URL, Default: "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json", Max: 500, Effect: Live,
+			Help: "Change this only to download from a mirror of your own (for example when the server cannot reach the internet directly)."},
+		{Key: "nvd_url", Label: "NIST vulnerability database", Kind: URL, Default: "https://services.nvd.nist.gov/rest/json/cves/2.0", Max: 500, Effect: Live,
+			Help: "The address of the NVD CVE API, version 2.0. Change this only to use a mirror that answers the same way."},
+		{Key: "nvd_api_key", Label: "NVD API key", Kind: Secret, Max: 200, Effect: Live,
+			Help: "Optional. Without a key the NVD allows 5 requests per 30 seconds, so the first download takes a few minutes; a free key (requested from NIST) raises that tenfold. Stored encrypted and never shown again."},
 	},
 }
 

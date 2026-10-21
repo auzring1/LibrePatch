@@ -52,6 +52,12 @@ func (e *Engine) install(ctx context.Context, r *Record, env *agentv1.JobEnvelop
 			AlreadySatisfied: true, InstalledVersion: det.Version, Message: "already installed; nothing to do"}}
 	}
 
+	// 2b. Programs the update replaces are open (only when the deployment asked for it, D124): wait, or ask.
+	var consent bool
+	if o := e.inUseGate(ctx, b, sid, false, &consent); o != nil {
+		return o
+	}
+
 	// 3. Stage.
 	dir, err := e.P.StagingDir(scope, sid, r.JobID)
 	if err != nil {
@@ -100,6 +106,9 @@ func (e *Engine) install(ctx context.Context, r *Record, env *agentv1.JobEnvelop
 		}
 		return fail("the staged installer changed after it was verified")
 	}
+	if e.CacheFile != nil {
+		e.CacheFile(file, in.Sha256)
+	}
 	sig, serr := e.P.VerifySignature(file)
 	sigNote := "unsigned"
 	switch {
@@ -124,7 +133,10 @@ func (e *Engine) install(ctx context.Context, r *Record, env *agentv1.JobEnvelop
 		return fail("the installer has an invalid digital signature: %s", sig.Detail)
 	}
 
-	// 5-7. Run.
+	// 5-7. Run. Programs that are still open, or were opened again during the download, are dealt with first.
+	if o := e.inUseGate(ctx, b, sid, true, &consent); o != nil {
+		return o
+	}
 	timeout, _ := timeoutOf(b.TimeoutS)
 	var rr RunResult
 	switch t {
@@ -220,6 +232,11 @@ func (e *Engine) install(ctx context.Context, r *Record, env *agentv1.JobEnvelop
 		res.Outcome = agentv1.JobOutcome_JOB_OUTCOME_FAILED
 		res.Message = short("the installer reported success but the product was not detected afterwards; " + res.Message)
 		return &outcome{res: res, reason: "failed_detection"}
+	}
+	if res.Outcome == agentv1.JobOutcome_JOB_OUTCOME_REBOOT_REQUIRED {
+		if note := e.restartAfterInstall(ctx, b, sid); note != "" {
+			res.Message = short(res.Message + "; " + note)
+		}
 	}
 	return &outcome{res: res}
 }

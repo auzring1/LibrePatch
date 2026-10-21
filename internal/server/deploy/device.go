@@ -57,6 +57,12 @@ func (s *Service) newJobWindow(org, device uuid.UUID, sid string, typ agentv1.Jo
 		env.Body = &agentv1.JobEnvelope_Reboot{Reboot: b}
 	case *agentv1.AgentUpdateBody:
 		env.Body = &agentv1.JobEnvelope_AgentUpdate{AgentUpdate: b}
+	case *agentv1.WakeBody:
+		env.Body = &agentv1.JobEnvelope_Wake{Wake: b}
+	case *agentv1.InspectBody:
+		env.Body = &agentv1.JobEnvelope_Inspect{Inspect: b}
+	case *agentv1.RunScriptBody:
+		env.Body = &agentv1.JobEnvelope_RunScript{RunScript: b}
 	default:
 		return dbq.InsertJobParams{}, errors.New("deploy: unsupported ad-hoc body")
 	}
@@ -447,10 +453,10 @@ func (u *updater) assess(r installRow) (*candidate, *UpdateCheck) {
 	}
 	c := &candidate{pkgName: fr.m.Name, identifier: fr.m.ID, wingetID: fr.m.ID, latest: fr.m.LatestVersion, deployable: true, matchedBy: fr.m.By}
 	if ov := u.s.overlay(); ov != nil {
-		if e, ok := ov.Entry(fr.m.ID); ok && e.SelfUpdating {
+		if e, ok := ov.EntryFor(u.m.org, fr.m.ID); ok && e.SelfUpdating {
 			c.selfUpdating, c.deployable, c.reason = true, false, "updates itself; left to the vendor's updater"
 		}
-		c.verified = ov.Verified(fr.m.ID, "")
+		c.verified, _ = ov.VerifiedFor(u.m.org, fr.m.ID, "")
 	}
 	return c, nil
 }

@@ -239,7 +239,7 @@ func (q *Queries) FindRecentRefresh(ctx context.Context, deviceID uuid.UUID) (uu
 }
 
 const getDeployment = `-- name: GetDeployment :one
-SELECT d.id, d.org_id, d.name, d.action, d.package_id, d.version_id, d.scope, d.target_group_ids, d.target_device_ids, d.starts_at, d.expires_at, d.maint_window, d.unverified_confirmed, d.status, d.created_by, d.created_at, p.name AS package_name, p.identifier AS package_identifier, v.version AS version
+SELECT d.id, d.org_id, d.name, d.action, d.package_id, d.version_id, d.scope, d.target_group_ids, d.target_device_ids, d.starts_at, d.expires_at, d.maint_window, d.unverified_confirmed, d.status, d.created_by, d.created_at, d.prompts, p.name AS package_name, p.identifier AS package_identifier, v.version AS version
 FROM deployments d
 JOIN catalog_packages p ON p.id = d.package_id
 LEFT JOIN catalog_versions v ON v.id = d.version_id
@@ -268,6 +268,7 @@ type GetDeploymentRow struct {
 	Status              string
 	CreatedBy           uuid.UUID
 	CreatedAt           time.Time
+	Prompts             []byte
 	PackageName         string
 	PackageIdentifier   string
 	Version             *string
@@ -293,6 +294,7 @@ func (q *Queries) GetDeployment(ctx context.Context, arg GetDeploymentParams) (G
 		&i.Status,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.Prompts,
 		&i.PackageName,
 		&i.PackageIdentifier,
 		&i.Version,
@@ -301,7 +303,7 @@ func (q *Queries) GetDeployment(ctx context.Context, arg GetDeploymentParams) (G
 }
 
 const getJob = `-- name: GetJob :one
-SELECT id, org_id, deployment_id, device_id, user_sid, type, title, body, depends_on, not_before, expires_at, attempt, status, status_reason, envelope, created_at, sent_at, acked_at, started_at, finished_at, exit_code, detection_passed, reboot_required, cancel_pending, result, depends_when FROM jobs WHERE id = $1 AND org_id = $2
+SELECT id, org_id, deployment_id, device_id, user_sid, type, title, body, depends_on, not_before, expires_at, attempt, status, status_reason, envelope, created_at, sent_at, acked_at, started_at, finished_at, exit_code, detection_passed, reboot_required, cancel_pending, result, depends_when, script_run_id FROM jobs WHERE id = $1 AND org_id = $2
 `
 
 type GetJobParams struct {
@@ -339,12 +341,13 @@ func (q *Queries) GetJob(ctx context.Context, arg GetJobParams) (Job, error) {
 		&i.CancelPending,
 		&i.Result,
 		&i.DependsWhen,
+		&i.ScriptRunID,
 	)
 	return i, err
 }
 
 const getJobForDevice = `-- name: GetJobForDevice :one
-SELECT id, org_id, deployment_id, device_id, user_sid, type, title, body, depends_on, not_before, expires_at, attempt, status, status_reason, envelope, created_at, sent_at, acked_at, started_at, finished_at, exit_code, detection_passed, reboot_required, cancel_pending, result, depends_when FROM jobs WHERE id = $1 AND device_id = $2
+SELECT id, org_id, deployment_id, device_id, user_sid, type, title, body, depends_on, not_before, expires_at, attempt, status, status_reason, envelope, created_at, sent_at, acked_at, started_at, finished_at, exit_code, detection_passed, reboot_required, cancel_pending, result, depends_when, script_run_id FROM jobs WHERE id = $1 AND device_id = $2
 `
 
 type GetJobForDeviceParams struct {
@@ -382,14 +385,15 @@ func (q *Queries) GetJobForDevice(ctx context.Context, arg GetJobForDeviceParams
 		&i.CancelPending,
 		&i.Result,
 		&i.DependsWhen,
+		&i.ScriptRunID,
 	)
 	return i, err
 }
 
 const insertDeployment = `-- name: InsertDeployment :exec
 INSERT INTO deployments (id, org_id, name, action, package_id, version_id, scope, target_group_ids, target_device_ids,
-    starts_at, expires_at, maint_window, unverified_confirmed, status, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active', $14)
+    starts_at, expires_at, maint_window, unverified_confirmed, status, created_by, prompts)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active', $14, $15)
 `
 
 type InsertDeploymentParams struct {
@@ -407,6 +411,7 @@ type InsertDeploymentParams struct {
 	MaintWindow         []byte
 	UnverifiedConfirmed bool
 	CreatedBy           uuid.UUID
+	Prompts             []byte
 }
 
 func (q *Queries) InsertDeployment(ctx context.Context, arg InsertDeploymentParams) error {
@@ -425,14 +430,15 @@ func (q *Queries) InsertDeployment(ctx context.Context, arg InsertDeploymentPara
 		arg.MaintWindow,
 		arg.UnverifiedConfirmed,
 		arg.CreatedBy,
+		arg.Prompts,
 	)
 	return err
 }
 
 const insertJob = `-- name: InsertJob :exec
-INSERT INTO jobs (id, org_id, deployment_id, device_id, user_sid, type, title, body, depends_on, depends_when, not_before, expires_at, attempt)
+INSERT INTO jobs (id, org_id, deployment_id, device_id, user_sid, type, title, body, depends_on, depends_when, not_before, expires_at, attempt, script_run_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-        COALESCE(NULLIF($10::text, ''), 'success'), $11, $12, $13)
+        COALESCE(NULLIF($10::text, ''), 'success'), $11, $12, $13, $14)
 `
 
 type InsertJobParams struct {
@@ -449,6 +455,7 @@ type InsertJobParams struct {
 	NotBefore    time.Time
 	ExpiresAt    time.Time
 	Attempt      int32
+	ScriptRunID  *uuid.UUID
 }
 
 func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
@@ -466,6 +473,7 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 		arg.NotBefore,
 		arg.ExpiresAt,
 		arg.Attempt,
+		arg.ScriptRunID,
 	)
 	return err
 }
@@ -551,7 +559,7 @@ func (q *Queries) ListCancelPending(ctx context.Context, deviceID uuid.UUID) ([]
 }
 
 const listDependentJobs = `-- name: ListDependentJobs :many
-SELECT id, org_id, deployment_id, device_id, user_sid, type, title, body, depends_on, not_before, expires_at, attempt, status, status_reason, envelope, created_at, sent_at, acked_at, started_at, finished_at, exit_code, detection_passed, reboot_required, cancel_pending, result, depends_when FROM jobs WHERE depends_on = $1 AND status = 'queued'
+SELECT id, org_id, deployment_id, device_id, user_sid, type, title, body, depends_on, not_before, expires_at, attempt, status, status_reason, envelope, created_at, sent_at, acked_at, started_at, finished_at, exit_code, detection_passed, reboot_required, cancel_pending, result, depends_when, script_run_id FROM jobs WHERE depends_on = $1 AND status = 'queued'
 `
 
 func (q *Queries) ListDependentJobs(ctx context.Context, dependsOn *uuid.UUID) ([]Job, error) {
@@ -590,6 +598,7 @@ func (q *Queries) ListDependentJobs(ctx context.Context, dependsOn *uuid.UUID) (
 			&i.CancelPending,
 			&i.Result,
 			&i.DependsWhen,
+			&i.ScriptRunID,
 		); err != nil {
 			return nil, err
 		}
@@ -765,7 +774,7 @@ func (q *Queries) ListDeviceUsersForDevices(ctx context.Context, dollar_1 []uuid
 }
 
 const listDispatchableJobs = `-- name: ListDispatchableJobs :many
-SELECT j.id, j.org_id, j.deployment_id, j.device_id, j.user_sid, j.type, j.title, j.body, j.depends_on, j.not_before, j.expires_at, j.attempt, j.status, j.status_reason, j.envelope, j.created_at, j.sent_at, j.acked_at, j.started_at, j.finished_at, j.exit_code, j.detection_passed, j.reboot_required, j.cancel_pending, j.result, j.depends_when FROM jobs j
+SELECT j.id, j.org_id, j.deployment_id, j.device_id, j.user_sid, j.type, j.title, j.body, j.depends_on, j.not_before, j.expires_at, j.attempt, j.status, j.status_reason, j.envelope, j.created_at, j.sent_at, j.acked_at, j.started_at, j.finished_at, j.exit_code, j.detection_passed, j.reboot_required, j.cancel_pending, j.result, j.depends_when, j.script_run_id FROM jobs j
 WHERE j.device_id = $1 AND j.status IN ('queued', 'sent') AND j.expires_at > now()
   AND (j.depends_on IS NULL OR EXISTS (SELECT 1 FROM jobs p WHERE p.id = j.depends_on AND (
         p.status IN ('succeeded', 'succeeded_reboot')
@@ -810,6 +819,7 @@ func (q *Queries) ListDispatchableJobs(ctx context.Context, deviceID uuid.UUID) 
 			&i.CancelPending,
 			&i.Result,
 			&i.DependsWhen,
+			&i.ScriptRunID,
 		); err != nil {
 			return nil, err
 		}

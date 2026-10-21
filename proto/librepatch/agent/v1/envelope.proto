@@ -26,6 +26,9 @@ enum JobType {
   JOB_TYPE_AGENT_UPDATE = 9;
   JOB_TYPE_CANCEL = 10;
   JOB_TYPE_CONFIG = 11;
+  JOB_TYPE_WAKE = 12;     // send Wake-on-LAN packets for other devices on this one's network (D125)
+  JOB_TYPE_RUN_SCRIPT = 14;  // run an administrator's script as SYSTEM; only on an agent whose owner switched scripts on (D127)
+  JOB_TYPE_INSPECT = 13;  // read-only view: running programs, services or recent event log entries (D125)
 }
 
 message JobEnvelope {
@@ -53,6 +56,9 @@ message JobEnvelope {
     InventoryBody inventory = 26;
     AgentUpdateBody agent_update = 27;
     CancelBody cancel = 28;
+    WakeBody wake = 29;
+    InspectBody inspect = 30;
+    RunScriptBody run_script = 31;
   }
 }
 
@@ -94,6 +100,9 @@ enum ContentSourceKind {
   CONTENT_SOURCE_KIND_UNSPECIFIED = 0;
   CONTENT_SOURCE_KIND_SERVER = 1;   // gateway FetchContent, authorized by this job
   CONTENT_SOURCE_KIND_VENDOR = 2;   // HTTPS URL from the catalog
+  // Another agent on the same network that has the file in its cache (D126): "https://<private IPv4>:<port>". Peers
+  // authenticate each other with their device certificates; the SHA-256 still decides.
+  CONTENT_SOURCE_KIND_PEER = 3;
 }
 
 // ContentSource is untrusted: bytes must match Installer.sha256 whatever the origin.
@@ -219,6 +228,82 @@ message RebootBody {
   string reason = 2;                 // shown to signed-in users, plain text, bounded
 }
 
+// InUseAction says what an installation does when programs it replaces are open. Silent is the default: nothing
+// here changes how an installation runs unless an administrator chose one of the other values.
+enum InUseAction {
+  IN_USE_ACTION_UNSPECIFIED = 0;  // same as IGNORE
+  IN_USE_ACTION_IGNORE = 1;       // install silently regardless (the installer deals with it)
+  IN_USE_ACTION_SKIP = 2;         // do not prompt; try again later until the programs are closed
+  IN_USE_ACTION_ASK = 3;          // ask the signed-in user; Yes closes the programs, No/no answer = try again later
+  IN_USE_ACTION_CLOSE = 4;        // warn the signed-in user, then close the programs
+}
+
+// RestartPrompt says what happens after an installer reports that it needs a restart.
+enum RestartPrompt {
+  RESTART_PROMPT_UNSPECIFIED = 0;  // same as NONE
+  RESTART_PROMPT_NONE = 1;         // only report "restart required" (the administrator restarts it)
+  RESTART_PROMPT_ASK = 2;          // ask the signed-in user; Yes restarts after a short countdown, No/no answer leaves it
+  RESTART_PROMPT_COUNTDOWN = 3;    // restart after a countdown that signed-in users see
+}
+
+// InstallPrompts are the optional messages to the signed-in user. Absent or all-default = fully silent.
+message InstallPrompts {
+  InUseAction in_use = 1;
+  // Image names (for example "chrome.exe") of the programs the installation replaces. No paths. Only programs
+  // running in a signed-in user's session are asked about or closed.
+  repeated string processes = 2;
+  uint32 ask_timeout_s = 3;       // how long the question (ASK) or the warning (CLOSE) is shown, 30..3600; 0 = 300
+  uint32 defer_minutes = 4;       // SKIP and ASK: wait this long before looking again, 5..1440; 0 = 60
+  RestartPrompt restart = 5;
+  uint32 restart_notify_minutes = 6;  // length of the restart countdown, 1..1440; 0 = 5
+}
+
+// WakeTarget is one sleeping computer: the MAC address of a network card and the IPv4 address it last had.
+message WakeTarget {
+  string mac = 1;        // aa:bb:cc:dd:ee:ff
+  string last_ip = 2;    // IPv4; the agent only sends on an interface whose network contains it
+}
+
+// WakeBody asks an online agent to send Wake-on-LAN "magic packets" on its own network. The agent never sends to
+// anything but the broadcast address of one of its own interfaces.
+message WakeBody {
+  repeated WakeTarget targets = 1;   // 1..4
+}
+
+enum InspectKind {
+  INSPECT_KIND_UNSPECIFIED = 0;
+  INSPECT_KIND_PROCESSES = 1;
+  INSPECT_KIND_SERVICES = 2;
+  INSPECT_KIND_EVENTS = 3;
+}
+
+// InspectBody asks for a read-only view of the device. The answer is JSON in JobResult.data_json, size-capped.
+message InspectBody {
+  InspectKind kind = 1;
+  string log = 2;               // EVENTS: System | Application | Setup (never Security)
+  uint32 max_level = 3;         // EVENTS: 1 critical .. 5 verbose; 0 = 3 (warnings and worse)
+  uint32 since_minutes = 4;     // EVENTS: look back this far, 1..10080; 0 = 1440
+  uint32 max_events = 5;        // EVENTS: 1..200; 0 = 100
+}
+
+enum ScriptInterpreter {
+  SCRIPT_INTERPRETER_UNSPECIFIED = 0;
+  SCRIPT_INTERPRETER_POWERSHELL = 1;  // Windows PowerShell 5.1
+}
+
+// RunScriptBody is a script from the library, with its content: what runs is exactly what the administrator saw (and, when
+// a second person approved the run, what that person approved). The agent refuses it unless scripts are switched on
+// locally, and checks that sha256 is the hash of content.
+message RunScriptBody {
+  string name = 1;                    // informational
+  uint32 version = 2;                 // informational
+  ScriptInterpreter interpreter = 3;
+  string content = 4;                 // 1..65536 bytes of UTF-8 text
+  bytes sha256 = 5;                   // of content
+  uint32 timeout_s = 6;               // 10..3600; the script and everything it started are ended when it is over
+  string run_id = 7;                  // informational
+}
+
 message InstallBody {
   string package_id = 1;          // catalog identifier, informational
   string name = 2;
@@ -233,6 +318,7 @@ message InstallBody {
   RebootAllow reboot = 11;
   bool allow_downgrade = 12;
   bool update = 13;               // an upgrade of an existing install (job type SOFTWARE_UPDATE)
+  InstallPrompts prompts = 14;    // optional messages to the signed-in user (D124)
 }
 
 enum UninstallMethod {

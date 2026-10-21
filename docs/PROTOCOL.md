@@ -141,7 +141,9 @@ message JobEnvelope {
     InstallBody install = 20; UninstallBody uninstall = 21; WuScanBody wu_scan = 22;
     WuInstallBody wu_install = 23; WuHideBody wu_hide = 24; RebootBody reboot = 25;
     InventoryBody inventory = 26; AgentUpdateBody agent_update = 27; CancelBody cancel = 28;
-    ConfigBody config = 29;
+    WakeBody wake = 29; InspectBody inspect = 30;   // D125
+    RunScriptBody run_script = 31;   // D127: script text + SHA-256 + time limit; refused unless the agent opted in
+    ConfigBody config = 32;   // reserved, not implemented
   }
 }
 ```
@@ -179,13 +181,16 @@ InstallBody {
   package_id, name, version            // informational; shown in logs
   scope [MACHINE|USER]                 // must agree with target_user_sid
   installer { type, nested_type, nested_path, sha256 (required), size, file_name,
-              sources[] (server content and/or vendor URL), args[] (validated tokens only),
+              sources[] (server content, vendor URL, or a peer on the same network, D126), args[] (validated tokens only),
               success_codes[], expected_codes[], signer_pin? { subject, thumbprint_sha256[] } }
   detection[] { kind [MSI|REGISTRY|FILE|APPX], key, value_name, version, cmp [EQ|GE] }
   preconditions { min_free_mb, os_build_min }
   timeout_s, max_retries, retry_backoff_s
   reboot [NEVER]                       // reboot-required is reported, never performed
   allow_downgrade, update              // update = SOFTWARE_UPDATE of an existing install
+  prompts? { in_use [IGNORE|SKIP|ASK|CLOSE], processes[] (image names, validated),
+             ask_timeout_s, defer_minutes,
+             restart [NONE|ASK|COUNTDOWN], restart_notify_minutes }   // optional messages to the signed-in user (D124)
 }
 ```
 

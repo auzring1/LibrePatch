@@ -42,7 +42,7 @@ cd "$(dirname "$0")/.."
 ROOT=$PWD
 
 NODE_MAJOR=22          # keep in step with .github/workflows/ci.yml NODE_VERSION and deploy/Dockerfile.server
-AGENT_MAX_BYTES=15728640
+AGENT_MAX_BYTES=17825792
 
 die() { echo "build-release: $*" >&2; exit 1; }
 

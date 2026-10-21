@@ -589,7 +589,8 @@ type HelloAck struct {
 	ResyncSections        []InventorySection      `protobuf:"varint,4,rep,packed,name=resync_sections,json=resyncSections,proto3,enum=librepatch.agent.v1.InventorySection" json:"resync_sections,omitempty"`
 	HeartbeatIntervalS    uint32                  `protobuf:"varint,5,opt,name=heartbeat_interval_s,json=heartbeatIntervalS,proto3" json:"heartbeat_interval_s,omitempty"`
 	// Server suggests renewal when the certificate is inside the renewal window.
-	RenewCertificate bool `protobuf:"varint,6,opt,name=renew_certificate,json=renewCertificate,proto3" json:"renew_certificate,omitempty"`
+	RenewCertificate bool             `protobuf:"varint,6,opt,name=renew_certificate,json=renewCertificate,proto3" json:"renew_certificate,omitempty"`
+	PeerCache        *PeerCachePolicy `protobuf:"bytes,7,opt,name=peer_cache,json=peerCache,proto3" json:"peer_cache,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -666,6 +667,75 @@ func (x *HelloAck) GetRenewCertificate() bool {
 	return false
 }
 
+func (x *HelloAck) GetPeerCache() *PeerCachePolicy {
+	if x != nil {
+		return x.PeerCache
+	}
+	return nil
+}
+
+// PeerCachePolicy is the organization's choice about sharing downloaded installers between computers on one network
+// (D126). An agent whose local configuration says "never" ignores it.
+type PeerCachePolicy struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Enabled       bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Port          uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`                // TCP port to listen on, 1024..65535
+	MaxMb         uint32                 `protobuf:"varint,3,opt,name=max_mb,json=maxMb,proto3" json:"max_mb,omitempty"` // size of the cache, 256..20480
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PeerCachePolicy) Reset() {
+	*x = PeerCachePolicy{}
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PeerCachePolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PeerCachePolicy) ProtoMessage() {}
+
+func (x *PeerCachePolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PeerCachePolicy.ProtoReflect.Descriptor instead.
+func (*PeerCachePolicy) Descriptor() ([]byte, []int) {
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *PeerCachePolicy) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *PeerCachePolicy) GetPort() uint32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *PeerCachePolicy) GetMaxMb() uint32 {
+	if x != nil {
+		return x.MaxMb
+	}
+	return 0
+}
+
 type SigningKeyRevocation struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	KeyId     []byte                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
@@ -678,7 +748,7 @@ type SigningKeyRevocation struct {
 
 func (x *SigningKeyRevocation) Reset() {
 	*x = SigningKeyRevocation{}
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[4]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -690,7 +760,7 @@ func (x *SigningKeyRevocation) String() string {
 func (*SigningKeyRevocation) ProtoMessage() {}
 
 func (x *SigningKeyRevocation) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[4]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -703,7 +773,7 @@ func (x *SigningKeyRevocation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SigningKeyRevocation.ProtoReflect.Descriptor instead.
 func (*SigningKeyRevocation) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{4}
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SigningKeyRevocation) GetKeyId() []byte {
@@ -733,13 +803,15 @@ type Heartbeat struct {
 	PendingReboot        bool                   `protobuf:"varint,2,opt,name=pending_reboot,json=pendingReboot,proto3" json:"pending_reboot,omitempty"`
 	SystemDriveFreeBytes uint64                 `protobuf:"varint,3,opt,name=system_drive_free_bytes,json=systemDriveFreeBytes,proto3" json:"system_drive_free_bytes,omitempty"`
 	LoggedOnUser         string                 `protobuf:"bytes,4,opt,name=logged_on_user,json=loggedOnUser,proto3" json:"logged_on_user,omitempty"`
+	QueuedFileDeletes    bool                   `protobuf:"varint,5,opt,name=queued_file_deletes,json=queuedFileDeletes,proto3" json:"queued_file_deletes,omitempty"` // files are queued for deletion at the next boot (see HardwareInventory)
+	PeerPort             uint32                 `protobuf:"varint,6,opt,name=peer_port,json=peerPort,proto3" json:"peer_port,omitempty"`                              // the port this agent shares downloads on (D126); 0 = not sharing
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
 
 func (x *Heartbeat) Reset() {
 	*x = Heartbeat{}
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[5]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -751,7 +823,7 @@ func (x *Heartbeat) String() string {
 func (*Heartbeat) ProtoMessage() {}
 
 func (x *Heartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[5]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -764,7 +836,7 @@ func (x *Heartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
 func (*Heartbeat) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{5}
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Heartbeat) GetUptimeS() uint64 {
@@ -795,6 +867,20 @@ func (x *Heartbeat) GetLoggedOnUser() string {
 	return ""
 }
 
+func (x *Heartbeat) GetQueuedFileDeletes() bool {
+	if x != nil {
+		return x.QueuedFileDeletes
+	}
+	return false
+}
+
+func (x *Heartbeat) GetPeerPort() uint32 {
+	if x != nil {
+		return x.PeerPort
+	}
+	return 0
+}
+
 type Ack struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Seq           uint64                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`
@@ -804,7 +890,7 @@ type Ack struct {
 
 func (x *Ack) Reset() {
 	*x = Ack{}
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[6]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -816,7 +902,7 @@ func (x *Ack) String() string {
 func (*Ack) ProtoMessage() {}
 
 func (x *Ack) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[6]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -829,7 +915,7 @@ func (x *Ack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ack.ProtoReflect.Descriptor instead.
 func (*Ack) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{6}
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Ack) GetSeq() uint64 {
@@ -848,7 +934,7 @@ type ResyncRequest struct {
 
 func (x *ResyncRequest) Reset() {
 	*x = ResyncRequest{}
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[7]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -860,7 +946,7 @@ func (x *ResyncRequest) String() string {
 func (*ResyncRequest) ProtoMessage() {}
 
 func (x *ResyncRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[7]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -873,7 +959,7 @@ func (x *ResyncRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResyncRequest.ProtoReflect.Descriptor instead.
 func (*ResyncRequest) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{7}
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ResyncRequest) GetSection() InventorySection {
@@ -893,7 +979,7 @@ type GoAway struct {
 
 func (x *GoAway) Reset() {
 	*x = GoAway{}
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[8]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -905,7 +991,7 @@ func (x *GoAway) String() string {
 func (*GoAway) ProtoMessage() {}
 
 func (x *GoAway) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[8]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -918,7 +1004,7 @@ func (x *GoAway) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GoAway.ProtoReflect.Descriptor instead.
 func (*GoAway) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{8}
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GoAway) GetRetryAfterS() uint32 {
@@ -946,7 +1032,7 @@ type SecurityEvent struct {
 
 func (x *SecurityEvent) Reset() {
 	*x = SecurityEvent{}
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[9]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -958,7 +1044,7 @@ func (x *SecurityEvent) String() string {
 func (*SecurityEvent) ProtoMessage() {}
 
 func (x *SecurityEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[9]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -971,7 +1057,7 @@ func (x *SecurityEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecurityEvent.ProtoReflect.Descriptor instead.
 func (*SecurityEvent) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{9}
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SecurityEvent) GetSeq() uint64 {
@@ -1004,7 +1090,7 @@ type RenewCertificateRequest struct {
 
 func (x *RenewCertificateRequest) Reset() {
 	*x = RenewCertificateRequest{}
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[10]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1016,7 +1102,7 @@ func (x *RenewCertificateRequest) String() string {
 func (*RenewCertificateRequest) ProtoMessage() {}
 
 func (x *RenewCertificateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[10]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1029,7 +1115,7 @@ func (x *RenewCertificateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewCertificateRequest.ProtoReflect.Descriptor instead.
 func (*RenewCertificateRequest) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{10}
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *RenewCertificateRequest) GetCsrDer() []byte {
@@ -1049,7 +1135,7 @@ type RenewCertificateResponse struct {
 
 func (x *RenewCertificateResponse) Reset() {
 	*x = RenewCertificateResponse{}
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[11]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1061,7 +1147,7 @@ func (x *RenewCertificateResponse) String() string {
 func (*RenewCertificateResponse) ProtoMessage() {}
 
 func (x *RenewCertificateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[11]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1074,7 +1160,7 @@ func (x *RenewCertificateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewCertificateResponse.ProtoReflect.Descriptor instead.
 func (*RenewCertificateResponse) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{11}
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RenewCertificateResponse) GetClientCertDer() []byte {
@@ -1107,7 +1193,7 @@ type JobUpdate struct {
 
 func (x *JobUpdate) Reset() {
 	*x = JobUpdate{}
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[12]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1119,7 +1205,7 @@ func (x *JobUpdate) String() string {
 func (*JobUpdate) ProtoMessage() {}
 
 func (x *JobUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[12]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1132,7 +1218,7 @@ func (x *JobUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobUpdate.ProtoReflect.Descriptor instead.
 func (*JobUpdate) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{12}
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *JobUpdate) GetSeq() uint64 {
@@ -1190,13 +1276,14 @@ type JobResult struct {
 	FinishedAt       int64                  `protobuf:"varint,9,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
 	AlreadySatisfied bool                   `protobuf:"varint,10,opt,name=already_satisfied,json=alreadySatisfied,proto3" json:"already_satisfied,omitempty"` // pre-check found the target state; nothing was run
 	WuResults        []*WuUpdateResult      `protobuf:"bytes,11,rep,name=wu_results,json=wuResults,proto3" json:"wu_results,omitempty"`                       // WU_INSTALL: one entry per requested update
+	DataJson         string                 `protobuf:"bytes,12,opt,name=data_json,json=dataJson,proto3" json:"data_json,omitempty"`                          // INSPECT: the requested view as JSON, at most 256 KiB
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
 
 func (x *JobResult) Reset() {
 	*x = JobResult{}
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[13]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1208,7 +1295,7 @@ func (x *JobResult) String() string {
 func (*JobResult) ProtoMessage() {}
 
 func (x *JobResult) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[13]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1221,7 +1308,7 @@ func (x *JobResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobResult.ProtoReflect.Descriptor instead.
 func (*JobResult) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{13}
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *JobResult) GetOutcome() JobOutcome {
@@ -1301,6 +1388,13 @@ func (x *JobResult) GetWuResults() []*WuUpdateResult {
 	return nil
 }
 
+func (x *JobResult) GetDataJson() string {
+	if x != nil {
+		return x.DataJson
+	}
+	return ""
+}
+
 type WuUpdateResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UpdateId      string                 `protobuf:"bytes,1,opt,name=update_id,json=updateId,proto3" json:"update_id,omitempty"`
@@ -1313,7 +1407,7 @@ type WuUpdateResult struct {
 
 func (x *WuUpdateResult) Reset() {
 	*x = WuUpdateResult{}
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[14]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1325,7 +1419,7 @@ func (x *WuUpdateResult) String() string {
 func (*WuUpdateResult) ProtoMessage() {}
 
 func (x *WuUpdateResult) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[14]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1338,7 +1432,7 @@ func (x *WuUpdateResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WuUpdateResult.ProtoReflect.Descriptor instead.
 func (*WuUpdateResult) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{14}
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *WuUpdateResult) GetUpdateId() string {
@@ -1380,7 +1474,7 @@ type FetchContentRequest struct {
 
 func (x *FetchContentRequest) Reset() {
 	*x = FetchContentRequest{}
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[15]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1392,7 +1486,7 @@ func (x *FetchContentRequest) String() string {
 func (*FetchContentRequest) ProtoMessage() {}
 
 func (x *FetchContentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[15]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1405,7 +1499,7 @@ func (x *FetchContentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchContentRequest.ProtoReflect.Descriptor instead.
 func (*FetchContentRequest) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{15}
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *FetchContentRequest) GetSha256() []byte {
@@ -1439,7 +1533,7 @@ type FetchContentResponse struct {
 
 func (x *FetchContentResponse) Reset() {
 	*x = FetchContentResponse{}
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[16]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1451,7 +1545,7 @@ func (x *FetchContentResponse) String() string {
 func (*FetchContentResponse) ProtoMessage() {}
 
 func (x *FetchContentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[16]
+	mi := &file_librepatch_agent_v1_channel_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1464,7 +1558,7 @@ func (x *FetchContentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchContentResponse.ProtoReflect.Descriptor instead.
 func (*FetchContentResponse) Descriptor() ([]byte, []int) {
-	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{16}
+	return file_librepatch_agent_v1_channel_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *FetchContentResponse) GetData() []byte {
@@ -1512,7 +1606,7 @@ const file_librepatch_agent_v1_channel_proto_rawDesc = "" +
 	"\x11local_policy_hash\x18\b \x01(\tR\x0flocalPolicyHash\x1a7\n" +
 	"\tRevsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01\"\xf0\x02\n" +
+	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01\"\xb5\x03\n" +
 	"\bHelloAck\x12\x1f\n" +
 	"\vserver_time\x18\x01 \x01(\x03R\n" +
 	"serverTime\x121\n" +
@@ -1520,17 +1614,25 @@ const file_librepatch_agent_v1_channel_proto_rawDesc = "" +
 	"\x17signing_key_revocations\x18\x03 \x03(\v2).librepatch.agent.v1.SigningKeyRevocationR\x15signingKeyRevocations\x12N\n" +
 	"\x0fresync_sections\x18\x04 \x03(\x0e2%.librepatch.agent.v1.InventorySectionR\x0eresyncSections\x120\n" +
 	"\x14heartbeat_interval_s\x18\x05 \x01(\rR\x12heartbeatIntervalS\x12+\n" +
-	"\x11renew_certificate\x18\x06 \x01(\bR\x10renewCertificate\"j\n" +
+	"\x11renew_certificate\x18\x06 \x01(\bR\x10renewCertificate\x12C\n" +
+	"\n" +
+	"peer_cache\x18\a \x01(\v2$.librepatch.agent.v1.PeerCachePolicyR\tpeerCache\"V\n" +
+	"\x0fPeerCachePolicy\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x12\n" +
+	"\x04port\x18\x02 \x01(\rR\x04port\x12\x15\n" +
+	"\x06max_mb\x18\x03 \x01(\rR\x05maxMb\"j\n" +
 	"\x14SigningKeyRevocation\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\fR\x05keyId\x12\x1d\n" +
 	"\n" +
 	"revoked_at\x18\x02 \x01(\x03R\trevokedAt\x12\x1c\n" +
-	"\tsignature\x18\x03 \x01(\fR\tsignature\"\xaa\x01\n" +
+	"\tsignature\x18\x03 \x01(\fR\tsignature\"\xf7\x01\n" +
 	"\tHeartbeat\x12\x19\n" +
 	"\buptime_s\x18\x01 \x01(\x04R\auptimeS\x12%\n" +
 	"\x0epending_reboot\x18\x02 \x01(\bR\rpendingReboot\x125\n" +
 	"\x17system_drive_free_bytes\x18\x03 \x01(\x04R\x14systemDriveFreeBytes\x12$\n" +
-	"\x0elogged_on_user\x18\x04 \x01(\tR\floggedOnUser\"\x17\n" +
+	"\x0elogged_on_user\x18\x04 \x01(\tR\floggedOnUser\x12.\n" +
+	"\x13queued_file_deletes\x18\x05 \x01(\bR\x11queuedFileDeletes\x12\x1b\n" +
+	"\tpeer_port\x18\x06 \x01(\rR\bpeerPort\"\x17\n" +
 	"\x03Ack\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\"P\n" +
 	"\rResyncRequest\x12?\n" +
@@ -1553,7 +1655,7 @@ const file_librepatch_agent_v1_channel_proto_rawDesc = "" +
 	"\aattempt\x18\x03 \x01(\rR\aattempt\x123\n" +
 	"\x05state\x18\x04 \x01(\x0e2\x1d.librepatch.agent.v1.JobStateR\x05state\x12\x16\n" +
 	"\x06reason\x18\x05 \x01(\tR\x06reason\x126\n" +
-	"\x06result\x18\x06 \x01(\v2\x1e.librepatch.agent.v1.JobResultR\x06result\"\xca\x03\n" +
+	"\x06result\x18\x06 \x01(\v2\x1e.librepatch.agent.v1.JobResultR\x06result\"\xe7\x03\n" +
 	"\tJobResult\x129\n" +
 	"\aoutcome\x18\x01 \x01(\x0e2\x1f.librepatch.agent.v1.JobOutcomeR\aoutcome\x12\x1b\n" +
 	"\texit_code\x18\x02 \x01(\x05R\bexitCode\x12)\n" +
@@ -1569,7 +1671,8 @@ const file_librepatch_agent_v1_channel_proto_rawDesc = "" +
 	"\x11already_satisfied\x18\n" +
 	" \x01(\bR\x10alreadySatisfied\x12B\n" +
 	"\n" +
-	"wu_results\x18\v \x03(\v2#.librepatch.agent.v1.WuUpdateResultR\twuResults\"\x9a\x01\n" +
+	"wu_results\x18\v \x03(\v2#.librepatch.agent.v1.WuUpdateResultR\twuResults\x12\x1b\n" +
+	"\tdata_json\x18\f \x01(\tR\bdataJson\"\x9a\x01\n" +
 	"\x0eWuUpdateResult\x12\x1b\n" +
 	"\tupdate_id\x18\x01 \x01(\tR\bupdateId\x12\x1a\n" +
 	"\brevision\x18\x02 \x01(\x05R\brevision\x125\n" +
@@ -1629,7 +1732,7 @@ func file_librepatch_agent_v1_channel_proto_rawDescGZIP() []byte {
 }
 
 var file_librepatch_agent_v1_channel_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_librepatch_agent_v1_channel_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_librepatch_agent_v1_channel_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_librepatch_agent_v1_channel_proto_goTypes = []any{
 	(SecurityEventKind)(0),           // 0: librepatch.agent.v1.SecurityEventKind
 	(JobState)(0),                    // 1: librepatch.agent.v1.JobState
@@ -1638,57 +1741,59 @@ var file_librepatch_agent_v1_channel_proto_goTypes = []any{
 	(*ConnectResponse)(nil),          // 4: librepatch.agent.v1.ConnectResponse
 	(*Hello)(nil),                    // 5: librepatch.agent.v1.Hello
 	(*HelloAck)(nil),                 // 6: librepatch.agent.v1.HelloAck
-	(*SigningKeyRevocation)(nil),     // 7: librepatch.agent.v1.SigningKeyRevocation
-	(*Heartbeat)(nil),                // 8: librepatch.agent.v1.Heartbeat
-	(*Ack)(nil),                      // 9: librepatch.agent.v1.Ack
-	(*ResyncRequest)(nil),            // 10: librepatch.agent.v1.ResyncRequest
-	(*GoAway)(nil),                   // 11: librepatch.agent.v1.GoAway
-	(*SecurityEvent)(nil),            // 12: librepatch.agent.v1.SecurityEvent
-	(*RenewCertificateRequest)(nil),  // 13: librepatch.agent.v1.RenewCertificateRequest
-	(*RenewCertificateResponse)(nil), // 14: librepatch.agent.v1.RenewCertificateResponse
-	(*JobUpdate)(nil),                // 15: librepatch.agent.v1.JobUpdate
-	(*JobResult)(nil),                // 16: librepatch.agent.v1.JobResult
-	(*WuUpdateResult)(nil),           // 17: librepatch.agent.v1.WuUpdateResult
-	(*FetchContentRequest)(nil),      // 18: librepatch.agent.v1.FetchContentRequest
-	(*FetchContentResponse)(nil),     // 19: librepatch.agent.v1.FetchContentResponse
-	nil,                              // 20: librepatch.agent.v1.Hello.RevsEntry
-	(*InventoryReport)(nil),          // 21: librepatch.agent.v1.InventoryReport
-	(*SignedEnvelope)(nil),           // 22: librepatch.agent.v1.SignedEnvelope
-	(InventorySection)(0),            // 23: librepatch.agent.v1.InventorySection
-	(JobOutcome)(0),                  // 24: librepatch.agent.v1.JobOutcome
+	(*PeerCachePolicy)(nil),          // 7: librepatch.agent.v1.PeerCachePolicy
+	(*SigningKeyRevocation)(nil),     // 8: librepatch.agent.v1.SigningKeyRevocation
+	(*Heartbeat)(nil),                // 9: librepatch.agent.v1.Heartbeat
+	(*Ack)(nil),                      // 10: librepatch.agent.v1.Ack
+	(*ResyncRequest)(nil),            // 11: librepatch.agent.v1.ResyncRequest
+	(*GoAway)(nil),                   // 12: librepatch.agent.v1.GoAway
+	(*SecurityEvent)(nil),            // 13: librepatch.agent.v1.SecurityEvent
+	(*RenewCertificateRequest)(nil),  // 14: librepatch.agent.v1.RenewCertificateRequest
+	(*RenewCertificateResponse)(nil), // 15: librepatch.agent.v1.RenewCertificateResponse
+	(*JobUpdate)(nil),                // 16: librepatch.agent.v1.JobUpdate
+	(*JobResult)(nil),                // 17: librepatch.agent.v1.JobResult
+	(*WuUpdateResult)(nil),           // 18: librepatch.agent.v1.WuUpdateResult
+	(*FetchContentRequest)(nil),      // 19: librepatch.agent.v1.FetchContentRequest
+	(*FetchContentResponse)(nil),     // 20: librepatch.agent.v1.FetchContentResponse
+	nil,                              // 21: librepatch.agent.v1.Hello.RevsEntry
+	(*InventoryReport)(nil),          // 22: librepatch.agent.v1.InventoryReport
+	(*SignedEnvelope)(nil),           // 23: librepatch.agent.v1.SignedEnvelope
+	(InventorySection)(0),            // 24: librepatch.agent.v1.InventorySection
+	(JobOutcome)(0),                  // 25: librepatch.agent.v1.JobOutcome
 }
 var file_librepatch_agent_v1_channel_proto_depIdxs = []int32{
 	5,  // 0: librepatch.agent.v1.ConnectRequest.hello:type_name -> librepatch.agent.v1.Hello
-	8,  // 1: librepatch.agent.v1.ConnectRequest.heartbeat:type_name -> librepatch.agent.v1.Heartbeat
-	21, // 2: librepatch.agent.v1.ConnectRequest.inventory:type_name -> librepatch.agent.v1.InventoryReport
-	12, // 3: librepatch.agent.v1.ConnectRequest.security_event:type_name -> librepatch.agent.v1.SecurityEvent
-	15, // 4: librepatch.agent.v1.ConnectRequest.job_update:type_name -> librepatch.agent.v1.JobUpdate
+	9,  // 1: librepatch.agent.v1.ConnectRequest.heartbeat:type_name -> librepatch.agent.v1.Heartbeat
+	22, // 2: librepatch.agent.v1.ConnectRequest.inventory:type_name -> librepatch.agent.v1.InventoryReport
+	13, // 3: librepatch.agent.v1.ConnectRequest.security_event:type_name -> librepatch.agent.v1.SecurityEvent
+	16, // 4: librepatch.agent.v1.ConnectRequest.job_update:type_name -> librepatch.agent.v1.JobUpdate
 	6,  // 5: librepatch.agent.v1.ConnectResponse.hello_ack:type_name -> librepatch.agent.v1.HelloAck
-	9,  // 6: librepatch.agent.v1.ConnectResponse.ack:type_name -> librepatch.agent.v1.Ack
-	10, // 7: librepatch.agent.v1.ConnectResponse.resync:type_name -> librepatch.agent.v1.ResyncRequest
-	11, // 8: librepatch.agent.v1.ConnectResponse.go_away:type_name -> librepatch.agent.v1.GoAway
-	22, // 9: librepatch.agent.v1.ConnectResponse.job_offer:type_name -> librepatch.agent.v1.SignedEnvelope
-	20, // 10: librepatch.agent.v1.Hello.revs:type_name -> librepatch.agent.v1.Hello.RevsEntry
-	7,  // 11: librepatch.agent.v1.HelloAck.signing_key_revocations:type_name -> librepatch.agent.v1.SigningKeyRevocation
-	23, // 12: librepatch.agent.v1.HelloAck.resync_sections:type_name -> librepatch.agent.v1.InventorySection
-	23, // 13: librepatch.agent.v1.ResyncRequest.section:type_name -> librepatch.agent.v1.InventorySection
-	0,  // 14: librepatch.agent.v1.SecurityEvent.kind:type_name -> librepatch.agent.v1.SecurityEventKind
-	1,  // 15: librepatch.agent.v1.JobUpdate.state:type_name -> librepatch.agent.v1.JobState
-	16, // 16: librepatch.agent.v1.JobUpdate.result:type_name -> librepatch.agent.v1.JobResult
-	24, // 17: librepatch.agent.v1.JobResult.outcome:type_name -> librepatch.agent.v1.JobOutcome
-	17, // 18: librepatch.agent.v1.JobResult.wu_results:type_name -> librepatch.agent.v1.WuUpdateResult
-	2,  // 19: librepatch.agent.v1.WuUpdateResult.result:type_name -> librepatch.agent.v1.WuResult
-	3,  // 20: librepatch.agent.v1.AgentChannelService.Connect:input_type -> librepatch.agent.v1.ConnectRequest
-	18, // 21: librepatch.agent.v1.AgentChannelService.FetchContent:input_type -> librepatch.agent.v1.FetchContentRequest
-	13, // 22: librepatch.agent.v1.AgentChannelService.RenewCertificate:input_type -> librepatch.agent.v1.RenewCertificateRequest
-	4,  // 23: librepatch.agent.v1.AgentChannelService.Connect:output_type -> librepatch.agent.v1.ConnectResponse
-	19, // 24: librepatch.agent.v1.AgentChannelService.FetchContent:output_type -> librepatch.agent.v1.FetchContentResponse
-	14, // 25: librepatch.agent.v1.AgentChannelService.RenewCertificate:output_type -> librepatch.agent.v1.RenewCertificateResponse
-	23, // [23:26] is the sub-list for method output_type
-	20, // [20:23] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	10, // 6: librepatch.agent.v1.ConnectResponse.ack:type_name -> librepatch.agent.v1.Ack
+	11, // 7: librepatch.agent.v1.ConnectResponse.resync:type_name -> librepatch.agent.v1.ResyncRequest
+	12, // 8: librepatch.agent.v1.ConnectResponse.go_away:type_name -> librepatch.agent.v1.GoAway
+	23, // 9: librepatch.agent.v1.ConnectResponse.job_offer:type_name -> librepatch.agent.v1.SignedEnvelope
+	21, // 10: librepatch.agent.v1.Hello.revs:type_name -> librepatch.agent.v1.Hello.RevsEntry
+	8,  // 11: librepatch.agent.v1.HelloAck.signing_key_revocations:type_name -> librepatch.agent.v1.SigningKeyRevocation
+	24, // 12: librepatch.agent.v1.HelloAck.resync_sections:type_name -> librepatch.agent.v1.InventorySection
+	7,  // 13: librepatch.agent.v1.HelloAck.peer_cache:type_name -> librepatch.agent.v1.PeerCachePolicy
+	24, // 14: librepatch.agent.v1.ResyncRequest.section:type_name -> librepatch.agent.v1.InventorySection
+	0,  // 15: librepatch.agent.v1.SecurityEvent.kind:type_name -> librepatch.agent.v1.SecurityEventKind
+	1,  // 16: librepatch.agent.v1.JobUpdate.state:type_name -> librepatch.agent.v1.JobState
+	17, // 17: librepatch.agent.v1.JobUpdate.result:type_name -> librepatch.agent.v1.JobResult
+	25, // 18: librepatch.agent.v1.JobResult.outcome:type_name -> librepatch.agent.v1.JobOutcome
+	18, // 19: librepatch.agent.v1.JobResult.wu_results:type_name -> librepatch.agent.v1.WuUpdateResult
+	2,  // 20: librepatch.agent.v1.WuUpdateResult.result:type_name -> librepatch.agent.v1.WuResult
+	3,  // 21: librepatch.agent.v1.AgentChannelService.Connect:input_type -> librepatch.agent.v1.ConnectRequest
+	19, // 22: librepatch.agent.v1.AgentChannelService.FetchContent:input_type -> librepatch.agent.v1.FetchContentRequest
+	14, // 23: librepatch.agent.v1.AgentChannelService.RenewCertificate:input_type -> librepatch.agent.v1.RenewCertificateRequest
+	4,  // 24: librepatch.agent.v1.AgentChannelService.Connect:output_type -> librepatch.agent.v1.ConnectResponse
+	20, // 25: librepatch.agent.v1.AgentChannelService.FetchContent:output_type -> librepatch.agent.v1.FetchContentResponse
+	15, // 26: librepatch.agent.v1.AgentChannelService.RenewCertificate:output_type -> librepatch.agent.v1.RenewCertificateResponse
+	24, // [24:27] is the sub-list for method output_type
+	21, // [21:24] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_librepatch_agent_v1_channel_proto_init() }
@@ -1718,7 +1823,7 @@ func file_librepatch_agent_v1_channel_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_librepatch_agent_v1_channel_proto_rawDesc), len(file_librepatch_agent_v1_channel_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   18,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -39,7 +39,7 @@ func (q *Queries) DeleteVersionInstallers(ctx context.Context, versionID uuid.UU
 }
 
 const getCatalogPackage = `-- name: GetCatalogPackage :one
-SELECT id, org_id, source, identifier, name, publisher, homepage, license, description, verified, self_updating, imported_at, imported_by, verified_by_org, verified_by, verified_at, verified_version FROM catalog_packages WHERE id = $1 AND org_id = $2
+SELECT id, org_id, source, identifier, name, publisher, homepage, license, description, verified, self_updating, imported_at, imported_by, verified_by_org, verified_by, verified_at, verified_version, verified_by_overlay FROM catalog_packages WHERE id = $1 AND org_id = $2
 `
 
 type GetCatalogPackageParams struct {
@@ -68,12 +68,13 @@ func (q *Queries) GetCatalogPackage(ctx context.Context, arg GetCatalogPackagePa
 		&i.VerifiedBy,
 		&i.VerifiedAt,
 		&i.VerifiedVersion,
+		&i.VerifiedByOverlay,
 	)
 	return i, err
 }
 
 const getCatalogPackageByIdentifier = `-- name: GetCatalogPackageByIdentifier :one
-SELECT id, org_id, source, identifier, name, publisher, homepage, license, description, verified, self_updating, imported_at, imported_by, verified_by_org, verified_by, verified_at, verified_version FROM catalog_packages WHERE org_id = $1 AND source = $2 AND identifier = $3
+SELECT id, org_id, source, identifier, name, publisher, homepage, license, description, verified, self_updating, imported_at, imported_by, verified_by_org, verified_by, verified_at, verified_version, verified_by_overlay FROM catalog_packages WHERE org_id = $1 AND source = $2 AND identifier = $3
 `
 
 type GetCatalogPackageByIdentifierParams struct {
@@ -103,6 +104,7 @@ func (q *Queries) GetCatalogPackageByIdentifier(ctx context.Context, arg GetCata
 		&i.VerifiedBy,
 		&i.VerifiedAt,
 		&i.VerifiedVersion,
+		&i.VerifiedByOverlay,
 	)
 	return i, err
 }
@@ -172,7 +174,7 @@ func (q *Queries) GetOrgSettings(ctx context.Context, orgID uuid.UUID) (OrgSetti
 }
 
 const getPackageOverride = `-- name: GetPackageOverride :one
-SELECT org_id, package_id, silent_args, extra_detection, pin, excluded, user_scope_policy, self_update_policy, updated_by, updated_at FROM package_overrides WHERE org_id = $1 AND package_id = $2
+SELECT org_id, package_id, silent_args, extra_detection, pin, excluded, user_scope_policy, self_update_policy, updated_by, updated_at, processes FROM package_overrides WHERE org_id = $1 AND package_id = $2
 `
 
 type GetPackageOverrideParams struct {
@@ -194,6 +196,7 @@ func (q *Queries) GetPackageOverride(ctx context.Context, arg GetPackageOverride
 		&i.SelfUpdatePolicy,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.Processes,
 	)
 	return i, err
 }
@@ -280,7 +283,7 @@ func (q *Queries) InsertContentBlob(ctx context.Context, arg InsertContentBlobPa
 }
 
 const listAllOrgPackages = `-- name: ListAllOrgPackages :many
-SELECT id, org_id, source, identifier, name, publisher, homepage, license, description, verified, self_updating, imported_at, imported_by, verified_by_org, verified_by, verified_at, verified_version FROM catalog_packages WHERE org_id = $1 ORDER BY lower(name), id LIMIT 2000
+SELECT id, org_id, source, identifier, name, publisher, homepage, license, description, verified, self_updating, imported_at, imported_by, verified_by_org, verified_by, verified_at, verified_version, verified_by_overlay FROM catalog_packages WHERE org_id = $1 ORDER BY lower(name), id LIMIT 2000
 `
 
 func (q *Queries) ListAllOrgPackages(ctx context.Context, orgID uuid.UUID) ([]CatalogPackage, error) {
@@ -310,6 +313,7 @@ func (q *Queries) ListAllOrgPackages(ctx context.Context, orgID uuid.UUID) ([]Ca
 			&i.VerifiedBy,
 			&i.VerifiedAt,
 			&i.VerifiedVersion,
+			&i.VerifiedByOverlay,
 		); err != nil {
 			return nil, err
 		}
@@ -322,7 +326,7 @@ func (q *Queries) ListAllOrgPackages(ctx context.Context, orgID uuid.UUID) ([]Ca
 }
 
 const listCatalogPackages = `-- name: ListCatalogPackages :many
-SELECT p.id, p.org_id, p.source, p.identifier, p.name, p.publisher, p.homepage, p.license, p.description, p.verified, p.self_updating, p.imported_at, p.imported_by, p.verified_by_org, p.verified_by, p.verified_at, p.verified_version, (SELECT count(*) FROM catalog_versions v WHERE v.package_id = p.id)::int AS version_count
+SELECT p.id, p.org_id, p.source, p.identifier, p.name, p.publisher, p.homepage, p.license, p.description, p.verified, p.self_updating, p.imported_at, p.imported_by, p.verified_by_org, p.verified_by, p.verified_at, p.verified_version, p.verified_by_overlay, (SELECT count(*) FROM catalog_versions v WHERE v.package_id = p.id)::int AS version_count
 FROM catalog_packages p
 WHERE p.org_id = $1::uuid
   AND ($2::text = '' OR strpos(lower(p.name), $2::text) > 0 OR strpos(lower(p.identifier), $2::text) > 0 OR strpos(lower(p.publisher), $2::text) > 0)
@@ -338,24 +342,25 @@ type ListCatalogPackagesParams struct {
 }
 
 type ListCatalogPackagesRow struct {
-	ID              uuid.UUID
-	OrgID           uuid.UUID
-	Source          string
-	Identifier      string
-	Name            string
-	Publisher       string
-	Homepage        string
-	License         string
-	Description     string
-	Verified        bool
-	SelfUpdating    bool
-	ImportedAt      time.Time
-	ImportedBy      *uuid.UUID
-	VerifiedByOrg   bool
-	VerifiedBy      *uuid.UUID
-	VerifiedAt      *time.Time
-	VerifiedVersion string
-	VersionCount    int32
+	ID                uuid.UUID
+	OrgID             uuid.UUID
+	Source            string
+	Identifier        string
+	Name              string
+	Publisher         string
+	Homepage          string
+	License           string
+	Description       string
+	Verified          bool
+	SelfUpdating      bool
+	ImportedAt        time.Time
+	ImportedBy        *uuid.UUID
+	VerifiedByOrg     bool
+	VerifiedBy        *uuid.UUID
+	VerifiedAt        *time.Time
+	VerifiedVersion   string
+	VerifiedByOverlay string
+	VersionCount      int32
 }
 
 func (q *Queries) ListCatalogPackages(ctx context.Context, arg ListCatalogPackagesParams) ([]ListCatalogPackagesRow, error) {
@@ -390,6 +395,7 @@ func (q *Queries) ListCatalogPackages(ctx context.Context, arg ListCatalogPackag
 			&i.VerifiedBy,
 			&i.VerifiedAt,
 			&i.VerifiedVersion,
+			&i.VerifiedByOverlay,
 			&i.VersionCount,
 		); err != nil {
 			return nil, err
@@ -482,7 +488,7 @@ func (q *Queries) ListVersionInstallers(ctx context.Context, versionID uuid.UUID
 const setPackageOrgVerified = `-- name: SetPackageOrgVerified :exec
 UPDATE catalog_packages SET
     verified_by_org  = $1::boolean,
-    verified         = ($1::boolean OR $2::boolean),
+    verified         = ($1::boolean OR $2::boolean OR verified_by_overlay <> ''),
     verified_by      = CASE WHEN $1::boolean THEN $3::uuid END,
     verified_at      = CASE WHEN $1::boolean THEN $4::timestamptz END,
     verified_version = CASE WHEN $1::boolean THEN $5::text ELSE '' END
@@ -515,7 +521,7 @@ func (q *Queries) SetPackageOrgVerified(ctx context.Context, arg SetPackageOrgVe
 }
 
 const setPackageVerified = `-- name: SetPackageVerified :exec
-UPDATE catalog_packages SET verified = ($3 OR verified_by_org) WHERE org_id = $1 AND id = $2
+UPDATE catalog_packages SET verified = ($3 OR verified_by_org OR verified_by_overlay <> '') WHERE org_id = $1 AND id = $2
 `
 
 type SetPackageVerifiedParams struct {
@@ -617,11 +623,11 @@ func (q *Queries) UpsertOrgSettings(ctx context.Context, arg UpsertOrgSettingsPa
 }
 
 const upsertPackageOverride = `-- name: UpsertPackageOverride :exec
-INSERT INTO package_overrides (org_id, package_id, silent_args, extra_detection, pin, excluded, user_scope_policy, self_update_policy, updated_by, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+INSERT INTO package_overrides (org_id, package_id, silent_args, extra_detection, pin, excluded, user_scope_policy, self_update_policy, processes, updated_by, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
 ON CONFLICT (org_id, package_id) DO UPDATE SET silent_args = EXCLUDED.silent_args, extra_detection = EXCLUDED.extra_detection,
     pin = EXCLUDED.pin, excluded = EXCLUDED.excluded, user_scope_policy = EXCLUDED.user_scope_policy,
-    self_update_policy = EXCLUDED.self_update_policy, updated_by = EXCLUDED.updated_by, updated_at = now()
+    self_update_policy = EXCLUDED.self_update_policy, processes = EXCLUDED.processes, updated_by = EXCLUDED.updated_by, updated_at = now()
 `
 
 type UpsertPackageOverrideParams struct {
@@ -633,6 +639,7 @@ type UpsertPackageOverrideParams struct {
 	Excluded         bool
 	UserScopePolicy  string
 	SelfUpdatePolicy string
+	Processes        []string
 	UpdatedBy        *uuid.UUID
 }
 
@@ -646,6 +653,7 @@ func (q *Queries) UpsertPackageOverride(ctx context.Context, arg UpsertPackageOv
 		arg.Excluded,
 		arg.UserScopePolicy,
 		arg.SelfUpdatePolicy,
+		arg.Processes,
 		arg.UpdatedBy,
 	)
 	return err

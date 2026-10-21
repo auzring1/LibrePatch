@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { generateKeyPairSync, sign as edSign } from "node:crypto";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -168,7 +169,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   if (agentBin) {
     const dir = mkdtempSync(join(tmpdir(), "lp-agent-"));
     agentDirs.push(dir);
-    agent = spawn(agentBin, ["run", "--data-dir", dir, "--server", gateway, "--token", enrollment], { stdio: "ignore" });
+    agent = spawn(agentBin, ["run", "--data-dir", dir, "--server", gateway, "--token", enrollment, "--allow-scripts"], { stdio: "ignore" });
   }
   try {
     await mainNav(page).getByRole("link", { name: "Devices", exact: true }).click();
@@ -278,6 +279,28 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await page.keyboard.press("Escape");
       expect(existsSync(join(agentDir, "pf", "Acme", "tool.txt"))).toBe(true);
 
+      // Messages to the user (D124): the package lists its programs, and a deployment can choose to ask about them. The
+      // Linux test agent cannot see people's programs, so it installs as before; the choice must still be kept and shown.
+      await mainNav(page).getByRole("link", { name: "Catalog", exact: true }).click();
+      await page.getByRole("link", { name: "Acme Tool" }).first().click();
+      await page.getByLabel("Programs this update replaces").fill("acme.exe");
+      await page.getByRole("button", { name: "Save overrides" }).click();
+      await expect(page.getByText("Overrides saved.")).toBeVisible();
+      await page.getByRole("link", { name: "Deploy", exact: true }).click();
+      await page.getByRole("combobox", { name: "Devices" }).click();
+      await page.getByRole("option").first().click();
+      await page.keyboard.press("Escape");
+      await page.getByRole("textbox", { name: "Name", exact: true }).fill("Ask about Acme");
+      await page.getByRole("combobox", { name: "If the program is open" }).click();
+      await page.getByRole("option", { name: "Ask the user to close it" }).click();
+      await expect(page.getByText("acme.exe")).toBeVisible();
+      await shot(page, "13b-deployment-messages");
+      await page.getByRole("button", { name: "Start deployment" }).click();
+      await expect(page.getByText("Deployment queued")).toBeVisible();
+      await page.getByRole("button", { name: "Watch progress" }).click();
+      await expect(page.getByText("Messages to the user: asks the user to close the program")).toBeVisible();
+      await expect(page.getByTestId("deployment-status")).toHaveText("completed", { timeout: 60_000 });
+
       // Static group.
       await mainNav(page).getByRole("link", { name: "Groups", exact: true }).click();
       await page.getByRole("button", { name: "New group" }).click();
@@ -316,6 +339,48 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       const devUpdates = page.getByRole("table", { name: "Windows updates on this device" });
       await expect(devUpdates.getByText("KB5099999", { exact: true })).toBeVisible({ timeout: 60_000 });
       await shot(page, "15-device-windows-updates");
+
+      // Read-only views (D125): the Linux test agent reads scripted data from inspect-dev.json.
+      writeFileSync(
+        join(wuDir, "inspect-dev.json"),
+        JSON.stringify({
+          processes: [{ pid: 4242, parent_pid: 1, name: "acme-dev.exe", session: 1, threads: 4, working_set_kb: 20480, path: "C:\\Program Files\\Acme\\acme-dev.exe" }],
+          services: [{ name: "AcmeSvc", display: "Acme Background Service", state: "running", start: "automatic", account: "LocalSystem", path: "C:\\Acme\\svc.exe" }],
+          events: [{ time: Math.floor(Date.now() / 1000) - 600, level: 2, provider: "Acme-Disk", id: 7, message: "The device has a bad block." }],
+        }),
+      );
+      await page.getByRole("tab", { name: "Look at" }).click();
+      await page.getByRole("button", { name: "Show", exact: true }).click();
+      await expect(page.getByRole("table", { name: "Running programs" }).getByRole("cell", { name: "acme-dev.exe", exact: true })).toBeVisible({ timeout: 30_000 });
+      await page.getByText("Services", { exact: true }).click();
+      await page.getByRole("button", { name: "Show", exact: true }).click();
+      await expect(page.getByRole("table", { name: "Services" }).getByText("Acme Background Service")).toBeVisible({ timeout: 30_000 });
+      await page.getByText("Event log", { exact: true }).click();
+      await page.getByRole("button", { name: "Show", exact: true }).click();
+      await expect(page.getByRole("table", { name: "Event log" }).getByText("The device has a bad block.")).toBeVisible({ timeout: 30_000 });
+      await shot(page, "15b-device-inspect");
+
+      // Scripts (D127): the test agent was started with --allow-scripts and runs the text with /bin/sh.
+      await mainNav(page).getByRole("link", { name: "Scripts", exact: true }).click();
+      await page.getByRole("button", { name: "Add script" }).click();
+      await page.getByRole("textbox", { name: "Name", exact: true }).fill("Say hello");
+      await page.getByLabel("PowerShell").fill("echo hello-from-script");
+      await page.getByRole("button", { name: "Save script" }).click();
+      await expect(page.getByRole("table", { name: "Scripts" }).getByText("Say hello")).toBeVisible();
+      await page.getByRole("button", { name: "Run Say hello" }).click();
+      await page.getByRole("combobox", { name: "Devices" }).click();
+      await page.getByRole("option").first().click();
+      await page.keyboard.press("Escape");
+      await page.getByLabel(/^Why are you running it/).fill("e2e check");
+      await page.getByRole("checkbox", { name: /I have read the script/ }).check();
+      await shot(page, "15c-script-run");
+      await page.getByRole("button", { name: "Run", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Output" })).toBeVisible({ timeout: 60_000 });
+      await page.getByRole("button", { name: "Output" }).click();
+      await expect(page.getByText("hello-from-script", { exact: true })).toBeVisible();
+      await shot(page, "15d-script-output");
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
 
       // Catalog: approve the security update, leave the other one pending.
       await mainNav(page).getByRole("link", { name: "Windows updates", exact: true }).click();
@@ -359,6 +424,34 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
         await page.getByRole("button", { name: "Scan now" }).click();
         await expect(devUpdates.getByText("Acme Corp")).toHaveCount(0, { timeout: 15_000 });
       }).toPass({ timeout: 90_000 });
+
+      // --- Vulnerabilities: feed files loaded by hand, a program mapped to the NVD, the page, the CVE dialog and the device tab ---
+      const csrf = ((await (await page.request.get("/api/v1/auth/session")).json()) as { csrf_token: string }).csrf_token;
+      // A state change needs the session's CSRF token and the console's own origin, as the browser would send them.
+      const post = (path: string, data: unknown) => page.request.post(`/api/v1${path}`, { data, headers: { "X-CSRF-Token": csrf, Origin: new URL(page.url()).origin } });
+      expect((await post("/vulnerabilities/products", { name: "bash", vendor: "gnu", product: "bash" })).status()).toBe(201);
+      const nvdPage = { resultsPerPage: 1, startIndex: 0, totalResults: 1, vulnerabilities: [{ cve: { id: "CVE-2026-9001", published: "2026-09-30T00:00:00.000", lastModified: "2026-10-01T00:00:00.000", vulnStatus: "Analyzed",
+        descriptions: [{ lang: "en", value: "A made-up bash vulnerability for the browser test." }], metrics: { cvssMetricV31: [{ cvssData: { baseScore: 9.8, baseSeverity: "CRITICAL" } }] },
+        configurations: [{ nodes: [{ operator: "OR", cpeMatch: [{ vulnerable: true, criteria: "cpe:2.3:a:gnu:bash:*:*:*:*:*:*:*:*", versionEndExcluding: "99.0" }] }] }] } }] };
+      const kevFile = { catalogVersion: "e2e", vulnerabilities: [{ cveID: "CVE-2026-9001", vendorProject: "GNU", product: "Bash", vulnerabilityName: "GNU Bash e2e vulnerability", dateAdded: "2026-10-01", requiredAction: "Apply updates per vendor instructions.", dueDate: "2026-10-22", knownRansomwareCampaignUse: "Unknown" }] };
+      expect((await post("/vulnerabilities/import", { kind: "nvd", data: JSON.stringify(nvdPage) })).status()).toBe(200);
+      expect((await post("/vulnerabilities/import", { kind: "kev", data: JSON.stringify(kevFile) })).status()).toBe(200);
+      expect((await post("/vulnerabilities/import", { kind: "kev", data: "not a catalog" })).status()).toBe(422);
+      await mainNav(page).getByRole("link", { name: "Vulnerabilities", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Vulnerabilities", exact: true })).toBeVisible();
+      await expect(page.getByText("Known exploited", { exact: true })).toBeVisible();
+      const cveRow = page.getByRole("table", { name: "Vulnerabilities" }).getByText("CVE-2026-9001");
+      await expect(cveRow).toBeVisible({ timeout: 30_000 });
+      await shot(page, "22c-vulnerabilities");
+      await cveRow.click();
+      const cd = page.getByRole("dialog");
+      await expect(cd.getByText("GNU Bash e2e vulnerability")).toBeVisible();
+      await expect(cd.getByText(/fix due 2026-10-22|fix was due 2026-10-22/)).toBeVisible();
+      await cd.getByRole("link", { name: /^\S+$/ }).filter({ hasNotText: "NVD page" }).first().click();
+      await expect(page).toHaveURL(/\?tab=vulnerabilities$/);
+      await expect(page.getByRole("table", { name: "Known vulnerabilities on this device" }).getByText("CVE-2026-9001")).toBeVisible();
+      const devVul = await (await page.request.get("/api/v1/vulnerabilities.csv")).text();
+      expect(devVul).toContain("CVE-2026-9001");
 
       // On the device page already: refresh, missing updates, uninstall from the inventory, then revoke and delete.
       await shot(page, "05-device-detail");
@@ -495,10 +588,11 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await expect(mainNav(page).getByRole("link", { name: "Groups", exact: true })).toBeHidden();
   await endpoints.click();
   await expect(mainNav(page).getByRole("link", { name: "Groups", exact: true })).toBeVisible();
-  await page.getByTestId("nav-rail-toggle").click();
+  // The one switch for the sidebar is in the top bar (there used to be a second one at the bottom of the sidebar).
+  await expect(page.getByTestId("nav-rail-toggle")).toHaveCount(0);
+  await page.getByTestId("topbar-nav-toggle").click();
   await expect(page.locator(".lp-shell")).toHaveAttribute("data-rail", "true");
   await shot(page, "24-nav-rail");
-  // The same switch sits in the top bar, so people do not have to look for it at the bottom of the sidebar.
   await page.getByTestId("topbar-nav-toggle").click();
   await expect(page.locator(".lp-shell")).not.toHaveAttribute("data-rail", "true");
   await page.getByTestId("topbar-nav-toggle").click();
@@ -506,7 +600,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await savedOnTheAccount(page, true);
   await page.reload();
   await expect(page.locator(".lp-shell")).toHaveAttribute("data-rail", "true"); // remembered on the account
-  await page.getByTestId("nav-rail-toggle").click();
+  await page.getByTestId("topbar-nav-toggle").click();
   await expect(page.locator(".lp-shell")).not.toHaveAttribute("data-rail", "true");
   await savedOnTheAccount(page, false);
   await page.goto("/devices?state=offline");
@@ -532,10 +626,66 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await pd.getByRole("button", { name: "Save policy" }).click();
   await expect(page.getByRole("table", { name: "Software policies" }).getByText("Keep Acme Tool current")).toBeVisible();
   await shot(page, "22-policies");
+  // A policy that rolls out in stages through the update rings and waits for approval of each new version.
+  await page.getByRole("button", { name: "Add policy" }).click();
+  const sd = page.getByRole("dialog");
+  await sd.getByLabel(/^Name/).fill("Staged Acme Tool");
+  await sd.getByLabel(/^Package/).click();
+  await page.getByRole("option", { name: "Acme Tool" }).click();
+  await sd.getByLabel(/^Groups/).click();
+  await page.getByRole("option").first().click();
+  await sd.getByText("Add policy").click(); // close the dropdown
+  await sd.getByLabel(/Roll new versions out in stages/).check();
+  await sd.getByLabel(/Wait for my approval of each new version/).check();
+  await sd.getByRole("button", { name: "Save policy" }).click();
+  await expect(page.getByRole("table", { name: "Software policies" }).getByText("Staged Acme Tool")).toBeVisible();
+  const queue = await page.request.get("/api/v1/software/approvals");
+  expect(queue.status()).toBe(200);
+  const qj = await queue.json();
+  expect(Object.keys(qj).sort()).toEqual(["holds", "pending", "recent"]);
+  const pols = await (await page.request.get("/api/v1/policies")).json();
+  const staged = pols.items.find((p: { name: string }) => p.name === "Staged Acme Tool");
+  expect(staged.use_rings).toBe(true);
+  expect(staged.require_approval).toBe(true);
+
+  // --- A signed catalog overlay, made here with Node's Ed25519 and accepted by the server's Go verifier ---
+  await mainNav(page).getByRole("link", { name: "Catalog", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Overlays", exact: true })).toBeVisible();
+  const ovKeys = generateKeyPairSync("ed25519");
+  const ovPub = ovKeys.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("hex");
+  const ovDoc = JSON.stringify({ format: "librepatch-overlay/1", name: "E2E overlay", version: 1, packages: [{ identifier: "7zip.7zip", self_updating: false, verified: true, verified_note: "Tested by the e2e run", silent_args: ["/S"] }] });
+  const ovSig = edSign(null, Buffer.concat([Buffer.from("librepatch/overlay/v1\0"), Buffer.from(ovDoc)]), ovKeys.privateKey).toString("base64");
+  const ovBundle = JSON.stringify({ format: "librepatch-overlay-bundle/1", overlay: JSON.parse(ovDoc), key_id: "e2e", signature: ovSig });
+  await page.getByRole("button", { name: "Add overlay" }).click();
+  const od = page.getByRole("dialog");
+  await od.locator('input[type="file"]').setInputFiles({ name: "e2e.lpov", mimeType: "application/json", buffer: Buffer.from(ovBundle) });
+  await od.getByLabel(/^Public key/).fill("00".repeat(32)); // the wrong key first: refused with a clear message
+  await od.getByRole("button", { name: "Add overlay" }).click();
+  await expect(od.getByText(/signature does not match/i)).toBeVisible();
+  await od.getByLabel(/^Public key/).fill(ovPub);
+  await od.getByRole("button", { name: "Add overlay" }).click();
+  await expect(page.getByRole("table", { name: "Overlays" }).getByText("E2E overlay").first()).toBeVisible();
+  const ovList = await (await page.request.get("/api/v1/catalog/overlays")).json();
+  expect(ovList.items).toHaveLength(1);
+  expect(ovList.items[0]).toMatchObject({ label: "E2E overlay", entries: 1, verified_entries: 1, status: "ok", kind: "upload" });
+  const ovTpl = await page.request.get("/api/v1/catalog/overlay-template");
+  expect(ovTpl.status()).toBe(200);
+  expect((await ovTpl.json()).format).toBe("librepatch-overlay/1");
+  await shot(page, "22b-overlays");
 
   await mainNav(page).getByRole("link", { name: "Reports", exact: true }).click();
   await expect(page.getByRole("heading", { name: /^(.* · )?Reports$/ })).toBeVisible();
   await expect(page.getByText("Patch compliant")).toBeVisible();
+  // The operating-system support report: its summary and its table are there, and the API answers with the data date.
+  await expect(page.getByRole("heading", { name: "Operating system support" })).toBeVisible();
+  const lifecycle = await page.request.get("/api/v1/reports/lifecycle");
+  expect(lifecycle.status()).toBe(200);
+  const lc = await lifecycle.json();
+  expect(lc.data_as_of).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(Object.keys(lc.summary).sort()).toEqual(["ending_soon", "supported", "unknown", "unsupported"]);
+  const lcCsv = await page.request.get("/api/v1/reports/lifecycle.csv");
+  expect(lcCsv.status()).toBe(200);
+  expect(await lcCsv.text()).toContain("hostname,status,operating_system");
   await shot(page, "23-reports");
 
   // --- Settings: sections, search, validation, unsaved changes, secrets, export ---
@@ -543,7 +693,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   const setNav = page.getByRole("navigation", { name: "Settings sections" });
   // The sidebar has one Settings link; the sections are listed inside the Settings page only.
   await expect(mainNav(page).getByRole("link", { name: "Branding", exact: true })).toHaveCount(0);
-  for (const name of ["General", "Branding", "Appearance", "Security", "Notifications", "Update defaults", "Device defaults", "Scheduled reports", "Data and retention", "Integrations", "About"]) {
+  for (const name of ["General", "Branding", "Appearance", "Security", "Notifications", "Update defaults", "Device defaults", "Downloads", "Scheduled reports", "Data and retention", "Integrations", "About"]) {
     await expect(setNav.getByRole("link", { name, exact: true })).toBeVisible();
   }
   // Search finds a setting by what it says, and jumps to it.

@@ -78,19 +78,44 @@ Permission: `settings:notifications`. E-mail delivery, quiet hours and which eve
 | **Quiet hours begin** (`quiet_start`) | time | `22:00` |  | in effect | Local time in the time zone below. |
 | **Quiet hours end** (`quiet_end`) | time | `07:00` |  | in effect | Local time in the time zone below. May be earlier than the start (overnight). |
 | **Quiet hours time zone** (`quiet_time_zone`) | timezone | `UTC` |  | in effect | Time zone of the quiet hours. |
-| **Event rules** (`rules`) | list | 4 built-in item(s) |  | in effect | One rule per event. Recipients are the people who get the e-mail; the threshold depends on the event. |
+| **Event rules** (`rules`) | list | 10 built-in item(s) |  | in effect | One rule per event. Recipients are the people who get the e-mail; the threshold depends on the event. |
 
 **Each item of “Event rules”:**
 
 | Setting | Type | Default | Limits | Effect | What it does |
 |---|---|---|---|---|---|
-| **Event** (`event`) | enum | `failed_install` | failed_install, update_held, device_offline, agent_out_of_date | in effect | What happened. |
+| **Event** (`event`) | enum | `failed_install` | failed_install, update_held, software_approval_needed, device_offline, agent_out_of_date, restart_pending_long, low_disk, bitlocker_off, os_end_of_support, exploited_vulnerability | in effect | What happened. |
 | **Notify** (`enabled`) | bool | `false` |  | in effect | Turn the rule on. |
 | **By e-mail** (`email`) | bool | `true` |  | in effect | Send an e-mail to the recipients. |
 | **To webhooks** (`webhook`) | bool | `true` |  | in effect | Call every enabled webhook that listens for this event. |
 | **Recipients** (`recipients`) | emails | empty | up to 20 entries | in effect | E-mail addresses. Required when the rule sends e-mail. |
-| **Threshold** (`threshold`) | int | `0` | 0 to 720 | in effect | Device offline: hours without a report. Agent out of date: days after a release before devices count as late. Other events ignore it. |
+| **Threshold** (`threshold`) | int | `0` | 0 to 720 | in effect | Device offline: hours without a report. Agent out of date: days after a release before devices count as late. Restart pending too long: days without a restart. Low disk: gigabytes free on the system drive. Operating system end of support: days before the end to warn (0 warns only once support has ended). Other events ignore it. |
 | **Hold during quiet hours** (`quiet_hours`) | bool | `true` |  | in effect | Wait for the end of quiet hours instead of sending at once. |
+
+## Single sign-on
+
+Permission: `settings:security`. Let people sign in with your company account (Microsoft Entra ID, or any provider that speaks OpenID Connect) instead of a password stored here. Register this server as an application with your provider first; the sign-in address to give it is shown on the Single sign-on page. A local administrator account with its own password always keeps working, so a broken provider can never lock you out.
+
+| Setting | Type | Default | Limits | Effect | What it does |
+|---|---|---|---|---|---|
+| **Allow sign-in with a company account** (`enabled`) | bool | `false` |  | in effect | Adds a button to the sign-in page. Local accounts keep working. |
+| **Button text** (`label`) | string | `Microsoft` | up to 40 characters | in effect | The button reads “Sign in with …”. |
+| **Issuer address** (`issuer`) | url | empty | up to 300 characters | in effect | For Microsoft Entra ID: https://login.microsoftonline.com/ + your directory (tenant) ID + /v2.0. It must be a specific directory, not “common”. Must start with https://. |
+| **Application (client) ID** (`client_id`) | string | empty | up to 200 characters | in effect | From the application registration at your provider. |
+| **Client secret** (`client_secret`) | secret | none | up to 500 characters | in effect | A client secret created for this application. Stored encrypted and never shown again; leave empty to keep the saved one. |
+| **Where roles come from** (`role_claim`) | enum | `roles` | roles, groups | in effect | Which claim of the sign-in token is matched against the list below. App roles are the tidier choice for Entra ID; groups are limited to about 200 per person. |
+| **Who gets which role** (`role_map`) | list | empty | up to 50 entries | in effect | A person gets the highest role of every line that matches what the provider says about them. Nobody who matches no line, and has no role set here by hand, can sign in. |
+| **Create accounts on first sign-in** (`auto_create`) | bool | `true` |  | in effect | A person the provider lets in and the list above gives a role gets an account the first time. Off: only people who already have an account here (and have been linked) can sign in. |
+| **Link existing accounts by email address** (`link_by_email`) | bool | `false` |  | in effect | If a local account has the same email address as the person signing in, connect the two on first sign-in. Turn this on only if your provider guarantees that people cannot choose their own email address (a single Entra ID directory does). Off: such a person is turned away and an administrator has to sort it out. |
+| **Only these email domains** (`allowed_domains`) | tags | empty | up to 20 entries | in effect | Optional extra limit, for example example.org. Empty means any domain. |
+| **The provider's multi-factor check replaces the second factor here** (`idp_mfa_counts`) | bool | `false` |  | in effect | Off (recommended): after signing in with the company account, people still confirm with an authenticator app or security key kept here. On: if the provider says the person used multi-factor (the amr claim contains “mfa”), no second step is asked; if it does not say so, it is asked. |
+
+**Each item of “Who gets which role”:**
+
+| Setting | Type | Default | Limits | Effect | What it does |
+|---|---|---|---|---|---|
+| **Role or group value** (`value`) | string | empty | up to 200 characters | in effect | The text the provider sends, for example the app role name or the group's object ID. |
+| **Role here** (`role`) | enum | `readonly` | admin, operator, readonly | in effect | Applies to the whole organization. |
 
 ## Update defaults
 
@@ -124,11 +149,12 @@ Permission: `settings:updates`. Starting values for new update rings and auto-ap
 
 ## Device defaults
 
-Permission: `settings:devices`. When a device counts as offline or stale, how devices are named, extra fields you want to record, and which columns the device list starts with.
+Permission: `settings:devices`. When a device counts as offline or stale, whether queued file deletions count as a pending restart, how devices are named, extra fields you want to record, and which columns the device list starts with.
 
 | Setting | Type | Default | Limits | Effect | What it does |
 |---|---|---|---|---|---|
 | **Offline after** (`offline_hours`) | int | `24` | 1 to 720 hours | in effect | A device that has not reported for this long is listed as needing attention on the dashboard. |
+| **Queued file deletions count as a pending restart** (`queued_deletes_need_restart`) | bool | `false` |  | in effect | Installers and updaters (Edge, Firefox, Office, antivirus) queue leftover files for deletion at the next restart, and queue new ones again within hours, so counting them makes PCs show "restart pending" several times a day. Off (recommended): they are listed on the device page but do not mark it as needing a restart, change compliance or trigger a restart. Takes effect as each device next reports, within about 30 minutes. Renames and replacements queued for the next restart always count. |
 | **Delete revoked devices after** (`stale_cleanup_days`) | int | `0` | 0 to 3650 days | in effect | Revoked or retired devices not seen for this long are deleted, with everything stored about them (the audit log keeps the record). 0 keeps them forever. Active devices are never deleted by this. |
 | **Expected device name pattern** (`naming_pattern`) | regex | empty | up to 200 characters | in effect | A regular expression. Devices whose name does not match are flagged in the device list. Empty turns the check off. |
 | **Custom device fields** (`custom_fields`) | list | empty | up to 20 entries | in effect | Extra information to record about each device, such as an asset tag or owner. Values are edited on the device page and shown in the device list. |
@@ -144,6 +170,24 @@ Permission: `settings:devices`. When a device counts as offline or stale, how de
 | **Type** (`type`) | enum | `text` | text, select, date | in effect | What kind of value it holds. |
 | **Choices** (`options`) | tags | empty | up to 50 entries | in effect | For a choice field: the allowed values. |
 | **Show in the device list** (`show_in_list`) | bool | `true` |  | in effect | Adds a column to the device list. |
+
+## Downloads
+
+Permission: `settings:devices`. How devices get the installers they install. By default each device downloads from the vendor (or from this server) itself.
+
+| Setting | Type | Default | Limits | Effect | What it does |
+|---|---|---|---|---|---|
+| **Share downloads between computers on the same network** (`peer_cache`) | bool | `false` |  | in effect | A device that has installed a program keeps the installer and hands it to other devices on the same network, so a few hundred PCs do not each download it from the internet. Every file is still checked against the fingerprint signed into the job, wherever it came from, and devices only talk to each other with their own certificates. It opens a port on each device (the agent adds the Windows Firewall rule for private and domain networks) and uses disk space on each. Takes effect as devices reconnect; an agent installed with a limit on its allowed jobs that leaves out peer_cache never shares. |
+| **Disk space for shared installers on each device** (`peer_cache_mb`) | int | `2048` | 256 to 20480 MB | in effect | The oldest installers are removed first when the limit is reached; installers unused for two weeks are removed. Turning sharing off empties the cache. |
+| **Port for sharing** (`peer_cache_port`) | int | `7421` | 1024 to 65535 | in effect | TCP port each device listens on, for other devices on the same network only. Change it only if something else uses it. |
+
+## Scripts
+
+Permission: `settings:security`. Running scripts on devices is the most powerful thing this product can do: code you wrote runs as SYSTEM on the computers you choose. Only administrators can use it, every step is in the audit log, and a device only accepts a script if the agent on it was installed with scripts switched on (--allow-scripts, or ALLOWSCRIPTS=1 in the MSI); the server cannot switch that on.
+
+| Setting | Type | Default | Limits | Effect | What it does |
+|---|---|---|---|---|---|
+| **A second administrator must approve every run** (`require_approval`) | bool | `false` |  | in effect | A run waits until another administrator (not the person who asked) approves exactly the script that was requested. Recommended whenever you have two or more administrators. With only one administrator nobody could approve, so it is off by default. |
 
 ## Scheduled reports
 
@@ -199,7 +243,18 @@ Permission: `settings:integrations`. Outgoing webhooks and the reference for wha
 | **URL** (`url`) | url | empty | up to 500 characters | in effect | Where to POST. Use https; plain http is only for receivers on a trusted internal network. |
 | **Signing secret** (`secret`) | secret | none | up to 200 characters | in effect | Used to sign each delivery. Stored encrypted and never shown again; leave empty to keep the saved one. |
 | **Remove the saved secret** (`clear_secret`) | bool | `false` |  | in effect | Deliveries are then sent unsigned. |
-| **Events** (`events`) | multi | `failed_install, update_held` | failed_install, update_held, device_offline, agent_out_of_date | in effect | Which events to send. Rules under Notifications decide whether an event is sent at all. |
+| **Events** (`events`) | multi | `failed_install, update_held` | failed_install, update_held, software_approval_needed, device_offline, agent_out_of_date, restart_pending_long, low_disk, bitlocker_off, os_end_of_support, exploited_vulnerability | in effect | Which events to send. Rules under Notifications decide whether an event is sent at all. |
+
+## Vulnerability data
+
+Permission: `settings:integrations`. Where the server gets the public lists of known vulnerabilities to match against what is installed on your devices. Nothing about your devices is sent: the server only downloads the lists and does the matching itself.
+
+| Setting | Type | Default | Limits | Effect | What it does |
+|---|---|---|---|---|---|
+| **Look up known vulnerabilities** (`enabled`) | bool | `false` |  | in effect | Turns on the daily download of the CISA list of exploited vulnerabilities and, for the programs and Windows versions your devices have, of the NIST National Vulnerability Database. The Vulnerabilities page works with whatever has been downloaded. |
+| **CISA exploited-vulnerabilities list** (`kev_url`) | url | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | up to 500 characters | in effect | Change this only to download from a mirror of your own (for example when the server cannot reach the internet directly). |
+| **NIST vulnerability database** (`nvd_url`) | url | `https://services.nvd.nist.gov/rest/json/cves/2.0` | up to 500 characters | in effect | The address of the NVD CVE API, version 2.0. Change this only to use a mirror that answers the same way. |
+| **NVD API key** (`nvd_api_key`) | secret | none | up to 200 characters | in effect | Optional. Without a key the NVD allows 5 requests per 30 seconds, so the first download takes a few minutes; a free key (requested from NIST) raises that tenfold. Stored encrypted and never shown again. |
 
 ## Pages that are not schema-driven
 

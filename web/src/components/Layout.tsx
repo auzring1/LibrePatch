@@ -97,12 +97,6 @@ export function Layout() {
       {!narrow && (
         <div className="lp-nav lp-nav--static">
           <SideNav rail={rail} />
-          <div className="lp-nav__foot">
-            <button type="button" className="lp-nav__link lp-nav__rail-toggle" onClick={() => setCollapsed(!rail)} aria-pressed={rail} title={rail ? "Expand sidebar" : undefined} data-testid="nav-rail-toggle">
-              {rail ? <I.SidebarExpand size={18} aria-hidden /> : <I.SidebarCollapse size={18} aria-hidden />}
-              <span className={rail ? "lp-visually-hidden" : "lp-nav__text"}>{rail ? "Expand sidebar" : "Collapse sidebar"}</span>
-            </button>
-          </div>
         </div>
       )}
       {narrow && (

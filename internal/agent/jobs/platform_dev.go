@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
 	"github.com/auzring1/librepatch/internal/agent/inventory"
 	"github.com/auzring1/librepatch/internal/agent/selfupdate"
 	"github.com/auzring1/librepatch/internal/agent/wu"
@@ -89,9 +90,14 @@ func (p *devPlatform) Run(ctx context.Context, s RunSpec) (RunResult, error) {
 		ctx, cancel = context.WithTimeout(ctx, s.Timeout)
 		defer cancel()
 	}
-	// #nosec G302 -- dev platform only: the staged test script must be executable
-	if err := os.Chmod(s.Exe, 0o700); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return RunResult{}, err
+	// A staged installer must be executable. A program that is not under the data directory (the shell that runs a
+	// test script) belongs to the system and is left alone: changing its mode needs root, and on a machine where
+	// the test agent runs as root it would damage the system's own shell.
+	if rel, err := filepath.Rel(p.dir, s.Exe); err == nil && !strings.HasPrefix(rel, "..") {
+		// #nosec G302 -- dev platform only: the staged test installer must be executable
+		if err := os.Chmod(s.Exe, 0o700); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return RunResult{}, err
+		}
 	}
 	cmd := exec.CommandContext(ctx, s.Exe, s.Args...) // #nosec G204 -- dev platform runs the staged, hash-verified test installer
 	cmd.Dir = s.Dir
@@ -150,4 +156,54 @@ func (p *devPlatform) RebootRequired() bool {
 
 func (p *devPlatform) RunAsUser(ctx context.Context, _ string, s RunSpec) (RunResult, error) {
 	return p.Run(ctx, s)
+}
+
+// The development platform has no interactive users: it cannot see their programs or talk to them.
+func (p *devPlatform) RunningProcesses([]string, string) ([]Proc, error) { return nil, ErrUnsupported }
+func (p *devPlatform) UserSession(string) (uint32, bool)                 { return 0, false }
+func (p *devPlatform) Ask(context.Context, uint32, string, string, time.Duration, bool) (Answer, error) {
+	return 0, ErrUnsupported
+}
+func (p *devPlatform) CloseProcesses(_ context.Context, procs []Proc, _ time.Duration) ([]Proc, error) {
+	return procs, ErrUnsupported
+}
+
+// The development platform reads scripted views from inspect-dev.json in the agent's data directory
+// ({"processes": [...], "services": [...], "events": [...]}), the way wu-dev.json scripts Windows updates.
+func (p *devPlatform) devInspect() (v struct {
+	Processes []ProcessInfo `json:"processes"`
+	Services  []ServiceInfo `json:"services"`
+	Events    []EventInfo   `json:"events"`
+}, err error) {
+	b, err := os.ReadFile(filepath.Join(p.dir, "inspect-dev.json"))
+	if err != nil {
+		return v, ErrUnsupported
+	}
+	return v, json.Unmarshal(b, &v)
+}
+
+func (p *devPlatform) Processes() ([]ProcessInfo, error) {
+	v, err := p.devInspect()
+	return v.Processes, err
+}
+
+func (p *devPlatform) Services() ([]ServiceInfo, error) {
+	v, err := p.devInspect()
+	return v.Services, err
+}
+
+func (p *devPlatform) Events(_ context.Context, q EventQuery) ([]EventInfo, error) {
+	v, err := p.devInspect()
+	if len(v.Events) > q.Max {
+		v.Events = v.Events[:q.Max]
+	}
+	return v.Events, err
+}
+
+// ScriptHost on the development platform runs a script with /bin/sh, so the console flow can be tried without Windows.
+func (p *devPlatform) ScriptHost(kind agentv1.ScriptInterpreter) (ScriptHost, error) {
+	if kind != agentv1.ScriptInterpreter_SCRIPT_INTERPRETER_POWERSHELL {
+		return ScriptHost{}, ErrUnsupported
+	}
+	return ScriptHost{FileName: "script.sh", Exe: "/bin/sh", Args: []string{"%FILE%"}}, nil
 }

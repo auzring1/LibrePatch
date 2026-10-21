@@ -42,9 +42,12 @@ import (
 	"github.com/auzring1/librepatch/internal/server/pki"
 	"github.com/auzring1/librepatch/internal/server/policies"
 	"github.com/auzring1/librepatch/internal/server/reportsched"
+	"github.com/auzring1/librepatch/internal/server/scripts"
 	"github.com/auzring1/librepatch/internal/server/settings"
+	"github.com/auzring1/librepatch/internal/server/sso"
 	"github.com/auzring1/librepatch/internal/server/store"
 	"github.com/auzring1/librepatch/internal/server/updates"
+	"github.com/auzring1/librepatch/internal/server/vulns"
 	"github.com/auzring1/librepatch/internal/server/webui"
 	"github.com/auzring1/librepatch/internal/server/wingetindex"
 	"github.com/auzring1/librepatch/internal/shared/release"
@@ -64,6 +67,9 @@ type App struct {
 	Updates   *updates.Service
 	Releases  *agentrel.Service
 	Policies  *policies.Service
+	Scripts   *scripts.Service
+	SSO       *sso.Provider
+	Vulns     *vulns.Service
 	Dashboard *dashboard.Service
 	Settings  *settings.Service
 	Notify    *notify.Service
@@ -136,6 +142,10 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 		a.AgentDL.Dir = filepath.Join(cfg.ContentDir, ".agent-downloads")
 	}
 	a.Deploy.Overlay = a.Catalog.Overlay
+	// The signed catalog overlays an administrator added (D122) are read back into memory and applied to the catalog.
+	if err := a.Catalog.LoadOverlays(ctx); err != nil {
+		log.Error("catalog overlays could not be loaded", "err", err)
+	}
 	a.Releases = &agentrel.Service{Pool: pool, Deploy: a.Deploy, Content: a.Catalog.Content, Events: a.Events, Log: log.With("component", "agentrel")}
 	if extra, err := release.ParseKeys(cfg.ReleasePublicKeys); err == nil && len(extra) > 0 {
 		a.Releases.Keys = append(release.TrustedKeys(), extra...)
@@ -143,6 +153,12 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 	a.Branding = &branding.Service{Pool: pool, Log: log.With("component", "branding")}
 	a.Dashboard = &dashboard.Service{Pool: pool, Log: log.With("component", "dashboard")}
 	a.Settings = &settings.Service{Pool: pool, Sealer: sealer, Log: log.With("component", "settings")}
+	a.Deploy.PeerCache = func(ctx context.Context, org uuid.UUID) bool {
+		return a.Settings.Peek(ctx, org, "downloads").Bool("peer_cache")
+	}
+	a.Scripts = &scripts.Service{Pool: pool, Deploy: a.Deploy, Settings: a.Settings, Log: log.With("component", "scripts")}
+	a.SSO = &sso.Provider{}
+	a.Vulns = &vulns.Service{Store: &vulns.Store{Pool: pool}, Settings: a.Settings, Log: log.With("component", "vulns")}
 	a.Maint = &maintenance.Service{Pool: pool, Settings: a.Settings, Log: log.With("component", "maintenance")}
 	a.Notify = &notify.Service{Pool: pool, Settings: a.Settings, Branding: a.Branding, Log: log.With("component", "notify")}
 	a.Sched = &reportsched.Service{Pool: pool, Settings: a.Settings, Mail: a.Notify, Log: log.With("component", "reports"), Names: func(ctx context.Context) (string, string, string) {
@@ -161,6 +177,12 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 		a.Notify.Emit(ctx, org, notify.Event{Name: "update_held", Key: "hold:" + title + ":" + ring, Subject: title + " is held after ring " + ring,
 			Text: "The update \"" + title + "\" was held because ring " + ring + " missed its success threshold: " + reason,
 			Data: map[string]any{"update": map[string]any{"title": title}, "ring": ring, "reason": reason}})
+	}
+	a.Policies.OnHold = a.Updates.OnHold
+	a.Policies.OnApprovalNeeded = func(ctx context.Context, org uuid.UUID, pkg, version string) {
+		a.Notify.Emit(ctx, org, notify.Event{Name: "software_approval_needed", Key: "approval:" + pkg + ":" + version, Subject: pkg + " " + version + " is waiting for approval",
+			Text: "A new version of " + pkg + " (" + version + ") is available and a software policy needs your approval before it is rolled out.",
+			Data: map[string]any{"package": map[string]any{"name": pkg}, "version": version}})
 	}
 	a.Deploy.AfterTerminal = func(ctx context.Context, j dbq.Job, status string, u *agentv1.JobUpdate) {
 		if status == "failed" {
@@ -278,7 +300,7 @@ func (a *App) Handler() http.Handler {
 	}
 	deps := api.Deps{
 		Cfg: a.Cfg, Pool: a.Pool, Sealer: a.Sealer, Sessions: sessions, Events: a.Events,
-		Setup: setupCtl{a}, Devices: a.Hub, Authority: a.Authority, Log: a.Log, Deploy: a.Deploy, Catalog: a.Catalog, Winget: a.Winget, AgentDL: a.AgentDL, Updates: a.Updates, Releases: a.Releases, Policies: a.Policies, Branding: a.Branding, Settings: a.Settings, Notify: a.Notify, Maint: a.Maint, Sched: a.Sched, KeyAck: a.KeyAck,
+		Setup: setupCtl{a}, Devices: a.Hub, Authority: a.Authority, Log: a.Log, Deploy: a.Deploy, Catalog: a.Catalog, Winget: a.Winget, AgentDL: a.AgentDL, Updates: a.Updates, Releases: a.Releases, Policies: a.Policies, Scripts: a.Scripts, SSO: a.SSO, Vulns: a.Vulns, Branding: a.Branding, Settings: a.Settings, Notify: a.Notify, Maint: a.Maint, Sched: a.Sched, KeyAck: a.KeyAck,
 	}
 	sessions.Timeouts = api.SessionLimits(deps)
 	return api.NewHandler(deps, webui.Handler(a.pageHead))
@@ -363,7 +385,7 @@ func (a *App) startGateway() error {
 	}
 	ctx := a.runCtx
 	gw := gateway.New(gateway.Options{Config: a.Cfg, Pool: a.Pool, Sealer: a.Sealer, Authority: a.Authority(),
-		Events: a.Events, Hub: a.Hub, Log: a.Log.With("component", "gateway"), Deploy: a.Deploy, Updates: a.Updates, Content: a.Catalog.Content})
+		Events: a.Events, Hub: a.Hub, Log: a.Log.With("component", "gateway"), Deploy: a.Deploy, Updates: a.Updates, Content: a.Catalog.Content, Settings: a.Settings})
 	if err := gw.RefreshCertificate(ctx); err != nil {
 		return fmt.Errorf("gateway certificate: %w", err)
 	}
@@ -399,6 +421,14 @@ func (a *App) housekeeping(ctx context.Context) {
 			a.Sched.Tick(ctx)
 			if n%5 == 0 {
 				a.Policies.Tick(ctx)
+			}
+			if n%60 == 11 {
+				// A download can take minutes (the NVD allows a few requests per half minute), so it runs on its own; the
+				// service lets only one run at a time and asks each feed only when it is due.
+				go a.Vulns.Tick(ctx)
+			}
+			if n%60 == 7 {
+				a.Catalog.RefreshDueOverlays(ctx) // asks each overlay URL at most every 12 hours
 			}
 			n++
 			if n%60 == 1 {

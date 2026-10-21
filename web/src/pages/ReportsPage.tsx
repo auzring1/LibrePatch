@@ -6,6 +6,7 @@ import { api, errorMessage, type ComplianceRow, type ReportOverview } from "../a
 import { dateTime } from "../api/format";
 import { useSession } from "../api/session";
 import { useBranding } from "../branding/BrandingProvider";
+import { LifecycleCard } from "../components/LifecycleCard";
 import { Card, DataTable, Donut, EmptyState, Icons, Page, PageHeader, StackedBar, StatGrid, StatTile, Status, StatusPill, TileSkeleton, type Column } from "../ui";
 
 interface JobRow {
@@ -113,6 +114,9 @@ export function ReportsPage() {
               <Button component="a" href="/api/v1/reports/compliance.csv" download variant="default" leftSection={<Icons.Download size={16} aria-hidden />}>
                 Export patch compliance (CSV)
               </Button>
+              <Button component="a" href="/api/v1/reports/lifecycle.csv" download variant="default" leftSection={<Icons.Download size={16} aria-hidden />}>
+                Export OS support (CSV)
+              </Button>
             </>
           ) : undefined
         }
@@ -170,6 +174,7 @@ export function ReportsPage() {
           </div>
         </>
       )}
+      <LifecycleCard />
       <Card title="Devices to look at" description="Devices that are not compliant, or have not reported a Windows Update scan lately.">
         <DataTable<ComplianceRow>
           id="reports-noncompliant"

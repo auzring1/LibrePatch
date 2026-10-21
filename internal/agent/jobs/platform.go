@@ -12,6 +12,7 @@ import (
 	"io"
 	"time"
 
+	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
 	"github.com/auzring1/librepatch/internal/agent/inventory"
 	"github.com/auzring1/librepatch/internal/agent/selfupdate"
 	"github.com/auzring1/librepatch/internal/agent/wu"
@@ -36,6 +37,23 @@ type Signature struct {
 	Thumbprint []byte // SHA-256 of the leaf certificate
 	Detail     string
 }
+
+// Proc is a running program of a signed-in user.
+type Proc struct {
+	PID     uint32
+	Name    string // image name, for example "chrome.exe"
+	Session uint32 // the Windows session it runs in; 0 is the services session
+}
+
+// Answer is what a person said to a question shown by Platform.Ask.
+type Answer int
+
+// The possible answers.
+const (
+	AnswerYes Answer = iota + 1
+	AnswerNo
+	AnswerTimeout // nobody answered in time
+)
 
 // RunSpec is a process to run without a shell.
 type RunSpec struct {
@@ -97,6 +115,24 @@ type Platform interface {
 	TrustedExecutable(path string) error
 	// Systemroot-resolved msiexec path.
 	MsiExec() string
+
+	// RunningProcesses lists the running programs whose image name is one of names (case-insensitive). With a
+	// non-empty sid only that user's session is searched. ErrUnsupported means the platform cannot tell.
+	RunningProcesses(names []string, sid string) ([]Proc, error)
+	// UserSession returns a session to talk to: the user's own (sid != "") or the one that is signed in and active.
+	UserSession(sid string) (uint32, bool)
+	// Ask shows a message in a session. With yesNo it offers Yes and No and waits up to timeout for the answer;
+	// without, it shows a notice that closes itself after timeout and returns at once.
+	Ask(ctx context.Context, session uint32, title, message string, timeout time.Duration, yesNo bool) (Answer, error)
+	// CloseProcesses asks the programs to close, waits grace, and ends those still open. It returns what is still running.
+	CloseProcesses(ctx context.Context, procs []Proc, grace time.Duration) (left []Proc, err error)
+
+	// ScriptHost says how a script is run (the interpreter, an absolute path, and its arguments).
+	ScriptHost(kind agentv1.ScriptInterpreter) (ScriptHost, error)
+	// Processes, Services and Events are the read-only views of a device (D125).
+	Processes() ([]ProcessInfo, error)
+	Services() ([]ServiceInfo, error)
+	Events(ctx context.Context, q EventQuery) ([]EventInfo, error)
 
 	// WindowsUpdate returns the Windows Update Agent client.
 	WindowsUpdate() wu.Client

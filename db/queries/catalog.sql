@@ -23,14 +23,14 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $
 
 -- name: SetPackageVerified :exec
 -- Called by an import: the VM-matrix result decides, and an administrator's mark is kept.
-UPDATE catalog_packages SET verified = ($3 OR verified_by_org) WHERE org_id = $1 AND id = $2;
+UPDATE catalog_packages SET verified = ($3 OR verified_by_org OR verified_by_overlay <> '') WHERE org_id = $1 AND id = $2;
 
 -- name: SetPackageOrgVerified :exec
 -- An administrator marks the package verified (or removes the mark). tests_passed is the VM-matrix result, which keeps the
 -- package verified even without the mark.
 UPDATE catalog_packages SET
     verified_by_org  = sqlc.arg(by_org)::boolean,
-    verified         = (sqlc.arg(by_org)::boolean OR sqlc.arg(tests_passed)::boolean),
+    verified         = (sqlc.arg(by_org)::boolean OR sqlc.arg(tests_passed)::boolean OR verified_by_overlay <> ''),
     verified_by      = CASE WHEN sqlc.arg(by_org)::boolean THEN sqlc.arg(by)::uuid END,
     verified_at      = CASE WHEN sqlc.arg(by_org)::boolean THEN sqlc.arg(at)::timestamptz END,
     verified_version = CASE WHEN sqlc.arg(by_org)::boolean THEN sqlc.arg(version)::text ELSE '' END
@@ -66,11 +66,11 @@ DELETE FROM catalog_packages WHERE id = $1 AND org_id = $2;
 SELECT * FROM package_overrides WHERE org_id = $1 AND package_id = $2;
 
 -- name: UpsertPackageOverride :exec
-INSERT INTO package_overrides (org_id, package_id, silent_args, extra_detection, pin, excluded, user_scope_policy, self_update_policy, updated_by, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+INSERT INTO package_overrides (org_id, package_id, silent_args, extra_detection, pin, excluded, user_scope_policy, self_update_policy, processes, updated_by, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
 ON CONFLICT (org_id, package_id) DO UPDATE SET silent_args = EXCLUDED.silent_args, extra_detection = EXCLUDED.extra_detection,
     pin = EXCLUDED.pin, excluded = EXCLUDED.excluded, user_scope_policy = EXCLUDED.user_scope_policy,
-    self_update_policy = EXCLUDED.self_update_policy, updated_by = EXCLUDED.updated_by, updated_at = now();
+    self_update_policy = EXCLUDED.self_update_policy, processes = EXCLUDED.processes, updated_by = EXCLUDED.updated_by, updated_at = now();
 
 -- name: GetOrgSettings :one
 SELECT * FROM org_settings WHERE org_id = $1;

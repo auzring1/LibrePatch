@@ -15,6 +15,7 @@ import (
 	"github.com/auzring1/librepatch/internal/server/audit"
 	"github.com/auzring1/librepatch/internal/server/store"
 	"github.com/auzring1/librepatch/internal/shared/text"
+	"google.golang.org/protobuf/proto"
 )
 
 // ErrUnknownJob is returned when a device reports on a job that is not its own.
@@ -101,6 +102,14 @@ func (s *Service) ApplyUpdate(ctx context.Context, dev dbq.Device, u *agentv1.Jo
 		if j.CancelPending && terminal(status) {
 			_ = q.ClearCancelPending(ctx, dbq.ClearCancelPendingParams{ID: id, DeviceID: dev.ID})
 		}
+		// What a script printed is kept apart from the job result that job pages show to everyone who may read deployments (D127).
+		scriptOutput := ""
+		if j.Type == "run_script" {
+			resultJSON = withoutLog(resultJSON)
+			if u.Result != nil && terminal(status) {
+				scriptOutput = clean(u.Result.LogTail, 16<<10)
+			}
+		}
 		n, err := q.ApplyJobUpdate(ctx, dbq.ApplyJobUpdateParams{ID: id, DeviceID: dev.ID, Status: status, Reason: clean(u.Reason, 128), Now: now,
 			StartedAt: started, FinishedAt: finished, ExitCode: exit, DetectionPassed: det, RebootRequired: reboot, Result: resultJSON})
 		if err != nil {
@@ -109,6 +118,28 @@ func (s *Service) ApplyUpdate(ctx context.Context, dev dbq.Device, u *agentv1.Jo
 		changed = n > 0
 		if !changed {
 			return nil // late or duplicate update for a job that is already final
+		}
+		if j.Type == "run_script" && j.ScriptRunID != nil && u.Result != nil && terminal(status) {
+			_ = q.PruneScriptOutputs(ctx, s.now().Add(-30*24*time.Hour))
+			if err := q.InsertScriptOutput(ctx, dbq.InsertScriptOutputParams{JobID: id, RunID: *j.ScriptRunID, ExitCode: u.Result.ExitCode, Output: scriptOutput}); err != nil {
+				return err
+			}
+		}
+		// What a read-only view returned goes to its own short-lived table, never into the job result that job pages show (D125).
+		if job.Type == "inspect" && u.Result != nil && u.Result.DataJson != "" && status == "succeeded" {
+			if kind, raw, ok := viewData(u.Result.DataJson); ok {
+				now := s.now()
+				_ = q.PruneDeviceViews(ctx, now.Add(-time.Hour))
+				if err := q.InsertDeviceView(ctx, dbq.InsertDeviceViewParams{JobID: id, OrgID: job.OrgID, DeviceID: dev.ID, Kind: kind, Data: raw}); err != nil {
+					return err
+				}
+			}
+		}
+		// A device that finished an install from a file has that file in its cache and can be offered as a peer for it (D126).
+		if (job.Type == "software_install" || job.Type == "software_update") && (status == "succeeded" || status == "succeeded_reboot") {
+			if err := notePeerContent(ctx, q, dev.ID, job.Body, s.now()); err != nil {
+				return err
+			}
 		}
 		msg := clean(u.Reason, 128)
 		if u.Result != nil && u.Result.Message != "" {
@@ -288,4 +319,54 @@ func (s *Service) Sweep(ctx context.Context) {
 			_ = q.CompleteDeploymentIfDone(ctx, *r.DeploymentID)
 		}
 	}
+}
+
+// maxViewBytes caps what a device may store as the answer of a read-only view.
+const maxViewBytes = 256 << 10
+
+// viewData checks the JSON a device sent for a read-only view: size, well-formed, a known kind.
+func viewData(data string) (kind string, raw []byte, ok bool) {
+	if len(data) > maxViewBytes || !json.Valid([]byte(data)) {
+		return "", nil, false
+	}
+	var head struct {
+		Kind string `json:"kind"`
+	}
+	if json.Unmarshal([]byte(data), &head) != nil {
+		return "", nil, false
+	}
+	switch head.Kind {
+	case "processes", "services", "events":
+		return head.Kind, []byte(data), true
+	}
+	return "", nil, false
+}
+
+// installerSHA is the SHA-256 of the installer a stored install job carries (nil when it has none).
+func installerSHA(body []byte) []byte {
+	var env agentv1.JobEnvelope
+	if proto.Unmarshal(body, &env) != nil {
+		return nil
+	}
+	if sha := env.GetInstall().GetInstaller().GetSha256(); len(sha) == 32 {
+		return sha
+	}
+	return nil
+}
+
+// withoutLog removes the log tail from a stored job result (script output is kept elsewhere).
+func withoutLog(raw []byte) []byte {
+	if len(raw) == 0 {
+		return raw
+	}
+	var m map[string]any
+	if json.Unmarshal(raw, &m) != nil {
+		return raw
+	}
+	m["log_tail"] = ""
+	out, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return out
 }

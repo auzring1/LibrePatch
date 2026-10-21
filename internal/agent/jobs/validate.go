@@ -3,6 +3,7 @@ package jobs
 import (
 	"errors"
 	"fmt"
+	"github.com/auzring1/librepatch/internal/agent/peercache"
 	"net/url"
 	"regexp"
 	"strings"
@@ -156,6 +157,10 @@ func ValidateInstall(b *agentv1.InstallBody, targetSID string) error {
 			if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || len(s.Url) > 2048 {
 				return bad("vendor sources must be https URLs")
 			}
+		case agentv1.ContentSourceKind_CONTENT_SOURCE_KIND_PEER:
+			if _, err := peercache.ValidURL(s.Url); err != nil {
+				return bad("%v", err)
+			}
 		default:
 			return bad("unknown content source")
 		}
@@ -181,7 +186,7 @@ func ValidateInstall(b *agentv1.InstallBody, targetSID string) error {
 	if len(b.Version) > 128 || len(b.Name) > 256 || len(b.PackageId) > 200 {
 		return bad("descriptive fields too long")
 	}
-	return nil
+	return validatePrompts(b.Prompts)
 }
 
 // ValidateUninstall checks an uninstall body.
@@ -270,6 +275,12 @@ func ceilingName(t agentv1.JobType) string {
 		return "reboot"
 	case agentv1.JobType_JOB_TYPE_AGENT_UPDATE:
 		return "agent_update"
+	case agentv1.JobType_JOB_TYPE_WAKE:
+		return "wake"
+	case agentv1.JobType_JOB_TYPE_INSPECT:
+		return "inspect"
+	case agentv1.JobType_JOB_TYPE_RUN_SCRIPT:
+		return "run_script"
 	}
 	return ""
 }

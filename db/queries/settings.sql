@@ -39,6 +39,25 @@ DELETE FROM notification_outbox WHERE status <> 'pending' AND created_at < $1;
 SELECT id, hostname, last_seen_at FROM devices
 WHERE org_id = $1 AND status = 'active' AND NOT online AND last_seen_at < $2 ORDER BY last_seen_at LIMIT 500;
 
+-- name: RestartPendingDevices :many
+-- Online devices that need a restart and have not restarted for at least $2 seconds (uptime as of the last heartbeat).
+SELECT id, hostname, uptime_s FROM devices
+WHERE org_id = $1 AND status = 'active' AND online AND pending_reboot AND uptime_s >= $2 ORDER BY uptime_s DESC LIMIT 500;
+
+-- name: LowDiskDevices :many
+SELECT id, hostname, system_drive_free_bytes::bigint AS free_bytes FROM devices
+WHERE org_id = $1 AND status = 'active' AND online AND system_drive_free_bytes IS NOT NULL AND system_drive_free_bytes < $2
+ORDER BY system_drive_free_bytes LIMIT 500;
+
+-- name: UnprotectedDiskDevices :many
+SELECT d.id, d.hostname,
+       (SELECT COALESCE(string_agg(k->>'mount', ', ' ORDER BY k->>'mount'), '')
+          FROM jsonb_array_elements(COALESCE(d.hardware->'disks', '[]'::jsonb)) k WHERE k->>'bitlocker' = 'unprotected')::text AS mounts
+FROM devices d
+WHERE d.org_id = $1 AND d.status = 'active'
+  AND EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(d.hardware->'disks', '[]'::jsonb)) k WHERE k->>'bitlocker' = 'unprotected')
+ORDER BY d.hostname LIMIT 500;
+
 -- name: RolloutTargetVersion :one
 SELECT r.version, r.created_at FROM agent_rollout o JOIN agent_releases r ON r.id = o.release_id
 WHERE o.org_id = $1 AND o.release_id IS NOT NULL;

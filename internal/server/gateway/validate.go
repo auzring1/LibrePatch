@@ -18,7 +18,7 @@ func validateHardware(hw *agentv1.HardwareInventory) error {
 			return errors.New("hardware field too long")
 		}
 	}
-	if len(hw.Disks) > 64 || len(hw.Interfaces) > 64 || len(hw.PendingRebootReasons) > 16 {
+	if len(hw.Disks) > 64 || len(hw.Interfaces) > 64 || len(hw.PendingRebootReasons) > 16 || len(hw.QueuedFileDeletes) > 16 {
 		return errors.New("too many hardware entries")
 	}
 	for _, d := range hw.Disks {
@@ -31,10 +31,10 @@ func validateHardware(hw *agentv1.HardwareInventory) error {
 		return errors.New("hardware value out of range")
 	}
 	for _, n := range hw.Interfaces {
-		if len(n.Name) > 256 || len(n.Mac) > 64 || len(n.Addresses) > 32 {
+		if len(n.Name) > 256 || len(n.Mac) > 64 || len(n.Addresses) > 32 || len(n.Cidrs) > 32 {
 			return errors.New("interface field too long")
 		}
-		for _, a := range n.Addresses {
+		for _, a := range append(append([]string(nil), n.Addresses...), n.Cidrs...) {
 			if len(a) > 64 {
 				return errors.New("address too long")
 			}
@@ -45,7 +45,22 @@ func validateHardware(hw *agentv1.HardwareInventory) error {
 			return errors.New("reboot reason too long")
 		}
 	}
+	for _, p := range hw.QueuedFileDeletes {
+		if len(p) > 1024 {
+			return errors.New("queued file path too long")
+		}
+	}
 	return nil
+}
+
+// freeBytes is the system drive's free space from a heartbeat. Zero means "not reported" (an older agent, or a drive
+// that could not be read), which is stored as unknown rather than as a full disk.
+func freeBytes(hb *agentv1.Heartbeat) *int64 {
+	if hb.SystemDriveFreeBytes == 0 {
+		return nil
+	}
+	v := clampI64(hb.SystemDriveFreeBytes)
+	return &v
 }
 
 func clampI64(v uint64) int64 {

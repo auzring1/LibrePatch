@@ -39,14 +39,14 @@ jobs:
         env: { LIBREPATCH_REQUIRE_DB: "1" }
         run: go test -count=1 ./test/e2e/
 
-      - name: Build agent (size budget 15 MiB) and server
+      - name: Build agent (size budget 17 MiB) and server
         shell: pwsh
         run: |
           go build -trimpath -ldflags "-s -w" -o librepatch-agent.exe ./cmd/librepatch-agent
           go build -o librepatch-server.exe ./cmd/librepatch-server
           $size = (Get-Item librepatch-agent.exe).Length
           Write-Host "agent size: $size bytes"
-          if ($size -gt 15728640) { throw "agent binary over the 15 MiB budget" }
+          if ($size -gt 17825792) { throw "agent binary over the 17 MiB budget" }
 
       - name: Real service install, enrollment, ACL checks and uninstall
         shell: pwsh

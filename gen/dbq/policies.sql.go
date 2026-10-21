@@ -85,6 +85,24 @@ func (q *Queries) ComplianceReport(ctx context.Context, orgID uuid.UUID) ([]Comp
 	return items, nil
 }
 
+const deleteSoftwareApproval = `-- name: DeleteSoftwareApproval :execrows
+DELETE FROM software_approvals WHERE org_id = $1 AND package_id = $2 AND version = $3
+`
+
+type DeleteSoftwareApprovalParams struct {
+	OrgID     uuid.UUID
+	PackageID uuid.UUID
+	Version   string
+}
+
+func (q *Queries) DeleteSoftwareApproval(ctx context.Context, arg DeleteSoftwareApprovalParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSoftwareApproval, arg.OrgID, arg.PackageID, arg.Version)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteSoftwarePolicy = `-- name: DeleteSoftwarePolicy :execrows
 DELETE FROM software_policies WHERE id = $1 AND org_id = $2
 `
@@ -102,8 +120,75 @@ func (q *Queries) DeleteSoftwarePolicy(ctx context.Context, arg DeleteSoftwarePo
 	return result.RowsAffected(), nil
 }
 
+const getSoftwareApproval = `-- name: GetSoftwareApproval :one
+
+SELECT org_id, package_id, version, decision, note, decided_by, decided_at FROM software_approvals WHERE org_id = $1 AND package_id = $2 AND version = $3
+`
+
+type GetSoftwareApprovalParams struct {
+	OrgID     uuid.UUID
+	PackageID uuid.UUID
+	Version   string
+}
+
+// ---- approvals and rings (D121) ----
+func (q *Queries) GetSoftwareApproval(ctx context.Context, arg GetSoftwareApprovalParams) (SoftwareApproval, error) {
+	row := q.db.QueryRow(ctx, getSoftwareApproval, arg.OrgID, arg.PackageID, arg.Version)
+	var i SoftwareApproval
+	err := row.Scan(
+		&i.OrgID,
+		&i.PackageID,
+		&i.Version,
+		&i.Decision,
+		&i.Note,
+		&i.DecidedBy,
+		&i.DecidedAt,
+	)
+	return i, err
+}
+
+const getSoftwareHold = `-- name: GetSoftwareHold :one
+SELECT h.id, h.org_id, h.policy_id, h.version, h.ring_id, h.reason, h.created_at, h.released_at, h.released_by, p.name AS policy_name FROM software_holds h JOIN software_policies p ON p.id = h.policy_id WHERE h.id = $1 AND h.org_id = $2
+`
+
+type GetSoftwareHoldParams struct {
+	ID    uuid.UUID
+	OrgID uuid.UUID
+}
+
+type GetSoftwareHoldRow struct {
+	ID         uuid.UUID
+	OrgID      uuid.UUID
+	PolicyID   uuid.UUID
+	Version    string
+	RingID     uuid.UUID
+	Reason     string
+	CreatedAt  time.Time
+	ReleasedAt *time.Time
+	ReleasedBy *uuid.UUID
+	PolicyName string
+}
+
+func (q *Queries) GetSoftwareHold(ctx context.Context, arg GetSoftwareHoldParams) (GetSoftwareHoldRow, error) {
+	row := q.db.QueryRow(ctx, getSoftwareHold, arg.ID, arg.OrgID)
+	var i GetSoftwareHoldRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.PolicyID,
+		&i.Version,
+		&i.RingID,
+		&i.Reason,
+		&i.CreatedAt,
+		&i.ReleasedAt,
+		&i.ReleasedBy,
+		&i.PolicyName,
+	)
+	return i, err
+}
+
 const getSoftwarePolicy = `-- name: GetSoftwarePolicy :one
-SELECT id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, created_at, updated_at FROM software_policies WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, created_at, updated_at, use_rings, require_approval, prompts FROM software_policies WHERE id = $1 AND org_id = $2
 `
 
 type GetSoftwarePolicyParams struct {
@@ -129,13 +214,46 @@ func (q *Queries) GetSoftwarePolicy(ctx context.Context, arg GetSoftwarePolicyPa
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.UseRings,
+		&i.RequireApproval,
+		&i.Prompts,
 	)
 	return i, err
 }
 
+const insertSoftwareHold = `-- name: InsertSoftwareHold :execrows
+INSERT INTO software_holds (id, org_id, policy_id, version, ring_id, reason)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (policy_id, version, ring_id) WHERE released_at IS NULL DO NOTHING
+`
+
+type InsertSoftwareHoldParams struct {
+	ID       uuid.UUID
+	OrgID    uuid.UUID
+	PolicyID uuid.UUID
+	Version  string
+	RingID   uuid.UUID
+	Reason   string
+}
+
+func (q *Queries) InsertSoftwareHold(ctx context.Context, arg InsertSoftwareHoldParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertSoftwareHold,
+		arg.ID,
+		arg.OrgID,
+		arg.PolicyID,
+		arg.Version,
+		arg.RingID,
+		arg.Reason,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const insertSoftwarePolicy = `-- name: InsertSoftwarePolicy :exec
-INSERT INTO software_policies (id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+INSERT INTO software_policies (id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, use_rings, require_approval, prompts)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 `
 
 type InsertSoftwarePolicyParams struct {
@@ -151,6 +269,9 @@ type InsertSoftwarePolicyParams struct {
 	MaintWindow         []byte
 	Enabled             bool
 	CreatedBy           *uuid.UUID
+	UseRings            bool
+	RequireApproval     bool
+	Prompts             []byte
 }
 
 func (q *Queries) InsertSoftwarePolicy(ctx context.Context, arg InsertSoftwarePolicyParams) error {
@@ -167,6 +288,9 @@ func (q *Queries) InsertSoftwarePolicy(ctx context.Context, arg InsertSoftwarePo
 		arg.MaintWindow,
 		arg.Enabled,
 		arg.CreatedBy,
+		arg.UseRings,
+		arg.RequireApproval,
+		arg.Prompts,
 	)
 	return err
 }
@@ -265,7 +389,7 @@ func (q *Queries) ListDevicesWithPackage(ctx context.Context, arg ListDevicesWit
 }
 
 const listEnabledSoftwarePolicies = `-- name: ListEnabledSoftwarePolicies :many
-SELECT id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, created_at, updated_at FROM software_policies WHERE enabled ORDER BY created_at, id
+SELECT id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, created_at, updated_at, use_rings, require_approval, prompts FROM software_policies WHERE enabled ORDER BY created_at, id
 `
 
 func (q *Queries) ListEnabledSoftwarePolicies(ctx context.Context) ([]SoftwarePolicy, error) {
@@ -292,6 +416,58 @@ func (q *Queries) ListEnabledSoftwarePolicies(ctx context.Context) ([]SoftwarePo
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.UseRings,
+			&i.RequireApproval,
+			&i.Prompts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenSoftwareHolds = `-- name: ListOpenSoftwareHolds :many
+SELECT h.id, h.policy_id, p.name AS policy_name, k.name AS package_name, h.version, r.name AS ring_name, h.reason, h.created_at
+FROM software_holds h
+JOIN software_policies p ON p.id = h.policy_id
+JOIN catalog_packages k ON k.id = p.package_id
+JOIN wu_rings r ON r.id = h.ring_id
+WHERE h.org_id = $1 AND h.released_at IS NULL ORDER BY h.created_at DESC
+`
+
+type ListOpenSoftwareHoldsRow struct {
+	ID          uuid.UUID
+	PolicyID    uuid.UUID
+	PolicyName  string
+	PackageName string
+	Version     string
+	RingName    string
+	Reason      string
+	CreatedAt   time.Time
+}
+
+func (q *Queries) ListOpenSoftwareHolds(ctx context.Context, orgID uuid.UUID) ([]ListOpenSoftwareHoldsRow, error) {
+	rows, err := q.db.Query(ctx, listOpenSoftwareHolds, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOpenSoftwareHoldsRow{}
+	for rows.Next() {
+		var i ListOpenSoftwareHoldsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PolicyID,
+			&i.PolicyName,
+			&i.PackageName,
+			&i.Version,
+			&i.RingName,
+			&i.Reason,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -379,8 +555,133 @@ func (q *Queries) ListPolicyAttempts(ctx context.Context, arg ListPolicyAttempts
 	return items, nil
 }
 
+const listPolicyAttemptsForVersion = `-- name: ListPolicyAttemptsForVersion :many
+SELECT device_id, deployment_id, failures, created_at FROM policy_attempts WHERE policy_id = $1 AND version = $2
+`
+
+type ListPolicyAttemptsForVersionParams struct {
+	PolicyID uuid.UUID
+	Version  string
+}
+
+type ListPolicyAttemptsForVersionRow struct {
+	DeviceID     uuid.UUID
+	DeploymentID *uuid.UUID
+	Failures     int32
+	CreatedAt    time.Time
+}
+
+func (q *Queries) ListPolicyAttemptsForVersion(ctx context.Context, arg ListPolicyAttemptsForVersionParams) ([]ListPolicyAttemptsForVersionRow, error) {
+	rows, err := q.db.Query(ctx, listPolicyAttemptsForVersion, arg.PolicyID, arg.Version)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPolicyAttemptsForVersionRow{}
+	for rows.Next() {
+		var i ListPolicyAttemptsForVersionRow
+		if err := rows.Scan(
+			&i.DeviceID,
+			&i.DeploymentID,
+			&i.Failures,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentSoftwareApprovals = `-- name: ListRecentSoftwareApprovals :many
+SELECT a.package_id, k.name AS package_name, a.version, a.decision, a.note, a.decided_at, COALESCE(u.display_name, '') AS decided_by_name
+FROM software_approvals a JOIN catalog_packages k ON k.id = a.package_id LEFT JOIN users u ON u.id = a.decided_by
+WHERE a.org_id = $1 AND a.decided_at >= $2 ORDER BY a.decided_at DESC LIMIT 50
+`
+
+type ListRecentSoftwareApprovalsParams struct {
+	OrgID     uuid.UUID
+	DecidedAt time.Time
+}
+
+type ListRecentSoftwareApprovalsRow struct {
+	PackageID     uuid.UUID
+	PackageName   string
+	Version       string
+	Decision      string
+	Note          string
+	DecidedAt     time.Time
+	DecidedByName string
+}
+
+func (q *Queries) ListRecentSoftwareApprovals(ctx context.Context, arg ListRecentSoftwareApprovalsParams) ([]ListRecentSoftwareApprovalsRow, error) {
+	rows, err := q.db.Query(ctx, listRecentSoftwareApprovals, arg.OrgID, arg.DecidedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRecentSoftwareApprovalsRow{}
+	for rows.Next() {
+		var i ListRecentSoftwareApprovalsRow
+		if err := rows.Scan(
+			&i.PackageID,
+			&i.PackageName,
+			&i.Version,
+			&i.Decision,
+			&i.Note,
+			&i.DecidedAt,
+			&i.DecidedByName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSoftwareHoldsForVersion = `-- name: ListSoftwareHoldsForVersion :many
+SELECT id, ring_id, released_at FROM software_holds WHERE policy_id = $1 AND version = $2
+`
+
+type ListSoftwareHoldsForVersionParams struct {
+	PolicyID uuid.UUID
+	Version  string
+}
+
+type ListSoftwareHoldsForVersionRow struct {
+	ID         uuid.UUID
+	RingID     uuid.UUID
+	ReleasedAt *time.Time
+}
+
+func (q *Queries) ListSoftwareHoldsForVersion(ctx context.Context, arg ListSoftwareHoldsForVersionParams) ([]ListSoftwareHoldsForVersionRow, error) {
+	rows, err := q.db.Query(ctx, listSoftwareHoldsForVersion, arg.PolicyID, arg.Version)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSoftwareHoldsForVersionRow{}
+	for rows.Next() {
+		var i ListSoftwareHoldsForVersionRow
+		if err := rows.Scan(&i.ID, &i.RingID, &i.ReleasedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSoftwarePolicies = `-- name: ListSoftwarePolicies :many
-SELECT p.id, p.org_id, p.name, p.kind, p.package_id, p.group_ids, p.delay_days, p.only_new_devices, p.unverified_confirmed, p.maint_window, p.enabled, p.created_by, p.created_at, p.updated_at, k.name AS package_name, k.identifier AS package_identifier
+SELECT p.id, p.org_id, p.name, p.kind, p.package_id, p.group_ids, p.delay_days, p.only_new_devices, p.unverified_confirmed, p.maint_window, p.enabled, p.created_by, p.created_at, p.updated_at, p.use_rings, p.require_approval, p.prompts, k.name AS package_name, k.identifier AS package_identifier
 FROM software_policies p JOIN catalog_packages k ON k.id = p.package_id
 WHERE p.org_id = $1 ORDER BY lower(p.name)
 `
@@ -400,6 +701,9 @@ type ListSoftwarePoliciesRow struct {
 	CreatedBy           *uuid.UUID
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+	UseRings            bool
+	RequireApproval     bool
+	Prompts             []byte
 	PackageName         string
 	PackageIdentifier   string
 }
@@ -428,6 +732,9 @@ func (q *Queries) ListSoftwarePolicies(ctx context.Context, orgID uuid.UUID) ([]
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.UseRings,
+			&i.RequireApproval,
+			&i.Prompts,
 			&i.PackageName,
 			&i.PackageIdentifier,
 		); err != nil {
@@ -502,6 +809,24 @@ func (q *Queries) PolicyJobStates(ctx context.Context, dollar_1 []uuid.UUID) ([]
 	return items, nil
 }
 
+const releaseSoftwareHold = `-- name: ReleaseSoftwareHold :execrows
+UPDATE software_holds SET released_at = now(), released_by = $3 WHERE id = $1 AND org_id = $2 AND released_at IS NULL
+`
+
+type ReleaseSoftwareHoldParams struct {
+	ID         uuid.UUID
+	OrgID      uuid.UUID
+	ReleasedBy *uuid.UUID
+}
+
+func (q *Queries) ReleaseSoftwareHold(ctx context.Context, arg ReleaseSoftwareHoldParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseSoftwareHold, arg.ID, arg.OrgID, arg.ReleasedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const reportDeviceCounts = `-- name: ReportDeviceCounts :one
 SELECT count(*) FILTER (WHERE status = 'active')::bigint AS active,
        count(*) FILTER (WHERE status = 'pending')::bigint AS pending,
@@ -574,7 +899,7 @@ func (q *Queries) ReportJobCounts(ctx context.Context, arg ReportJobCountsParams
 
 const updateSoftwarePolicy = `-- name: UpdateSoftwarePolicy :execrows
 UPDATE software_policies SET name = $3, kind = $4, package_id = $5, group_ids = $6, delay_days = $7, only_new_devices = $8,
-    unverified_confirmed = $9, maint_window = $10, enabled = $11, updated_at = now()
+    unverified_confirmed = $9, maint_window = $10, enabled = $11, use_rings = $12, require_approval = $13, prompts = $14, updated_at = now()
 WHERE id = $1 AND org_id = $2
 `
 
@@ -590,6 +915,9 @@ type UpdateSoftwarePolicyParams struct {
 	UnverifiedConfirmed bool
 	MaintWindow         []byte
 	Enabled             bool
+	UseRings            bool
+	RequireApproval     bool
+	Prompts             []byte
 }
 
 func (q *Queries) UpdateSoftwarePolicy(ctx context.Context, arg UpdateSoftwarePolicyParams) (int64, error) {
@@ -605,6 +933,9 @@ func (q *Queries) UpdateSoftwarePolicy(ctx context.Context, arg UpdateSoftwarePo
 		arg.UnverifiedConfirmed,
 		arg.MaintWindow,
 		arg.Enabled,
+		arg.UseRings,
+		arg.RequireApproval,
+		arg.Prompts,
 	)
 	if err != nil {
 		return 0, err
@@ -636,6 +967,36 @@ func (q *Queries) UpsertPolicyAttempt(ctx context.Context, arg UpsertPolicyAttem
 		arg.DeploymentID,
 		arg.Failures,
 		arg.CreatedAt,
+	)
+	return err
+}
+
+const upsertSoftwareApproval = `-- name: UpsertSoftwareApproval :exec
+INSERT INTO software_approvals (org_id, package_id, version, decision, note, decided_by, decided_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (org_id, package_id, version) DO UPDATE SET decision = EXCLUDED.decision, note = EXCLUDED.note,
+    decided_by = EXCLUDED.decided_by, decided_at = EXCLUDED.decided_at
+`
+
+type UpsertSoftwareApprovalParams struct {
+	OrgID     uuid.UUID
+	PackageID uuid.UUID
+	Version   string
+	Decision  string
+	Note      string
+	DecidedBy *uuid.UUID
+	DecidedAt time.Time
+}
+
+func (q *Queries) UpsertSoftwareApproval(ctx context.Context, arg UpsertSoftwareApprovalParams) error {
+	_, err := q.db.Exec(ctx, upsertSoftwareApproval,
+		arg.OrgID,
+		arg.PackageID,
+		arg.Version,
+		arg.Decision,
+		arg.Note,
+		arg.DecidedBy,
+		arg.DecidedAt,
 	)
 	return err
 }

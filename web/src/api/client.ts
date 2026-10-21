@@ -15,6 +15,7 @@ export type Group = components["schemas"]["Group"];
 export type GroupMembers = components["schemas"]["GroupMembers"];
 export type Pkg = components["schemas"]["Package"];
 export type PackageDetail = components["schemas"]["PackageDetail"];
+export type OverlaySource = components["schemas"]["OverlaySource"];
 export type Installer = components["schemas"]["Installer"];
 export type PackageOverride = components["schemas"]["PackageOverride"];
 export type Detection = components["schemas"]["Detection"];
@@ -49,10 +50,22 @@ export type AgentRelease = components["schemas"]["AgentRelease"];
 export type AgentRollout = components["schemas"]["AgentRollout"];
 export type AgentRolloutStatus = components["schemas"]["AgentRolloutStatus"];
 export type SoftwarePolicy = components["schemas"]["SoftwarePolicy"];
+export type SoftwareRollout = components["schemas"]["SoftwareRollout"];
+export type SoftwareApprovals = components["schemas"]["SoftwareApprovals"];
+export type SoftwareApprovalItem = components["schemas"]["SoftwareApprovalItem"];
 export type ComplianceRow = components["schemas"]["ComplianceRow"];
 export type ReportOverview = components["schemas"]["ReportOverview"];
+export type LifecycleRow = components["schemas"]["LifecycleRow"];
+export type LifecycleReport = components["schemas"]["LifecycleReport"];
 export type JobDetail = components["schemas"]["JobDetail"];
 export type Dashboard = components["schemas"]["Dashboard"];
+export type Vulnerability = components["schemas"]["Vulnerability"];
+export type VulnerabilityOverview = components["schemas"]["VulnerabilityOverview"];
+export type VulnerabilityStatus = components["schemas"]["VulnerabilityStatus"];
+export type VulnerabilityDevice = components["schemas"]["VulnerabilityDevice"];
+export type DeviceVulnerability = components["schemas"]["DeviceVulnerability"];
+export type VulnerabilityProduct = components["schemas"]["VulnerabilityProduct"];
+export type VulnerabilitySyncReport = components["schemas"]["VulnerabilitySyncReport"];
 
 let csrfToken = "";
 
@@ -134,3 +147,10 @@ export async function uploadBrandingAsset(kind: BrandingAssetKind, file: File): 
   if (!res.ok) throw new ApiError(res.status, data.error?.code ?? "error", data.error?.message ?? `Upload failed (HTTP ${res.status})`);
   return data as unknown as BrandingView;
 }
+export type InstallPrompts = components["schemas"]["InstallPrompts"];
+export type DeviceView = components["schemas"]["DeviceView"];
+export type ScriptItem = components["schemas"]["ScriptItem"];
+export type ScriptDetail = components["schemas"]["ScriptDetail"];
+export type ScriptRun = components["schemas"]["ScriptRun"];
+export type ScriptRunDetail = components["schemas"]["ScriptRunDetail"];
+export type ScriptOutput = components["schemas"]["ScriptOutput"];

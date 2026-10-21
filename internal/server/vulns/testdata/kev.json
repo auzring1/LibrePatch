@@ -1,0 +1,50 @@
+{
+  "title": "CISA Catalog of Known Exploited Vulnerabilities",
+  "catalogVersion": "2026.10.15",
+  "dateReleased": "2026-10-15T14:20:01.1234Z",
+  "count": 4,
+  "vulnerabilities": [
+    {
+      "cveID": "CVE-2026-0001",
+      "vendorProject": "Google",
+      "product": "Chromium V8",
+      "vulnerabilityName": "Google Chromium V8 Type Confusion Vulnerability",
+      "dateAdded": "2026-10-01",
+      "shortDescription": "Google Chromium V8 contains a type confusion vulnerability.",
+      "requiredAction": "Apply mitigations per vendor instructions or discontinue use of the product if mitigations are unavailable.",
+      "dueDate": "2026-10-22",
+      "knownRansomwareCampaignUse": "Unknown",
+      "notes": "",
+      "cwes": ["CWE-843"]
+    },
+    {
+      "cveID": "cve-2026-0002",
+      "vendorProject": "Microsoft",
+      "product": "Windows",
+      "vulnerabilityName": "Microsoft Windows Privilege Escalation Vulnerability",
+      "dateAdded": "2026-10-08",
+      "shortDescription": "Windows contains an elevation of privilege vulnerability.",
+      "requiredAction": "Apply updates per vendor instructions.",
+      "dueDate": "2026-10-29",
+      "knownRansomwareCampaignUse": "Known"
+    },
+    {
+      "cveID": "not-a-cve",
+      "vendorProject": "X",
+      "product": "Y",
+      "vulnerabilityName": "Broken entry",
+      "dateAdded": "2026-10-08",
+      "dueDate": "2026-10-29",
+      "knownRansomwareCampaignUse": "Unknown"
+    },
+    {
+      "cveID": "CVE-2026-0001",
+      "vendorProject": "Google",
+      "product": "Chromium V8",
+      "vulnerabilityName": "Duplicate of the first entry",
+      "dateAdded": "2026-10-01",
+      "dueDate": "2026-10-22",
+      "knownRansomwareCampaignUse": "Unknown"
+    }
+  ]
+}

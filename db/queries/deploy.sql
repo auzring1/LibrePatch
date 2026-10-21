@@ -1,7 +1,7 @@
 -- name: InsertDeployment :exec
 INSERT INTO deployments (id, org_id, name, action, package_id, version_id, scope, target_group_ids, target_device_ids,
-    starts_at, expires_at, maint_window, unverified_confirmed, status, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active', $14);
+    starts_at, expires_at, maint_window, unverified_confirmed, status, created_by, prompts)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active', $14, $15);
 
 -- name: GetDeployment :one
 SELECT d.*, p.name AS package_name, p.identifier AS package_identifier, v.version AS version
@@ -60,9 +60,9 @@ ORDER BY si.device_id, lower(si.name), si.scope, si.user_sid, si.item_key;
 SELECT device_id, sid, username FROM device_users WHERE device_id = ANY($1::uuid[]) AND profile_path <> '' ORDER BY device_id, sid;
 
 -- name: InsertJob :exec
-INSERT INTO jobs (id, org_id, deployment_id, device_id, user_sid, type, title, body, depends_on, depends_when, not_before, expires_at, attempt)
+INSERT INTO jobs (id, org_id, deployment_id, device_id, user_sid, type, title, body, depends_on, depends_when, not_before, expires_at, attempt, script_run_id)
 VALUES (@id, @org_id, @deployment_id, @device_id, @user_sid, @type, @title, @body, @depends_on,
-        COALESCE(NULLIF(@depends_when::text, ''), 'success'), @not_before, @expires_at, @attempt);
+        COALESCE(NULLIF(@depends_when::text, ''), 'success'), @not_before, @expires_at, @attempt, sqlc.narg('script_run_id'));
 
 -- name: GetJob :one
 SELECT * FROM jobs WHERE id = $1 AND org_id = $2;

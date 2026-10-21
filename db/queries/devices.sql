@@ -90,7 +90,7 @@ UPDATE devices SET online = false, last_seen_at = $2 WHERE id = $1;
 UPDATE devices SET online = false WHERE online;
 
 -- name: UpdateDeviceHeartbeat :exec
-UPDATE devices SET last_seen_at = $2, uptime_s = $3, pending_reboot = $4, logged_on_user = $5 WHERE id = $1;
+UPDATE devices SET last_seen_at = $2, uptime_s = $3, pending_reboot = $4, logged_on_user = $5, system_drive_free_bytes = $6, peer_port = $7 WHERE id = $1;
 
 -- name: UpdateDeviceHardware :execrows
 UPDATE devices

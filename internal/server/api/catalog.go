@@ -35,16 +35,20 @@ type packageView struct {
 	Verified    bool      `json:"verified"`
 	// VerifiedSource says why the package counts as verified: "tests" (it passed the VM test matrix) or "organization" (an
 	// administrator marked it after testing it); empty when it is not verified.
-	VerifiedSource string    `json:"verified_source"`
-	SelfUpdating   bool      `json:"self_updating"`
-	ImportedAt     time.Time `json:"imported_at"`
-	VersionCount   int32     `json:"version_count"`
+	VerifiedSource string `json:"verified_source"`
+	// VerifiedBy names the overlay that vouches for the package when VerifiedSource is "overlay".
+	VerifiedBy   string    `json:"verified_by,omitempty"`
+	SelfUpdating bool      `json:"self_updating"`
+	ImportedAt   time.Time `json:"imported_at"`
+	VersionCount int32     `json:"version_count"`
 }
 
-func verifiedSourceOf(verified, byOrg bool) string {
+func verifiedSourceOf(verified, byOrg bool, byOverlay string) string {
 	switch {
 	case byOrg:
 		return "organization"
+	case byOverlay != "":
+		return "overlay"
 	case verified:
 		return "tests"
 	}
@@ -52,7 +56,7 @@ func verifiedSourceOf(verified, byOrg bool) string {
 }
 
 func viewPackage(p dbq.CatalogPackage, versions int32) packageView {
-	return packageView{VerifiedSource: verifiedSourceOf(p.Verified, p.VerifiedByOrg), ID: p.ID, Source: p.Source, Identifier: p.Identifier, Name: p.Name, Publisher: p.Publisher, Homepage: p.Homepage,
+	return packageView{VerifiedSource: verifiedSourceOf(p.Verified, p.VerifiedByOrg, p.VerifiedByOverlay), VerifiedBy: p.VerifiedByOverlay, ID: p.ID, Source: p.Source, Identifier: p.Identifier, Name: p.Name, Publisher: p.Publisher, Homepage: p.Homepage,
 		License: p.License, Description: p.Description, Verified: p.Verified, SelfUpdating: p.SelfUpdating, ImportedAt: p.ImportedAt, VersionCount: versions}
 }
 
@@ -82,7 +86,7 @@ func (s *server) listPackages(w http.ResponseWriter, r *http.Request) {
 	items := make([]packageView, 0, len(rows))
 	for _, p := range rows {
 		items = append(items, packageView{ID: p.ID, Source: p.Source, Identifier: p.Identifier, Name: p.Name, Publisher: p.Publisher,
-			Homepage: p.Homepage, License: p.License, Description: p.Description, Verified: p.Verified, VerifiedSource: verifiedSourceOf(p.Verified, p.VerifiedByOrg), SelfUpdating: p.SelfUpdating,
+			Homepage: p.Homepage, License: p.License, Description: p.Description, Verified: p.Verified, VerifiedSource: verifiedSourceOf(p.Verified, p.VerifiedByOrg, p.VerifiedByOverlay), SelfUpdating: p.SelfUpdating,
 			ImportedAt: p.ImportedAt, VersionCount: p.VersionCount})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
@@ -118,10 +122,10 @@ func (s *server) searchCatalog(w http.ResponseWriter, r *http.Request) {
 	for _, x := range rows {
 		have[strings.ToLower(x.Identifier)] = true
 		imported = append(imported, packageView{ID: x.ID, Source: x.Source, Identifier: x.Identifier, Name: x.Name, Publisher: x.Publisher,
-			Verified: x.Verified, VerifiedSource: verifiedSourceOf(x.Verified, x.VerifiedByOrg), SelfUpdating: x.SelfUpdating, ImportedAt: x.ImportedAt, VersionCount: x.VersionCount})
+			Verified: x.Verified, VerifiedSource: verifiedSourceOf(x.Verified, x.VerifiedByOrg, x.VerifiedByOverlay), VerifiedBy: x.VerifiedByOverlay, SelfUpdating: x.SelfUpdating, ImportedAt: x.ImportedAt, VersionCount: x.VersionCount})
 	}
 	sugg := []suggestionView{}
-	for _, e := range s.Catalog.Overlay.Known() {
+	for _, e := range s.Catalog.Overlay.KnownFor(principalFrom(r).OrgID) {
 		if strings.Contains(strings.ToLower(e.Identifier), q) && !have[strings.ToLower(e.Identifier)] {
 			sugg = append(sugg, suggestionView{Identifier: e.Identifier, SelfUpdating: e.SelfUpdating, Note: e.Note})
 		}
@@ -282,12 +286,13 @@ func (s *server) getPackage(w http.ResponseWriter, r *http.Request) {
 		Excluded        bool                `json:"excluded"`
 		UserScopePolicy string              `json:"user_scope_policy"`
 		SelfUpdate      string              `json:"self_update_policy"`
+		Processes       []string            `json:"processes"`
 	}
-	ov := ovView{SilentArgs: []string{}, ExtraDetection: []catalog.Detection{}}
+	ov := ovView{SilentArgs: []string{}, ExtraDetection: []catalog.Detection{}, Processes: []string{}}
 	if o, err := q.GetPackageOverride(r.Context(), dbq.GetPackageOverrideParams{OrgID: pkg.OrgID, PackageID: pkg.ID}); err == nil {
 		var det []catalog.Detection
 		_ = json.Unmarshal(o.ExtraDetection, &det)
-		ov = ovView{SilentArgs: nzs(o.SilentArgs), ExtraDetection: nzdet(det), Pin: o.Pin, Excluded: o.Excluded, UserScopePolicy: o.UserScopePolicy, SelfUpdate: o.SelfUpdatePolicy}
+		ov = ovView{SilentArgs: nzs(o.SilentArgs), ExtraDetection: nzdet(det), Pin: o.Pin, Excluded: o.Excluded, UserScopePolicy: o.UserScopePolicy, SelfUpdate: o.SelfUpdatePolicy, Processes: nzs(o.Processes)}
 	}
 	orgPolicy := "report_only"
 	if os, err := q.GetOrgSettings(r.Context(), pkg.OrgID); err == nil {
@@ -312,8 +317,29 @@ func (s *server) getPackage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// What a signed overlay says about the package (D122); null when none does.
+	type overlayView struct {
+		Source         string   `json:"source"`
+		Note           string   `json:"note"`
+		SelfUpdating   *bool    `json:"self_updating"`
+		Verified       bool     `json:"verified"`
+		VerifiedNote   string   `json:"verified_note"`
+		SilentArgs     []string `json:"silent_args"`
+		DetectionRules int      `json:"detection_rules"`
+		Processes      []string `json:"processes"`
+	}
+	var ovl *overlayView
+	if s.Catalog != nil && s.Catalog.Overlay != nil {
+		if e, ok := s.Catalog.Overlay.EntryFor(pkg.OrgID, pkg.Identifier); ok && e.Source != "" {
+			ovl = &overlayView{Source: e.Source, Note: e.Note, Verified: e.Verified, VerifiedNote: e.VerifiedNote, SilentArgs: nzs(e.SilentArgs), DetectionRules: len(e.ExtraDetection), Processes: nzs(e.Processes)}
+			if e.SelfUpdatingSet {
+				v := e.SelfUpdating
+				ovl.SelfUpdating = &v
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"package": viewPackage(pkg, int32(len(vs))), "versions": views, "override": ov, // #nosec G115 -- small
-		"effective_user_scope_policy": effective, "effective_user_scope_policy_source": from, "verification": ver})
+		"effective_user_scope_policy": effective, "effective_user_scope_policy_source": from, "verification": ver, "overlay": ovl})
 }
 
 func nzs(s []string) []string {

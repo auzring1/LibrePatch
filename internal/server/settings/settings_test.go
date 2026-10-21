@@ -287,3 +287,33 @@ func TestStoredSettingsWithARetiredEventStillLoad(t *testing.T) {
 		t.Fatalf("the retired choice must be dropped, the others kept: %v", ev)
 	}
 }
+
+// An installation that saved its notification rules before an event was added (the four rules of the first version)
+// must keep loading and saving them: the new events appear, switched off, and the saved rules keep their values.
+func TestStoredRulesGainNewlyAddedEvents(t *testing.T) {
+	sec := section(t, "notifications")
+	old := []any{}
+	for _, ev := range []string{"failed_install", "update_held", "device_offline", "agent_out_of_date"} {
+		old = append(old, map[string]any{"event": ev, "enabled": ev == "device_offline", "email": true, "webhook": false,
+			"recipients": []any{"ops@example.org"}, "threshold": 48, "quiet_hours": true})
+	}
+	norm, errs := sec.Normalize(dropUnknown(sec.Fields, map[string]any{"rules": old}))
+	if len(errs) != 0 {
+		t.Fatalf("a stored document from before the new events must still validate: %v", errs)
+	}
+	rules := norm["rules"].([]any)
+	if len(rules) != len(Events) {
+		t.Fatalf("got %d rules for %d events", len(rules), len(Events))
+	}
+	byEvent := map[string]map[string]any{}
+	for _, r := range rules {
+		m := r.(map[string]any)
+		byEvent[m["event"].(string)] = m
+	}
+	if r := byEvent["device_offline"]; r["enabled"] != true || r["threshold"] != float64(48) && r["threshold"] != 48 {
+		t.Fatalf("the saved rule lost its values: %v", r)
+	}
+	if r, ok := byEvent["low_disk"]; !ok || r["enabled"] != false {
+		t.Fatalf("a new event must appear switched off: %v", r)
+	}
+}

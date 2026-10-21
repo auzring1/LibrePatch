@@ -42,7 +42,7 @@ enrollment_tokens(id, org_id, site_id, token_hash, max_uses, used_count, expires
                   require_approval bool, default_group_ids uuid[], created_by, revoked_at)
 devices(id, org_id, site_id, status[pending|active|revoked|retired], hostname, fqdn, domain,
         os_caption, os_build, os_ubr, arch, serial, manufacturer, model, chassis,
-        cpu, ram_bytes, uptime_s, pending_reboot, bitlocker jsonb, last_user, ips inet[],
+        cpu, ram_bytes, uptime_s, pending_reboot, system_drive_free_bytes, bitlocker jsonb, last_user, ips inet[],
         agent_version, enrolled_at, approved_by, last_seen_at, online bool,
         inventory_rev bigint, hw_rev bigint, local_policy jsonb)
 device_certs(serial numeric pk, device_id, public_key_sha256, not_before, not_after,
@@ -183,8 +183,19 @@ api_tokens(id, org_id, user_id, name, prefix, token_hash (sha256, unique), scope
 webauthn_credentials(id, user_id, credential_id unique, record (library JSON), sign_count, name, created_at, last_used_at)
 webauthn_ceremonies(id, user_id, kind[register|login], data, expires_at)             -- single use, 5 minutes
 software_policies(id, org_id, name, kind[keep_updated|baseline], package_id, group_ids[], delay_days, only_new_devices,
-                  unverified_confirmed, maint_window jsonb, enabled, created_by, created_at, updated_at, unique(org_id, name))
+                  unverified_confirmed, maint_window jsonb, enabled, use_rings bool, require_approval bool,
+                  created_by, created_at, updated_at, unique(org_id, name))
 policy_attempts(policy_id, device_id, version, deployment_id, failures, created_at, pk(policy_id, device_id))
+catalog_overlays(id, org_id, label, kind[upload|url], url, public_key, enabled, priority, doc_name, doc_version, doc_issued_at, document jsonb,
+                 entries, fetched_at, checked_at, status[new|ok|error], last_error, etag, created_by, unique(org_id, label))
+                 -- catalog_packages.verified_by_overlay = label of the overlay that vouches for the package ('' = none)
+cves(id pk, published, modified, summary, cvss, severity[low|medium|high|critical], kev, kev_name, kev_added, kev_due, kev_ransomware, kev_action)  -- public data: no organization
+cve_ranges(cve_id, vendor, product, start_key bytea, start_incl, start_text, end_key bytea, end_incl, end_text)
+cve_products(id, org_id, normalized_name, vendor, product, source[builtin|user], enabled, unique(org_id, normalized_name, vendor, product))
+vuln_feeds(feed pk, last_ok, last_attempt, status[new|ok|error], last_error, etag, items)
+software_approvals(org_id, package_id, version, decision[approved|declined], note, decided_by, decided_at, pk(org_id, package_id, version))
+software_holds(id, org_id, policy_id, version, ring_id -> wu_rings, reason, created_at, released_at, released_by,
+               unique open hold per (policy_id, version, ring_id))
 ```
 Invariants: at most one open `agent_update` job per device (the planner excludes devices with one); a release that is the rollout target cannot be deleted; the organization always keeps at least one active organization-wide administrator (enforced on disable, delete and role removal); a site cannot be deleted while it has devices or enrollment tokens.
 

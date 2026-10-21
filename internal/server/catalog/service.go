@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"sort"
 	"strings"
@@ -27,6 +28,8 @@ type Service struct {
 	Content *Store
 	Overlay *Overlay
 	Now     func() time.Time
+	// HTTP fetches overlay sources; nil uses a client that refuses addresses on this server itself (tests replace it).
+	HTTP *http.Client
 }
 
 // ErrInvalid wraps validation problems in administrator input.
@@ -90,10 +93,7 @@ func (s *Service) Import(ctx context.Context, org, user uuid.UUID, identifier, v
 func (s *Service) store(ctx context.Context, org, user uuid.UUID, p *Parsed) (*ImportResult, error) {
 	res := &ImportResult{Identifier: p.Identifier, Version: p.Version, Installers: len(p.Installers)}
 	err := store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
-		self := false
-		if e, ok := s.overlay().Entry(p.Identifier); ok {
-			self = e.SelfUpdating
-		}
+		self, vouch, tests := s.overlayState(org, p.Identifier)
 		pkgID, err := q.UpsertCatalogPackage(ctx, dbq.UpsertCatalogPackageParams{ID: uuid.New(), OrgID: org, Source: "winget",
 			Identifier: p.Identifier, Name: p.Name, Publisher: p.Publisher, Homepage: p.Homepage, License: p.License,
 			Description: p.Summary, SelfUpdating: self, ImportedBy: &user})
@@ -128,8 +128,7 @@ func (s *Service) store(ctx context.Context, org, user uuid.UUID, p *Parsed) (*I
 			}
 		}
 		res.PackageID, res.VersionID = pkgID, verID
-		verified := s.overlay().Verified(p.Identifier, "")
-		return q.SetPackageVerified(ctx, dbq.SetPackageVerifiedParams{OrgID: org, ID: pkgID, Verified: verified})
+		return q.SetPackageOverlayState(ctx, dbq.SetPackageOverlayStateParams{OrgID: org, ID: pkgID, SelfUpdating: self, Overlay: vouch, TestsPassed: tests})
 	})
 	if err != nil {
 		return nil, err
@@ -368,6 +367,8 @@ type Override struct {
 	Excluded        bool        `json:"excluded"`
 	UserScopePolicy string      `json:"user_scope_policy"`
 	SelfUpdate      string      `json:"self_update_policy"`
+	// Processes are the image names of the programs an update replaces (D124). nil = leave what is stored.
+	Processes *[]string `json:"processes"`
 }
 
 // ValidatePin accepts "", "latest", "= <version>" or "< <version>".
@@ -402,13 +403,24 @@ func (s *Service) SetOverride(ctx context.Context, org, user, pkg uuid.UUID, o O
 	if o.SelfUpdate != "" && o.SelfUpdate != "defer_to_vendor" && o.SelfUpdate != "enforce" {
 		return invalid("self_update_policy must be defer_to_vendor or enforce")
 	}
+	if o.Processes != nil {
+		if err := installer.ValidateProcessNames(*o.Processes); err != nil {
+			return invalid("%v", err)
+		}
+	}
 	q := dbq.New(s.Pool)
 	if _, err := q.GetCatalogPackage(ctx, dbq.GetCatalogPackageParams{ID: pkg, OrgID: org}); err != nil {
 		return err
 	}
+	var procs []string
+	if o.Processes != nil {
+		procs = *o.Processes
+	} else if cur, err := q.GetPackageOverride(ctx, dbq.GetPackageOverrideParams{OrgID: org, PackageID: pkg}); err == nil {
+		procs = cur.Processes // a client that does not know about programs must not erase them
+	}
 	det, _ := json.Marshal(nzd(o.ExtraDetection))
 	return q.UpsertPackageOverride(ctx, dbq.UpsertPackageOverrideParams{OrgID: org, PackageID: pkg, SilentArgs: nz(o.SilentArgs),
-		ExtraDetection: det, Pin: o.Pin, Excluded: o.Excluded, UserScopePolicy: o.UserScopePolicy, SelfUpdatePolicy: o.SelfUpdate, UpdatedBy: &user})
+		ExtraDetection: det, Pin: o.Pin, Excluded: o.Excluded, UserScopePolicy: o.UserScopePolicy, SelfUpdatePolicy: o.SelfUpdate, Processes: nz(procs), UpdatedBy: &user})
 }
 
 func contains(s []string, x string) bool {
@@ -534,7 +546,7 @@ func (s *Service) SetOrgVerified(ctx context.Context, org, user, pkgID uuid.UUID
 	if vs, err := q.ListPackageVersions(ctx, pkg.ID); err == nil && len(vs) > 0 {
 		ch.Version = vs[0].Version
 	}
-	ch.AfterVerified = verified || ch.TestsPassed
+	ch.AfterVerified = verified || ch.TestsPassed || pkg.VerifiedByOverlay != ""
 	err = q.SetPackageOrgVerified(ctx, dbq.SetPackageOrgVerifiedParams{OrgID: org, ID: pkg.ID, ByOrg: verified, TestsPassed: ch.TestsPassed, By: user,
 		At: time.Now().UTC(), Version: ch.Version})
 	if err != nil {

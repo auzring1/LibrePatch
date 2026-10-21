@@ -49,10 +49,12 @@ func Interfaces() []*agentv1.NetInterface {
 		for _, a := range addrs {
 			if ipn, ok := a.(*net.IPNet); ok && !ipn.IP.IsLinkLocalUnicast() {
 				ni.Addresses = append(ni.Addresses, ipn.IP.String())
+				ni.Cidrs = append(ni.Cidrs, ipn.String())
 			}
 		}
 		if len(ni.Addresses) > 0 {
 			slices.Sort(ni.Addresses)
+			slices.Sort(ni.Cidrs)
 			out = append(out, ni)
 		}
 		if len(out) >= 32 {

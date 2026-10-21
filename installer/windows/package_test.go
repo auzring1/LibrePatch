@@ -90,7 +90,7 @@ func launchConditions(t *testing.T) []node {
 }
 
 func TestPublicInterfaceIsOnlyServerTokenAllowedjobs(t *testing.T) {
-	want := map[string]bool{"SERVER": true, "TOKEN": true, "ALLOWEDJOBS": true}
+	want := map[string]bool{"SERVER": true, "TOKEN": true, "ALLOWEDJOBS": true, "ALLOWSCRIPTS": true}
 	// Other upper-case property names are public on the msiexec command line too; these are the ones
 	// that exist for a reason and take no part in the agent command line.
 	other := map[string]bool{"AGENTSERVICEPATH": true, "WINBUILD": true, "DQ": true, "ARPNOMODIFY": true, "ARPCOMMENTS": true}
@@ -98,7 +98,7 @@ func TestPublicInterfaceIsOnlyServerTokenAllowedjobs(t *testing.T) {
 	for _, p := range pkg(t).find("Property") {
 		id := p.attr("Id")
 		if id == strings.ToUpper(id) && !want[id] && !other[id] {
-			t.Errorf("unexpected public (upper-case) property %q: the MSI interface is SERVER, TOKEN, ALLOWEDJOBS", id)
+			t.Errorf("unexpected public (upper-case) property %q: the MSI interface is SERVER, TOKEN, ALLOWEDJOBS, ALLOWSCRIPTS", id)
 		}
 		got[id] = p
 	}
@@ -112,7 +112,7 @@ func TestPublicInterfaceIsOnlyServerTokenAllowedjobs(t *testing.T) {
 		}
 	}
 	// Private (mixed-case) property names used by the sequence must not be upper-case.
-	for _, id := range []string{"SetupDir", "AgentArgsServer", "AgentArgsToken", "AgentArgsJobs"} {
+	for _, id := range []string{"SetupDir", "AgentArgsServer", "AgentArgsToken", "AgentArgsJobs", "AgentArgsScripts"} {
 		if id == strings.ToUpper(id) {
 			t.Errorf("%s would be public", id)
 		}
@@ -705,5 +705,27 @@ func TestWorkflowJobMSI(t *testing.T) {
 		if strings.Contains(line, "uses:") && !pin.MatchString(line) {
 			t.Errorf("action not pinned by SHA: %s", strings.TrimSpace(line))
 		}
+	}
+}
+
+// ALLOWSCRIPTS=1 switches on running scripts (D127). Only its exact value "1" is looked at: it is never put into a command line.
+func TestAllowScriptsIsOnlyComparedNeverPassedOn(t *testing.T) {
+	root := pkg(t)
+	for _, sp := range root.find("SetProperty") {
+		if strings.Contains(sp.attr("Value"), "[ALLOWSCRIPTS]") {
+			t.Errorf("%s passes ALLOWSCRIPTS on to a command line", sp.attr("Id"))
+		}
+	}
+	found := false
+	for _, sp := range root.find("SetProperty") {
+		if sp.attr("Id") == "AgentArgsScripts" {
+			found = true
+			if sp.attr("Value") != " --allow-scripts" || !strings.Contains(sp.attr("Condition"), `ALLOWSCRIPTS="1"`) {
+				t.Errorf("AgentArgsScripts must add a fixed flag only for ALLOWSCRIPTS=\"1\": %q if %q", sp.attr("Value"), sp.attr("Condition"))
+			}
+		}
+	}
+	if !found {
+		t.Fatal("AgentArgsScripts is missing")
 	}
 }

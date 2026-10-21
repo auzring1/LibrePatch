@@ -14,6 +14,7 @@ import (
 	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
 	"github.com/auzring1/librepatch/internal/server/audit"
 	"github.com/auzring1/librepatch/internal/server/deploy"
+	"github.com/auzring1/librepatch/internal/server/rings"
 	"github.com/auzring1/librepatch/internal/server/store"
 )
 
@@ -202,38 +203,11 @@ func (s *Service) ringMembers(ctx context.Context, org uuid.UUID, r dbq.WuRing) 
 	return m, nil
 }
 
-// gate says whether an update has proven itself in a ring well enough for the next ring: enough
-// devices reported, the soak time passed, and the success rate meets the threshold. A failure rate
-// above the allowed one raises a hold at once (reason non-empty) instead of waiting for the soak.
+// gate is the shared ring rule (internal/server/rings) applied to this package's types.
 func gate(st attemptStats, ring dbq.WuRing, h holdState, now time.Time, needs bool) (passed bool, holdReason string) {
-	if h.released {
-		return true, ""
-	}
-	if h.open {
-		return false, ""
-	}
-	if st.total == 0 {
-		// Nothing was tried here yet. If devices of the ring still need the update the ring has not
-		// started (the next ring must wait); if none does there is nothing to learn from this ring.
-		return !needs, ""
-	}
-	finished := st.installed + st.failed
-	if finished == 0 {
-		return false, ""
-	}
-	if st.failed*100 > (100-int(ring.SuccessThreshold))*finished {
-		return false, fmt.Sprintf("ring %q: %d of %d devices failed to install it (allowed failure rate %d%%)", ring.Name, st.failed, finished, 100-ring.SuccessThreshold)
-	}
-	soak := time.Duration(ring.SoakHours) * time.Hour
-	elapsed := now.Sub(st.first)
-	if elapsed < soak {
-		return false, ""
-	}
-	// At least half of the ring must have reported, unless a week beyond the soak time has passed.
-	if finished < (st.total+1)/2 && elapsed < soak+7*24*time.Hour {
-		return false, ""
-	}
-	return true, ""
+	return rings.Gate(rings.Stats{Total: st.total, Installed: st.installed, Failed: st.failed, First: st.first},
+		rings.Ring{Name: ring.Name, SoakHours: ring.SoakHours, SuccessThreshold: ring.SuccessThreshold},
+		rings.HoldState{Open: h.open, Released: h.released}, now, needs)
 }
 
 type approvedUpdate struct {

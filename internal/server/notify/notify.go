@@ -18,7 +18,9 @@ import (
 
 	"github.com/auzring1/librepatch/gen/dbq"
 	"github.com/auzring1/librepatch/internal/server/branding"
+	"github.com/auzring1/librepatch/internal/server/lifecycle"
 	"github.com/auzring1/librepatch/internal/server/settings"
+	"github.com/auzring1/librepatch/internal/server/vulns"
 	"github.com/auzring1/librepatch/internal/shared/ptr"
 	"github.com/auzring1/librepatch/internal/shared/text"
 	"github.com/auzring1/librepatch/internal/shared/vercmp"
@@ -284,5 +286,168 @@ func (s *Service) scan(ctx context.Context) {
 				}
 			}
 		}
+	}
+	s.scanDeviceHealth(ctx, org, rules, now)
+}
+
+// isoWeek names the calendar week of t ("2026-W43"): a reminder that should come at most once a week uses it in its key.
+func isoWeek(t time.Time) string {
+	y, w := t.UTC().ISOWeek()
+	return fmt.Sprintf("%d-W%02d", y, w)
+}
+
+func deviceData(id uuid.UUID, host string, extra map[string]any) map[string]any {
+	d := map[string]any{"device": map[string]any{"id": id.String(), "hostname": host}}
+	for k, v := range extra {
+		d[k] = v
+	}
+	return d
+}
+
+// scanDeviceHealth raises the events about a device's condition: a restart that has waited too long, a full system
+// drive, a disk without BitLocker, and an operating system that is, or soon will be, out of support. Each has a
+// de-duplication key that repeats as rarely as the event deserves (weekly, monthly, or once).
+func (s *Service) scanDeviceHealth(ctx context.Context, org uuid.UUID, rules map[string]settings.V, now time.Time) {
+	q := dbq.New(s.Pool)
+	if r, ok := rules["restart_pending_long"]; ok && r.Int("threshold") > 0 {
+		days := r.Int("threshold")
+		if rows, err := q.RestartPendingDevices(ctx, dbq.RestartPendingDevicesParams{OrgID: org, UptimeS: int64(days) * 86400}); err == nil {
+			for _, d := range rows {
+				up := int(d.UptimeS / 86400)
+				s.Emit(ctx, org, Event{Name: "restart_pending_long", Key: "restart:" + d.ID.String() + ":" + isoWeek(now),
+					Subject: fmt.Sprintf("%s has needed a restart for a while (%d days since the last one)", d.Hostname, up),
+					Text:    fmt.Sprintf("The device %s needs a restart and has been running for %d days without one.", d.Hostname, up),
+					Data:    deviceData(d.ID, d.Hostname, map[string]any{"days_without_restart": up})})
+			}
+		}
+	}
+	if r, ok := rules["low_disk"]; ok && r.Int("threshold") > 0 {
+		gb := r.Int("threshold")
+		limit := int64(gb) << 30
+		if rows, err := q.LowDiskDevices(ctx, dbq.LowDiskDevicesParams{OrgID: org, SystemDriveFreeBytes: &limit}); err == nil {
+			for _, d := range rows {
+				free := float64(d.FreeBytes) / float64(1<<30)
+				s.Emit(ctx, org, Event{Name: "low_disk", Key: "disk:" + d.ID.String() + ":" + isoWeek(now),
+					Subject: fmt.Sprintf("%s has %.1f GB free on its system drive", d.Hostname, free),
+					Text:    fmt.Sprintf("The system drive of %s has %.1f GB free, less than the %d GB you set. Installs may fail when the drive is full.", d.Hostname, free, gb),
+					Data:    deviceData(d.ID, d.Hostname, map[string]any{"free_gb": float64(int(free*10)) / 10, "threshold_gb": gb})})
+			}
+		}
+	}
+	if _, ok := rules["bitlocker_off"]; ok {
+		if rows, err := q.UnprotectedDiskDevices(ctx, org); err == nil {
+			for _, d := range rows {
+				s.Emit(ctx, org, Event{Name: "bitlocker_off", Key: "bitlocker:" + d.ID.String() + ":" + now.UTC().Format("2006-01"),
+					Subject: fmt.Sprintf("BitLocker is off on %s (%s)", d.Hostname, d.Mounts),
+					Text:    fmt.Sprintf("The device %s reports that BitLocker does not protect these disks: %s.", d.Hostname, d.Mounts),
+					Data:    deviceData(d.ID, d.Hostname, map[string]any{"disks": d.Mounts})})
+			}
+		}
+	}
+	if r, ok := rules["os_end_of_support"]; ok {
+		s.scanEndOfSupport(ctx, org, r.Int("threshold"), now)
+	}
+	if _, ok := rules["exploited_vulnerability"]; ok {
+		s.scanExploited(ctx, org)
+	}
+}
+
+// scanExploited announces, once per CVE, a vulnerability on the CISA list of known exploited vulnerabilities that affects
+// devices of the organization.
+func (s *Service) scanExploited(ctx context.Context, org uuid.UUID) {
+	items, _, err := (&vulns.Store{Pool: s.Pool}).Overview(ctx, org, vulns.Filter{Exploited: true, Limit: 500})
+	if err != nil {
+		return
+	}
+	queued := s.queuedKeys(ctx, org, "exploited_vulnerability")
+	for _, it := range items {
+		key := "kev:" + it.ID
+		if queued[key] {
+			continue
+		}
+		due := ""
+		if it.KEVDue != nil {
+			due = it.KEVDue.UTC().Format("2006-01-02")
+		}
+		name := it.ExploitedName
+		if name == "" {
+			name = it.ID
+		}
+		text := fmt.Sprintf("%s (%s) is known to be exploited and affects %d device(s).", it.ID, name, it.Devices)
+		if due != "" {
+			text += " CISA asks for it to be fixed by " + due + "."
+		}
+		if len(it.FixedIn) > 0 {
+			text += " Fix: update to " + strings.Join(it.FixedIn, "; ") + "."
+		}
+		s.Emit(ctx, org, Event{Name: "exploited_vulnerability", Key: key,
+			Subject: fmt.Sprintf("%s is known to be exploited and affects %d device(s)", it.ID, it.Devices), Text: text,
+			Data: map[string]any{"cve": it.ID, "name": name, "devices": it.Devices, "fix_due": due, "ransomware": it.Ransomware, "severity": it.Severity}})
+	}
+}
+
+// maxEndOfSupportPerScan bounds how many new end-of-support events one scan raises, so a fleet that is all on one old
+// release is announced over a few scans instead of in one burst.
+const maxEndOfSupportPerScan = 200
+
+// queuedKeys returns the de-duplication keys already queued for an event, so a scan does not walk a whole fleet of
+// devices that were announced before.
+func (s *Service) queuedKeys(ctx context.Context, org uuid.UUID, event string) map[string]bool {
+	out := map[string]bool{}
+	rows, err := s.Pool.Query(ctx, `SELECT DISTINCT dedupe_key FROM notification_outbox WHERE org_id = $1 AND event = $2 AND dedupe_key <> ''`, org, event)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k string
+		if rows.Scan(&k) == nil {
+			out[k] = true
+		}
+	}
+	return out
+}
+
+func (s *Service) scanEndOfSupport(ctx context.Context, org uuid.UUID, warnDays int, now time.Time) {
+	rows, err := lifecycle.List(ctx, s.Pool, org, now, warnDays)
+	if err != nil {
+		return
+	}
+	queued := s.queuedKeys(ctx, org, "os_end_of_support")
+	raised := 0
+	for _, d := range rows {
+		if d.Status != lifecycle.Unsupported && (d.Status != lifecycle.EndingSoon || d.DaysLeft == nil || *d.DaysLeft > warnDays) {
+			continue
+		}
+		name := strings.TrimSpace(d.Product + " " + d.Release)
+		key := "eos:" + d.DeviceID.String() + ":" + name
+		if queued[key] {
+			continue
+		}
+		if raised++; raised > maxEndOfSupportPerScan {
+			return
+		}
+		var verb, when string
+		data := map[string]any{"os": name}
+		switch {
+		case d.End == nil: // older than any release in the table
+			verb = "has ended"
+		case d.Status == lifecycle.Unsupported:
+			when = d.End.UTC().Format("2006-01-02")
+			verb = "ended on " + when
+		default:
+			when = d.End.UTC().Format("2006-01-02")
+			verb = "ends on " + when
+		}
+		if when != "" {
+			data["end_of_support"] = when
+		}
+		if d.DaysLeft != nil {
+			data["days_left"] = *d.DaysLeft
+		}
+		s.Emit(ctx, org, Event{Name: "os_end_of_support", Key: key,
+			Subject: fmt.Sprintf("%s runs %s, whose support %s", d.Hostname, name, verb),
+			Text:    fmt.Sprintf("The device %s runs %s. Microsoft's support for it %s.", d.Hostname, name, verb),
+			Data:    deviceData(d.DeviceID, d.Hostname, data)})
 	}
 }
