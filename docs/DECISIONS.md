@@ -45,7 +45,7 @@ Defaults chosen during planning. Each entry can be overridden. Entries marked **
 | D19 | Caddy (not Traefik) for the GUI | Simpler config, automatic HTTPS, built-in internal CA for LAN mode |
 | D20 | bbolt for agent local state | Pure Go, tiny, transactional; no CGO |
 | D21 | Linters: `go vet` + `staticcheck` + `gosec` (Linux and Windows builds) + project semgrep rules, instead of golangci-lint | golangci-lint 2.14 cannot yet analyze Go 1.26+ code; revisit when it supports our toolchain |
-| D22 | Toolchain Go 1.27.2 (`toolchain` in go.mod; raised from 1.27.1 for the standard-library fixes govulncheck reported), `go 1.26` language level (required by dependencies) | Latest stable compiler for security fixes |
+| D22 | Toolchain Go 1.27.3 (`toolchain` in go.mod, the CI workflows and the server image; raised from 1.27.2, as before from 1.27.1, for the standard-library fixes govulncheck reported: GO-2026-6809 in crypto/x509), `go 1.26` language level (required by dependencies) | Latest stable compiler for security fixes |
 | D23 | Agent polls enrollment status every 60 s (±20 s jitter) while pending approval, not 5 min | Approval in the console takes effect within about a minute; cost is one small request per pending device |
 | D24 | Agent decides certificate renewal on server-corrected time (offset from HelloAck) | A wrong local clock caused renewal loops in testing; the server clock is the reference |
 | D25 | Job-signing EKU OID `1.3.6.1.4.1.32473.7231.1.1` (documentation PEN) until a real PEN is registered; agents will accept both during the transition | Go cannot encode 128-bit `2.25` UUID arcs in certificate EKUs, so a registered PEN is the clean fix |
