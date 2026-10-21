@@ -72,7 +72,6 @@ type ssoFx struct {
 	org  uuid.UUID
 	boss uuid.UUID
 	idp  *provider
-	rev  int64
 }
 
 func newSSOFx(t *testing.T) *ssoFx {
@@ -354,14 +353,14 @@ func TestSignInFailuresAreSpecificInTheAuditLogAndGeneralOnScreen(t *testing.T) 
 		f.s.ssoCallback(w, req)
 		return w
 	}
-	path, cookies := start()
+	path, _ := start()
 	if w := call(path, nil); !strings.Contains(where(w), "sso_error=expired") {
 		t.Fatalf("login CSRF: a callback from a browser without the cookie was accepted: %q", where(w))
 	}
 	if _, ok := f.user("hal@example.test"); ok {
 		t.Fatal("an account was created for a callback that did not come from the browser that began the sign-in")
 	}
-	path, cookies = start()
+	path, cookies := start()
 	for i, want := range []string{"sso=continue", "sso_error=expired"} {
 		if w := call(path, cookies); !strings.Contains(where(w), want) {
 			t.Fatalf("use %d: %q", i, where(w))

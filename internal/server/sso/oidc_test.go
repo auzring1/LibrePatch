@@ -23,7 +23,6 @@ type fakeIdP struct {
 	key            *rsa.PrivateKey
 	kid            string
 	issuer         string
-	claims         func(c jwt.MapClaims)
 	tokenReq       url.Values
 	jwksHits       atomic.Int32
 	idToken        string // when set, the token endpoint returns this instead of signing

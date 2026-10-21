@@ -177,19 +177,21 @@ func collect(nodes []nvdNode, tracked Tracked, out *[]Range) {
 
 func bestMetric(ms ...[]nvdMetric) (*float32, string) {
 	for _, list := range ms {
-		for _, m := range list {
-			sev := strings.ToLower(m.CVSSData.BaseSeverity)
-			if sev == "" {
-				sev = strings.ToLower(m.BaseSeverity)
-			}
-			switch sev {
-			case "low", "medium", "high", "critical":
-			default:
-				sev = ""
-			}
-			s := float32(m.CVSSData.BaseScore)
-			return &s, sev
+		if len(list) == 0 {
+			continue
 		}
+		m := list[0]
+		sev := strings.ToLower(m.CVSSData.BaseSeverity)
+		if sev == "" {
+			sev = strings.ToLower(m.BaseSeverity)
+		}
+		switch sev {
+		case "low", "medium", "high", "critical":
+		default:
+			sev = ""
+		}
+		s := float32(m.CVSSData.BaseScore)
+		return &s, sev
 	}
 	return nil, ""
 }

@@ -90,8 +90,8 @@ func (s *server) getScript(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	v, _ := strconv.Atoi(r.URL.Query().Get("version"))
-	d, err := s.Scripts.Get(r.Context(), principalFrom(r).OrgID, id, int32(v)) // #nosec G115 -- a small number from a query
+	v, _ := strconv.ParseInt(r.URL.Query().Get("version"), 10, 32) // 0 (the current version) when missing or not a number
+	d, err := s.Scripts.Get(r.Context(), principalFrom(r).OrgID, id, int32(v))
 	if err != nil {
 		s.scriptsError(w, err)
 		return

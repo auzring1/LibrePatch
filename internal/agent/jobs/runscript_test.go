@@ -143,9 +143,9 @@ func TestScriptBodiesAreValidated(t *testing.T) {
 	// A script is machine-scope: a job aimed at a user is refused.
 	r := newRig(t)
 	r.e.ScriptsEnabled = true
-	se, env := scriptEnv(r, "s1", good)
+	_, env := scriptEnv(r, "s1", good)
 	env.TargetUserSid = "S-1-5-21-1-2-3-1001"
-	se = r.sign(env)
+	se := r.sign(env)
 	r.e.Accept(se, env)
 	if r.state("s1") != agentv1.JobState_JOB_STATE_REJECTED {
 		t.Fatalf("%v", r.state("s1"))
