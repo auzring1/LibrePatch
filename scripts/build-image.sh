@@ -2,7 +2,7 @@
 # Builds the server container image from deploy/Dockerfile.server the way a release does.
 #
 #   LIBREPATCH_RELEASE_PUBKEYS=<hex>[,<hex>] scripts/build-image.sh --version 1.2.3 --commit <short> \
-#       --source-date-epoch <n> [--require-authenticode true] [--go-version 1.27.2] \
+#       --source-date-epoch <n> [--require-authenticode true] [--go-version 1.27.3] \
 #       (--oci-out FILE | --push REGISTRY/NAME:TAG) [--digest-file FILE]
 #
 #   --oci-out   write an OCI archive (nothing is pushed; used by the dry run and by reproducibility checks)
