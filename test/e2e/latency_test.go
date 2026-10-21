@@ -102,6 +102,9 @@ func (h *harness) restartOnce(t *testing.T, dev string, rebooted <-chan time.Tim
 	case <-time.After(60 * time.Second):
 		t.Fatal("the agent never asked the operating system to restart")
 	}
+	// A click while the previous restart job is still unfinished joins that job, so the next probe must start
+	// only after the server has seen this one succeed; on a slow machine the result arrives a moment after Reboot.
+	h.waitJobByID(rb["job_id"].(string), "succeeded")
 	id, _ := uuid.Parse(rb["job_id"].(string))
 	var sentAt *time.Time
 	_ = h.db.Pool.QueryRow(context.Background(), `SELECT sent_at FROM jobs WHERE id = $1`, id).Scan(&sentAt)
