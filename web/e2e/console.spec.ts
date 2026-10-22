@@ -660,6 +660,35 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   const staged = pols.items.find((p: { name: string }) => p.name === "Staged Acme Tool");
   expect(staged.use_rings).toBe(true);
   expect(staged.require_approval).toBe(true);
+  // Every policy says what its last check found (D132); a policy that was just made has not been checked yet.
+  expect(staged.state).toBe("new");
+  await expect(page.getByRole("table", { name: "Software policies" }).getByText("Not checked yet").first()).toBeVisible();
+  // One policy for all apps: no package, a filter, and a preview of the apps it would handle.
+  await page.getByRole("button", { name: "Add policy" }).click();
+  const ad = page.getByRole("dialog");
+  await ad.getByLabel(/^Name/).fill("Keep every app current");
+  await ad.getByLabel(/^What it does/).click();
+  await page.getByRole("option", { name: /all apps/ }).click();
+  await expect(ad.getByLabel(/^Package/)).toHaveCount(0);
+  await ad.getByLabel(/^Groups/).click();
+  await page.getByRole("option").first().click();
+  await ad.getByText("Add policy").click(); // close the dropdown
+  await expect(ad.getByLabel(/Only apps that were verified on test machines/)).toBeChecked();
+  await expect(ad.getByLabel("Apps this policy would handle")).toBeVisible();
+  await shot(page, "22a-policy-all-apps");
+  await ad.getByRole("button", { name: "Save policy" }).click();
+  await expect(page.getByRole("table", { name: "Software policies" }).getByText("Keep every app current")).toBeVisible();
+  const pols2 = await (await page.request.get("/api/v1/policies")).json();
+  const everyApp = pols2.items.find((p: { name: string }) => p.name === "Keep every app current");
+  expect(everyApp.kind).toBe("keep_all");
+  expect(everyApp.package_id).toBeNull();
+  expect(everyApp.filter.verified_only).toBe(true);
+  // The Software updates page can start the same thing in a click.
+  await mainNav(page).getByRole("link", { name: "Software updates", exact: true }).click();
+  await page.getByRole("button", { name: "Automate all updates…" }).click();
+  await expect(page.getByRole("dialog").getByLabel(/^Name/)).toHaveValue("Keep all apps updated");
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+  await mainNav(page).getByRole("link", { name: "Automations", exact: true }).click();
 
   // --- A signed catalog overlay, made here with Node's Ed25519 and accepted by the server's Go verifier ---
   await mainNav(page).getByRole("link", { name: "Catalog", exact: true }).click();

@@ -336,3 +336,65 @@ func TestWindowsUpdatesCanBeSwitchedOff(t *testing.T) {
 		}
 	}
 }
+
+// An all-apps policy through the REST API: it is created without a package, listed with a status, previewed, and deleted;
+// a one-package policy cannot be turned into one (D132).
+func TestAllAppsPolicyOverTheAPI(t *testing.T) {
+	h := newHarness(t)
+	h.setupAndLogin()
+	st, g := h.do("POST", "/api/v1/groups", map[string]any{"kind": "static", "name": "Everyone"}, nil)
+	if st != 201 && st != 200 {
+		t.Fatalf("group: %d %v", st, g)
+	}
+	gid := g["id"].(string)
+
+	if st, b := h.do("POST", "/api/v1/policies", map[string]any{"name": "bad", "kind": "keep_all", "group_ids": []string{gid}, "filter": map[string]any{"verified_only": true, "include_unlisted": true}}, nil); st != 422 {
+		t.Fatalf("unlisted apps need verified-only off: %d %v", st, b)
+	}
+	st, b := h.do("POST", "/api/v1/policies", map[string]any{"name": "Keep everything current", "kind": "keep_all", "group_ids": []string{gid}, "enabled": true, "delay_days": 2}, nil)
+	if st != 201 {
+		t.Fatalf("create: %d %v", st, b)
+	}
+	id := b["id"].(string)
+
+	_, list := h.do("GET", "/api/v1/policies", nil, nil)
+	if len(items(list)) != 1 {
+		t.Fatalf("list: %v", list)
+	}
+	p := items(list)[0]
+	if p["kind"] != "keep_all" || p["auto"] != true || p["package_id"] != nil || p["state"] == "" || p["state_text"] == "" {
+		t.Fatalf("the all-apps policy in the list: %v", p)
+	}
+	if f, _ := p["filter"].(map[string]any); f == nil || f["verified_only"] != true {
+		t.Fatalf("the default filter is verified apps only: %v", p["filter"])
+	}
+
+	st, pv := h.do("POST", "/api/v1/policies/preview", map[string]any{"group_ids": []string{gid}, "filter": map[string]any{"verified_only": true}}, nil)
+	if st != 200 || pv["handled"] != float64(0) || pv["items"] == nil {
+		t.Fatalf("preview: %d %v", st, pv)
+	}
+	if st, _ := h.do("POST", "/api/v1/policies/preview", map[string]any{"group_ids": []string{}}, nil); st != 422 {
+		t.Fatalf("preview without groups: %d", st)
+	}
+	st, apps := h.do("GET", "/api/v1/policies/"+id+"/apps", nil, nil)
+	if st != 200 || len(items(apps)) != 0 {
+		t.Fatalf("apps: %d %v", st, apps)
+	}
+	if st, _ := h.do("GET", "/api/v1/policies/11111111-1111-1111-1111-111111111111/apps", nil, nil); st != 404 {
+		t.Fatalf("apps of an unknown policy: %d", st)
+	}
+
+	if st, b := h.do("PUT", "/api/v1/policies/"+id, map[string]any{"name": "Keep everything current", "kind": "keep_all", "group_ids": []string{gid}, "enabled": false}, nil); st != 204 {
+		t.Fatalf("update: %d %v", st, b)
+	}
+	_, list = h.do("GET", "/api/v1/policies", nil, nil)
+	if p = items(list)[0]; p["state"] != "off" {
+		t.Fatalf("a switched-off policy says so: %v", p)
+	}
+	if st, _ := h.do("DELETE", "/api/v1/policies/"+id, nil, nil); st != 204 {
+		t.Fatalf("delete: %d", st)
+	}
+	if st, _ := h.do("DELETE", "/api/v1/policies/"+id, nil, nil); st != 404 {
+		t.Fatalf("second delete: %d", st)
+	}
+}

@@ -4961,7 +4961,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Create a software policy (requires policies:write; audited) */
+        /** Create a software policy (requires policies:write; audited). An all-apps policy that adds apps from winget also needs catalog:write */
         post: {
             parameters: {
                 query?: never;
@@ -4991,6 +4991,96 @@ export interface paths {
                 422: components["responses"]["Error"];
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/policies/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The apps an all-apps policy with these groups and this filter would handle, and the ones it would skip and why (requires policies:read; changes nothing) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: uuid
+                         * @description The all-apps policy being edited; leave out for a new one
+                         */
+                        id?: string;
+                        group_ids: string[];
+                        filter?: components["schemas"]["SoftwareAutoFilter"];
+                    };
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SoftwarePolicyPreview"];
+                    };
+                };
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/policies/{id}/apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The apps an all-apps policy handles, with where each one stands (requires policies:read) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["SoftwarePolicyApp"][];
+                        };
+                    };
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -8443,10 +8533,13 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
-            /** @enum {string} */
-            kind: "keep_updated" | "baseline";
+            /**
+             * @description keep_all keeps every app with an update current (no package of its own)
+             * @enum {string}
+             */
+            kind: "keep_updated" | "baseline" | "keep_all";
             /** Format: uuid */
-            package_id: string;
+            package_id: string | null;
             package_name: string;
             package_identifier?: string;
             group_ids: string[];
@@ -8466,6 +8559,82 @@ export interface components {
             devices_attempted: number;
             /** @description The state of the newest version; set only for a policy that uses rings or approval */
             rollout?: components["schemas"]["SoftwareRollout"] | null;
+            /** @description What the last check found, as a code (up_to_date, updating, waiting_approval, waiting_delay, waiting_ring, held, retry, gave_up, declined, left_to_vendor, excluded, no_version, package_missing, error, new, off; for an all-apps policy no_apps, first_check_soon, apps_waiting, apps_updating, apps_all_current, apps_need_attention) */
+            state: string;
+            /** @description The same in a sentence */
+            state_text: string;
+            /** Format: date-time */
+            last_check_at?: string | null;
+            /** Format: date-time */
+            next_check_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the policy last created a deployment
+             */
+            last_run_at?: string | null;
+            /** Format: uuid */
+            last_deployment_id?: string | null;
+            /** @description True for an all-apps policy */
+            auto: boolean;
+            filter?: components["schemas"]["SoftwareAutoFilter"];
+            /**
+             * Format: int64
+             * @description The apps an all-apps policy handles now
+             */
+            apps: number;
+            /** @description The apps of an all-apps policy counted by state */
+            app_states?: {
+                [key: string]: number;
+            };
+        };
+        /** @description Which apps an all-apps policy handles */
+        SoftwareAutoFilter: {
+            /**
+             * @description Handle only apps verified on test machines
+             * @default true
+             */
+            verified_only: boolean;
+            /** @description Also add apps that are not in the catalog yet from the winget index (needs verified_only off and catalog:write) */
+            include_unlisted?: boolean;
+            /** @description Package identifiers to leave alone */
+            exclude?: string[];
+        };
+        SoftwarePolicyApp: {
+            /** Format: uuid */
+            policy_id: string;
+            /** Format: uuid */
+            package_id: string;
+            name: string;
+            identifier: string;
+            verified: boolean;
+            state: string;
+            state_text: string;
+            /** Format: date-time */
+            last_check_at?: string | null;
+            /** Format: date-time */
+            last_run_at?: string | null;
+            /** Format: uuid */
+            last_deployment_id?: string | null;
+            /** Format: date-time */
+            added_at: string;
+        };
+        SoftwarePolicyPreview: {
+            handled: number;
+            skipped: number;
+            truncated: boolean;
+            items: {
+                /** Format: uuid */
+                package_id: string | null;
+                name: string;
+                identifier: string;
+                latest_version: string;
+                /** @description Devices in the groups that have an older version */
+                devices: number;
+                handled: boolean;
+                /** @enum {string} */
+                reason?: "vendor" | "excluded" | "unverified" | "unlisted" | "other_policy" | "catalog_excluded" | "limit";
+                reason_text?: string;
+            }[];
         };
         SoftwareRollout: {
             version: string;
@@ -8539,9 +8708,13 @@ export interface components {
         SoftwarePolicyInput: {
             name: string;
             /** @enum {string} */
-            kind: "keep_updated" | "baseline";
-            /** Format: uuid */
-            package_id: string;
+            kind: "keep_updated" | "baseline" | "keep_all";
+            /**
+             * Format: uuid
+             * @description Required except for keep_all
+             */
+            package_id?: string;
+            filter?: components["schemas"]["SoftwareAutoFilter"];
             group_ids: string[];
             delay_days?: number;
             only_new_devices?: boolean;

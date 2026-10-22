@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/auzring1/librepatch/gen/dbq"
+	"github.com/auzring1/librepatch/internal/server/auth"
 	"github.com/auzring1/librepatch/internal/server/dashboard"
 	"github.com/auzring1/librepatch/internal/server/policies"
 )
@@ -53,12 +54,28 @@ func (s *server) listPolicies(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+// mayImport reports whether the caller may make a policy that adds apps to the catalog by itself (all-apps policies with
+// "add apps from winget"): that is a catalog change, so it needs catalog:write as well as policies:write (D132).
+func (s *server) mayImport(w http.ResponseWriter, r *http.Request, in *policies.Input) bool {
+	if in.Kind != policies.KindAll || in.Filter == nil || !in.Filter.IncludeUnlisted {
+		return true
+	}
+	if !principalFrom(r).Access.OrgHas(auth.PermCatalogWrite) {
+		writeError(w, http.StatusForbidden, "forbidden", "Adding apps from the winget index to the catalog needs the catalog:write permission.")
+		return false
+	}
+	return true
+}
+
 func (s *server) createPolicy(w http.ResponseWriter, r *http.Request) {
 	if !s.polSvc(w) {
 		return
 	}
 	var in policies.Input
 	if !decode(w, r, &in) {
+		return
+	}
+	if !s.mayImport(w, r, &in) {
 		return
 	}
 	id, err := s.Policies.Create(r.Context(), s.polActor(r), in)
@@ -81,11 +98,56 @@ func (s *server) updatePolicy(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
+	if !s.mayImport(w, r, &in) {
+		return
+	}
 	if err := s.Policies.Update(r.Context(), s.polActor(r), id, in); err != nil {
 		s.polError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// previewPolicy lists the apps an all-apps policy would handle with the groups and filter in the request.
+func (s *server) previewPolicy(w http.ResponseWriter, r *http.Request) {
+	if !s.polSvc(w) {
+		return
+	}
+	var in struct {
+		ID       uuid.UUID            `json:"id"`
+		GroupIDs []uuid.UUID          `json:"group_ids"`
+		Filter   *policies.AutoFilter `json:"filter"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	f := policies.AutoFilter{VerifiedOnly: true}
+	if in.Filter != nil {
+		f = *in.Filter
+	}
+	res, err := s.Policies.Preview(r.Context(), principalFrom(r).OrgID, in.ID, in.GroupIDs, f)
+	if err != nil {
+		s.polError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// policyApps lists the apps an all-apps policy handles.
+func (s *server) policyApps(w http.ResponseWriter, r *http.Request) {
+	if !s.polSvc(w) {
+		return
+	}
+	id, ok := idParam(w, r)
+	if !ok {
+		return
+	}
+	items, err := s.Policies.Apps(r.Context(), principalFrom(r).OrgID, id)
+	if err != nil {
+		s.polError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func (s *server) deletePolicy(w http.ResponseWriter, r *http.Request) {

@@ -13,6 +13,7 @@ export function InstallPromptsFields({
   programs,
   packageId,
   disabled,
+  perApp,
 }: {
   value: PromptsForm;
   onChange: (v: PromptsForm) => void;
@@ -20,6 +21,8 @@ export function InstallPromptsFields({
   programs: string[];
   packageId?: string;
   disabled?: boolean;
+  /** For an all-apps policy: there is no single package, so each app uses its own program names (an app without any is installed silently). */
+  perApp?: boolean;
 }) {
   const set = (patch: Partial<PromptsForm>) => onChange({ ...value, ...patch });
   return (
@@ -33,7 +36,13 @@ export function InstallPromptsFields({
         allowDeselect={false}
         disabled={disabled}
       />
+      {needsPrograms(value) && perApp && (
+        <Text size="sm" c="dimmed">
+          Each app uses the program names saved for it (under Overrides on its catalog page). An app that has none is installed silently.
+        </Text>
+      )}
       {needsPrograms(value) &&
+        !perApp &&
         (programs.length === 0 ? (
           <Alert color="yellow" icon={<Icons.Warning size={18} aria-hidden />}>
             This package has no program names yet, so there is nothing to look for.{" "}

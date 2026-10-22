@@ -5,9 +5,10 @@ import { Link } from "react-router-dom";
 import { api, errorMessage, type DeploymentPlan, type FleetUpdate, type WingetIndexStatus } from "../api/client";
 import { useSession } from "../api/session";
 import { PRODUCT_NAME } from "../brand.generated";
-import { deployUpdate } from "../components/updateDeploy";
+import { deployUpdate, ensurePackage } from "../components/updateDeploy";
 import { dateTime } from "../api/format";
 import { DataTable, EmptyState, Icons, IconButton, Page, PageHeader, StatusPill, toast, type Column } from "../ui";
+import { NewPolicyModal, type PolicyPreset } from "./PoliciesPage";
 
 const KEY = ["software-updates"];
 
@@ -147,12 +148,25 @@ export function SoftwareUpdatesPage() {
   const [confirm, setConfirm] = useState<{ items: FleetUpdate[]; force: boolean } | null>(null);
   const [clear, setClear] = useState<(() => void) | null>(null);
   const [showDevices, setShowDevices] = useState<FleetUpdate | null>(null);
+  const [automate, setAutomate] = useState<PolicyPreset | null>(null);
   const canAct = canOrg("deployments:write");
+  // "Keep updated automatically" makes a software policy (D132). An app that is not in the catalog yet is added first.
+  const canAutomate = canOrg("policies:write");
   // A package from the winget index is added to the catalog first (catalog:write); pushing the update of an app that updates
   // itself also needs catalog:override.
   const canAdd = canOrg("catalog:write");
   const canForce = canAdd && canOrg("catalog:override");
   const startable = (u: FleetUpdate) => u.deployable && (u.in_catalog || canAdd);
+  const automatable = (u: FleetUpdate) => u.deployable && (u.in_catalog || canAdd);
+  const automateOne = async (u: FleetUpdate) => {
+    try {
+      const packageId = await ensurePackage(u);
+      void qc.invalidateQueries({ queryKey: ["catalog"] });
+      setAutomate({ kind: "keep_updated", packageId, name: `Keep ${u.package_name} updated` });
+    } catch (e) {
+      toast.error(errorMessage(e), u.package_name);
+    }
+  };
 
   const columns = useMemo<Column<FleetUpdate>[]>(
     () => [
@@ -231,6 +245,13 @@ export function SoftwareUpdatesPage() {
       <PageHeader
         title="Software updates"
         description="Installed programs that have a newer version available, from your catalog and from the winget repository. Programs that are not in the catalog yet are recognised automatically and added when you deploy them. Apps that update themselves are left to their vendor unless you choose otherwise."
+        actions={
+          canAutomate ? (
+            <Button variant="default" leftSection={<Icons.NavSoftwarePolicy size={16} aria-hidden />} onClick={() => setAutomate({ kind: "keep_all", name: "Keep all apps updated" })}>
+              Automate all updates…
+            </Button>
+          ) : undefined
+        }
       />
       {index.data && (
         <Group gap="sm" role="status" aria-label="Winget index">
@@ -269,18 +290,25 @@ export function SoftwareUpdatesPage() {
           </Button>
         )}
         rowActions={
-          canAct
+          canAct || canAutomate
             ? (u) => (
                 <Menu position="bottom-end" withinPortal>
                   <Menu.Target>
                     <IconButton label={`Actions for ${u.package_name}`} icon={<Icons.More size={16} aria-hidden />} size="sm" />
                   </Menu.Target>
                   <Menu.Dropdown>
-                    <Menu.Item disabled={!startable(u)} onClick={() => setConfirm({ items: [u], force: false })}>
-                      Update {u.devices.length} device{u.devices.length === 1 ? "" : "s"} to {u.latest_version}
-                    </Menu.Item>
-                    {!u.deployable && canForce && (
+                    {canAct && (
+                      <Menu.Item disabled={!startable(u)} onClick={() => setConfirm({ items: [u], force: false })}>
+                        Update {u.devices.length} device{u.devices.length === 1 ? "" : "s"} to {u.latest_version}
+                      </Menu.Item>
+                    )}
+                    {canAct && !u.deployable && canForce && (
                       <Menu.Item onClick={() => setConfirm({ items: [u], force: true })}>Update anyway (the app updates itself)…</Menu.Item>
+                    )}
+                    {canAutomate && (
+                      <Menu.Item disabled={!automatable(u)} onClick={() => void automateOne(u)}>
+                        Keep {u.package_name} updated automatically…
+                      </Menu.Item>
                     )}
                     <Menu.Item onClick={() => setShowDevices(u)}>Show devices</Menu.Item>
                   </Menu.Dropdown>
@@ -290,6 +318,7 @@ export function SoftwareUpdatesPage() {
         }
       />
       {showDevices && <DevicesModal update={showDevices} onClose={() => setShowDevices(null)} />}
+      {automate && <NewPolicyModal preset={automate} onClose={() => setAutomate(null)} />}
       {confirm && (
         <Confirm
           items={confirm.items}
