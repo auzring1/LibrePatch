@@ -6,7 +6,7 @@ import { api, errorMessage, type Dashboard } from "../api/client";
 import { usePreferences } from "../design/usePreferences";
 import { Card, EmptyState, Icons, Page, PageHeader, Skel, TileSkeleton } from "../ui";
 import { Customizer } from "../components/dashboard/Customizer";
-import { ActivityWidget, AgentsWidget, AttentionWidget, availableWidgets, ComplianceWidget, TilesWidget, TopMissingWidget } from "../components/dashboard/widgets";
+import { ActivityWidget, AgentsWidget, AppsWidget, AttentionWidget, availableWidgets, ComplianceWidget, TilesWidget, TopMissingWidget } from "../components/dashboard/widgets";
 import { moveWidget, resolveLayout, setWidgetHidden, WIDGET_IDS, type WidgetId } from "../components/dashboard/layout";
 import "../components/dashboard/dashboard.css";
 
@@ -27,6 +27,8 @@ function render(id: WidgetId, d: Dashboard) {
   switch (id) {
     case "tiles":
       return <TilesWidget d={d} />;
+    case "apps":
+      return <AppsWidget d={d} />;
     case "compliance":
       return <ComplianceWidget d={d} />;
     case "top-missing":

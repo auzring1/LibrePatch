@@ -300,6 +300,17 @@ func (q *Queries) GetSoftwarePolicy(ctx context.Context, arg GetSoftwarePolicyPa
 	return i, err
 }
 
+const hasEnabledAllAppsPolicy = `-- name: HasEnabledAllAppsPolicy :one
+SELECT EXISTS (SELECT 1 FROM software_auto_policies WHERE org_id = $1 AND enabled) AS present
+`
+
+func (q *Queries) HasEnabledAllAppsPolicy(ctx context.Context, orgID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, hasEnabledAllAppsPolicy, orgID)
+	var present bool
+	err := row.Scan(&present)
+	return present, err
+}
+
 const insertAutoChild = `-- name: InsertAutoChild :exec
 INSERT INTO software_policies (id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled,
     created_by, use_rings, require_approval, prompts, auto_policy_id)
@@ -576,6 +587,31 @@ func (q *Queries) ListAutoPolicies(ctx context.Context, orgID uuid.UUID) ([]Soft
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAutomatedPackages = `-- name: ListAutomatedPackages :many
+SELECT DISTINCT package_id FROM software_policies WHERE org_id = $1 AND enabled AND kind = 'keep_updated'
+`
+
+// The packages an enabled policy keeps up to date (a policy made by hand, or an app of an all-apps policy).
+func (q *Queries) ListAutomatedPackages(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listAutomatedPackages, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var package_id uuid.UUID
+		if err := rows.Scan(&package_id); err != nil {
+			return nil, err
+		}
+		items = append(items, package_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -137,6 +137,9 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   // The landing page is the dashboard; the device list is one click away.
   await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
   await expect(page.getByLabel("Key numbers")).toBeVisible();
+  // Apps that are out of date have a tile and a widget of their own, next to the Windows numbers.
+  await expect(page.getByLabel("Key numbers").getByText("Apps out of date")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Apps out of date" })).toBeVisible();
   await a11y(page, "dashboard");
   await shot(page, "01b-dashboard");
   await mainNav(page).getByRole("link", { name: "Devices", exact: true }).click();

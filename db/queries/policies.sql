@@ -218,3 +218,10 @@ SELECT EXISTS (
 SELECT COALESCE(sum(c.devices), 0)::bigint AS devices FROM (
     SELECT count(*) AS devices FROM policy_attempts a JOIN software_policies p ON p.id = a.policy_id WHERE p.auto_policy_id = $1 GROUP BY a.policy_id
 ) c;
+
+-- name: ListAutomatedPackages :many
+-- The packages an enabled policy keeps up to date (a policy made by hand, or an app of an all-apps policy).
+SELECT DISTINCT package_id FROM software_policies WHERE org_id = $1 AND enabled AND kind = 'keep_updated';
+
+-- name: HasEnabledAllAppsPolicy :one
+SELECT EXISTS (SELECT 1 FROM software_auto_policies WHERE org_id = $1 AND enabled) AS present;

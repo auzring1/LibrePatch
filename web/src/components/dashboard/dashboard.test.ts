@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { WIDGET_IDS } from "./layout";
 import { moveWidget, resolveLayout, setWidgetHidden } from "./layout";
 import { historySummary, humanAction, missingUpdateLink, niceMax, normaliseHistory } from "./format";
+import { availableWidgets, tileList } from "./widgets";
 
 const ALL = ["a", "b", "c", "d"];
 
@@ -74,5 +75,25 @@ describe("format helpers", () => {
   });
   it("picks a nice axis maximum", () => {
     expect([0, 1, 3, 7, 12, 99, 101].map(niceMax)).toEqual([1, 1, 5, 10, 20, 100, 200]);
+  });
+});
+
+describe("apps out of date", () => {
+  const base = { software: { apps: 3, devices: 5, vendor: 1, automated: 1, all_apps_policy: false, top: [] } };
+  it("adds a tile and a widget when the server sends the numbers", () => {
+    const tiles = tileList(base as never);
+    expect(tiles.map((t) => t.key)).toContain("apps");
+    expect(tiles.find((t) => t.key === "apps")).toMatchObject({ value: 3, to: "/software-updates", hint: "on 5 devices", kind: "warning" });
+    expect(availableWidgets(base as never)).toContain("apps");
+  });
+  it("is quiet when every app is current, and absent when the caller may not see it", () => {
+    const none = tileList({ software: { apps: 0, devices: 0, vendor: 0, automated: 0, all_apps_policy: false, top: [] } } as never).find((t) => t.key === "apps");
+    expect(none).toMatchObject({ value: 0, hint: "every app is current" });
+    expect(none?.kind).toBeUndefined();
+    expect(tileList({} as never).some((t) => t.key === "apps")).toBe(false);
+    expect(availableWidgets({} as never)).not.toContain("apps");
+  });
+  it("sits right after the key numbers by default", () => {
+    expect(WIDGET_IDS.slice(0, 2)).toEqual(["tiles", "apps"]);
   });
 });

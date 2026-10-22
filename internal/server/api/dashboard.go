@@ -10,6 +10,7 @@ import (
 	"github.com/auzring1/librepatch/gen/dbq"
 	"github.com/auzring1/librepatch/internal/server/auth"
 	"github.com/auzring1/librepatch/internal/server/dashboard"
+	"github.com/auzring1/librepatch/internal/server/deploy"
 )
 
 // scope says where a caller holds a permission: none, everywhere, or only at some sites.
@@ -82,6 +83,76 @@ type dashTopUpdate struct {
 	Devices        int       `json:"devices"`
 }
 
+// dashSoftwareApp is one app that is out of date on at least one device.
+type dashSoftwareApp struct {
+	PackageID     *uuid.UUID `json:"package_id"` // null while the app is not in the catalog yet
+	Name          string     `json:"name"`
+	LatestVersion string     `json:"latest_version"`
+	Devices       int        `json:"devices"`
+	// Automated is true when an enabled policy keeps this app updated (so it will be handled without anyone acting).
+	Automated bool `json:"automated"`
+}
+
+// dashSoftware is the "apps out of date" numbers: how many apps, on how many devices, the ones on the most devices, and
+// how many are left to their vendors (self-updating apps are not counted as out of date work for LibrePatch).
+type dashSoftware struct {
+	Apps    int               `json:"apps"`
+	Devices int               `json:"devices"`
+	Vendor  int               `json:"vendor"`
+	Auto    int               `json:"automated"`
+	Top     []dashSoftwareApp `json:"top"`
+	// AllApps is true when an all-apps policy is switched on: every app is then handled as it gets an update.
+	AllApps bool `json:"all_apps_policy"`
+}
+
+// dashSoftwareFrom turns the fleet's available updates into the dashboard numbers. keep says whether a device counts
+// (the site switcher); automated holds the packages an enabled policy keeps updated.
+func dashSoftwareFrom(updates []deploy.FleetUpdate, keep func(uuid.UUID) bool, automated map[uuid.UUID]bool, allApps bool) *dashSoftware {
+	out := &dashSoftware{Top: []dashSoftwareApp{}, AllApps: allApps}
+	seen := map[uuid.UUID]bool{}
+	var apps []dashSoftwareApp
+	for _, u := range updates {
+		n := 0
+		for _, d := range u.Devices {
+			if keep(d.DeviceID) {
+				n++
+				seen[d.DeviceID] = true
+			}
+		}
+		if n == 0 {
+			continue
+		}
+		if !u.Deployable {
+			out.Vendor++
+			continue
+		}
+		a := dashSoftwareApp{Name: u.PackageName, LatestVersion: u.LatestVersion, Devices: n}
+		if u.InCatalog {
+			id := u.PackageID
+			a.PackageID = &id
+			a.Automated = automated[id]
+		}
+		if a.Automated {
+			out.Auto++
+		}
+		apps = append(apps, a)
+	}
+	out.Apps, out.Devices = len(apps), len(seen)
+	sort.SliceStable(apps, func(i, j int) bool {
+		if apps[i].Devices != apps[j].Devices {
+			return apps[i].Devices > apps[j].Devices
+		}
+		return apps[i].Name < apps[j].Name
+	})
+	if len(apps) > dashTopN {
+		apps = apps[:dashTopN]
+	}
+	if apps != nil {
+		out.Top = apps
+	}
+	return out
+}
+
 // dashboardView is everything the landing page shows. A section the caller may not see is left out (null), so the
 // console hides its widget; site-limited callers get numbers for their sites only.
 type dashboardView struct {
@@ -96,6 +167,8 @@ type dashboardView struct {
 	Activity        []auditView        `json:"activity"`
 	AgentVersions   []dashAgentVersion `json:"agent_versions"`
 	HeldUpdates     *int64             `json:"held_updates"`
+	// Software is the apps that are out of date; null for a caller who may not see deployments for the whole organization.
+	Software *dashSoftware `json:"software"`
 }
 
 type dashCompliance struct {
@@ -146,12 +219,46 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request) {
 		return false
 	}
 
+	// The software updates list is organization-wide, like its own page (deployments:read); the site switcher narrows it by device.
+	softOK := p.Access.OrgHas(auth.PermDeploymentsRead) && s.Deploy != nil
 	var rows []dbq.ComplianceReportRow
-	if devSc.ok || updSc.ok {
+	if devSc.ok || updSc.ok || softOK {
 		var err error
 		if rows, err = q.ComplianceReport(ctx, p.OrgID); fail("compliance", err) {
 			return
 		}
+	}
+
+	if softOK {
+		ups, err := s.Deploy.FleetUpdates(ctx, p.OrgID)
+		if fail("software updates", err) {
+			return
+		}
+		site := map[uuid.UUID]uuid.UUID{}
+		for _, x := range rows {
+			site[x.ID] = x.SiteID
+		}
+		narrowed := r.URL.Query().Get("site") != ""
+		keep := func(id uuid.UUID) bool {
+			if !narrowed {
+				return true
+			}
+			sid, ok := site[id]
+			return ok && devSc.has(sid)
+		}
+		pk, err := q.ListAutomatedPackages(ctx, p.OrgID)
+		if fail("automated packages", err) {
+			return
+		}
+		automated := map[uuid.UUID]bool{}
+		for _, id := range pk {
+			automated[id] = true
+		}
+		all, err := q.HasEnabledAllAppsPolicy(ctx, p.OrgID)
+		if fail("all-apps policy", err) {
+			return
+		}
+		out.Software = dashSoftwareFrom(ups, keep, automated, all)
 	}
 
 	if devSc.ok {

@@ -34,7 +34,7 @@ func TestDashboardNotificationsAndLayoutPreferences(t *testing.T) {
 	if num(dev["total"]) != 2 || num(dev["online"]) != 2 || num(dev["offline"]) != 0 {
 		t.Fatalf("device tiles: %v", dev)
 	}
-	for _, k := range []string{"needs_restart", "missing_critical_devices", "failed_jobs_24h", "compliance", "held_updates"} {
+	for _, k := range []string{"needs_restart", "missing_critical_devices", "failed_jobs_24h", "compliance", "held_updates", "software"} {
 		if d[k] == nil {
 			t.Errorf("an administrator should get %q: %v", k, d)
 		}

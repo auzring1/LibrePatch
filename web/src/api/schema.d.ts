@@ -8101,6 +8101,27 @@ export interface components {
             missing_critical_devices?: number | null;
             failed_jobs_24h?: number | null;
             held_updates?: number | null;
+            /** @description The apps that are out of date (organization-wide, like the Software updates page; needs deployments:read for the whole organization) */
+            software?: {
+                /** @description Apps with a newer version that LibrePatch can install */
+                apps: number;
+                /** @description Devices that have at least one such app out of date */
+                devices: number;
+                /** @description Apps with an update that are left to their own updater */
+                vendor: number;
+                /** @description Of the apps */
+                automated: number;
+                /** @description An all-apps policy is switched on */
+                all_apps_policy: boolean;
+                top: {
+                    /** Format: uuid */
+                    package_id?: string | null;
+                    name: string;
+                    latest_version: string;
+                    devices: number;
+                    automated: boolean;
+                }[];
+            } | null;
             compliance?: {
                 compliant?: number;
                 non_compliant?: number;

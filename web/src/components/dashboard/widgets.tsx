@@ -20,6 +20,18 @@ export function tileList(d: Dashboard) {
     tiles.push({ key: "offline", label: "Offline devices", value: dev.offline ?? 0, to: "/devices?state=offline", icon: <Icons.Offline size={ICON} aria-hidden="true" /> });
     if ((dev.pending ?? 0) > 0) tiles.push({ key: "pending", label: "Waiting for approval", value: dev.pending ?? 0, kind: "warning", hint: "New devices to review", to: "/devices?status=pending", icon: <Icons.Clock size={ICON} aria-hidden="true" /> });
   }
+  if (d.software) {
+    const s = d.software;
+    tiles.push({
+      key: "apps",
+      label: "Apps out of date",
+      value: s.apps,
+      kind: positiveKind(s.apps, "warning"),
+      hint: s.apps === 0 ? "every app is current" : `on ${s.devices} ${s.devices === 1 ? "device" : "devices"}`,
+      to: "/software-updates",
+      icon: <Icons.NavSoftwareUpdates size={ICON} aria-hidden="true" />,
+    });
+  }
   if (d.needs_restart != null) tiles.push({ key: "restart", label: "Devices needing restart", value: d.needs_restart, kind: positiveKind(d.needs_restart, "warning"), to: "/devices?restart=1", icon: <Icons.Restart size={ICON} aria-hidden="true" /> });
   if (d.missing_critical_devices != null) tiles.push({ key: "critical", label: "Devices missing critical updates", value: d.missing_critical_devices, kind: positiveKind(d.missing_critical_devices, "danger"), to: "/updates?severity=Critical&missing=1", icon: <Icons.Critical size={ICON} aria-hidden="true" /> });
   if (d.failed_jobs_24h != null) tiles.push({ key: "failed", label: "Failed jobs, last 24 h", value: d.failed_jobs_24h, kind: positiveKind(d.failed_jobs_24h, "danger"), to: "/deployments?failed=1", icon: <Icons.NavDeployments size={ICON} aria-hidden="true" /> });
@@ -34,6 +46,55 @@ export function TilesWidget({ d }: Props) {
         <StatTile key={key} {...t} />
       ))}
     </StatGrid>
+  );
+}
+
+export function AppsWidget({ d }: Props) {
+  const s = d.software;
+  if (!s) return null;
+  const rows = s.top ?? [];
+  const manual = s.apps - s.automated;
+  return (
+    <Card
+      title="Apps out of date"
+      description={s.apps === 0 ? "Installed apps with a newer version available" : `${s.apps} ${s.apps === 1 ? "app" : "apps"} on ${s.devices} ${s.devices === 1 ? "device" : "devices"}${s.vendor > 0 ? `; ${s.vendor} left to their own updater` : ""}`}
+      flush
+      footer={<Link to="/software-updates" className="lp-dash-foot">Open Software updates</Link>}
+    >
+      {rows.length === 0 ? (
+        <p className="lp-dash-empty">Every app is up to date{s.vendor > 0 ? `, apart from ${s.vendor} that update${s.vendor === 1 ? "s" : ""} itself` : ""}.</p>
+      ) : (
+        <>
+          <ul className="lp-dash-list">
+            {rows.map((a) => (
+              <li key={a.package_id ?? a.name}>
+                <Link className="lp-dash-row" to="/software-updates">
+                  <span className="lp-dash-row__main">
+                    <span className="lp-dash-row__title">{a.name}</span>
+                    <span className="lp-dash-row__meta">newest: {a.latest_version}</span>
+                  </span>
+                  <span className="lp-dash-row__side">
+                    {a.automated ? (
+                      <StatusPill kind="success" size="sm">
+                        Kept updated
+                      </StatusPill>
+                    ) : null}
+                    <span className="lp-dash-count">
+                      {a.devices} {a.devices === 1 ? "device" : "devices"}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {manual > 0 && (
+            <p className="lp-dash-empty">
+              {manual} {manual === 1 ? "app is" : "apps are"} not kept updated by a policy. <Link to="/software-updates">{s.all_apps_policy ? "See why" : "Automate them"}</Link>
+            </p>
+          )}
+        </>
+      )}
+    </Card>
   );
 }
 
@@ -216,6 +277,7 @@ export function AgentsWidget({ d }: Props) {
 export function availableWidgets(d: Dashboard): WidgetId[] {
   const out: WidgetId[] = [];
   if (tileList(d).length > 0) out.push("tiles");
+  if (d.software) out.push("apps");
   if (d.compliance) out.push("compliance", "top-missing");
   if (d.devices) out.push("attention", "agents");
   if ((d.activity ?? []).length > 0) out.push("activity");

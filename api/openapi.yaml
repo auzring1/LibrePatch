@@ -3505,6 +3505,28 @@ components:
         missing_critical_devices: { type: integer, nullable: true }
         failed_jobs_24h: { type: integer, nullable: true }
         held_updates: { type: integer, nullable: true }
+        software:
+          nullable: true
+          description: The apps that are out of date (organization-wide, like the Software updates page; needs deployments:read for the whole organization)
+          type: object
+          required: [apps, devices, vendor, automated, top, all_apps_policy]
+          properties:
+            apps: { type: integer, description: Apps with a newer version that LibrePatch can install }
+            devices: { type: integer, description: Devices that have at least one such app out of date }
+            vendor: { type: integer, description: Apps with an update that are left to their own updater }
+            automated: { type: integer, description: Of the apps, how many an enabled policy keeps updated }
+            all_apps_policy: { type: boolean, description: An all-apps policy is switched on }
+            top:
+              type: array
+              items:
+                type: object
+                required: [name, latest_version, devices, automated]
+                properties:
+                  package_id: { type: string, format: uuid, nullable: true }
+                  name: { type: string }
+                  latest_version: { type: string }
+                  devices: { type: integer }
+                  automated: { type: boolean }
         compliance:
           nullable: true
           type: object
