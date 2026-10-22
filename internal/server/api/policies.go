@@ -187,6 +187,9 @@ func (s *server) reportOverview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) reportCompliance(w http.ResponseWriter, r *http.Request) {
+	if !s.windowsUpdates(w, r) {
+		return
+	}
 	rows, err := s.complianceRows(r)
 	if err != nil {
 		internalError(w)
@@ -196,6 +199,9 @@ func (s *server) reportCompliance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) complianceCSV(w http.ResponseWriter, r *http.Request) {
+	if !s.windowsUpdates(w, r) {
+		return
+	}
 	rows, err := s.complianceRows(r)
 	if err != nil {
 		internalError(w)

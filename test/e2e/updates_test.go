@@ -249,3 +249,90 @@ func TestOnlineWindowsUpdateCheck(t *testing.T) {
 		t.Fatalf("a pending restart must show: %v", b["reboot_required"])
 	}
 }
+
+// Settings > Update defaults > "Manage Windows updates" off: every Windows update feature answers 404 with a clear code,
+// the rings (which software policies use) and a restart keep working, and switching it on again restores everything.
+func TestWindowsUpdatesCanBeSwitchedOff(t *testing.T) {
+	h := newHarness(t)
+	h.setupAndLogin()
+	ta := h.startAgent(h.createToken("wu-off", 5, false), &fakeHW{host: "LAP-W2", serial: "SW2", uuid: "UW2"}, nil, withJobs)
+	waitFor(t, 15*time.Second, "agent connected", func() bool { return ta.state() == "connected" })
+	dev := h.devices()[0]["id"].(string)
+
+	windows := []string{
+		"GET /api/v1/updates", "GET /api/v1/update-settings", "GET /api/v1/update-rules", "GET /api/v1/update-holds",
+		"GET /api/v1/update-conflicts", "GET /api/v1/devices/" + dev + "/windows-updates", "GET /api/v1/reports/compliance",
+	}
+	status := func(call string) int {
+		var method, path string
+		for i := range call {
+			if call[i] == ' ' {
+				method, path = call[:i], call[i+1:]
+				break
+			}
+		}
+		st, _ := h.do(method, path, nil, nil)
+		return st
+	}
+	for _, c := range windows {
+		if st := status(c); st != 200 {
+			t.Fatalf("%s with Windows updates on: %d", c, st)
+		}
+	}
+
+	_, cur := h.do("GET", "/api/v1/settings/sections/updates", nil, nil)
+	if cur["values"].(map[string]any)["windows_updates_enabled"] != true {
+		t.Fatalf("Windows updates must be on by default: %v", cur["values"])
+	}
+	put := func(on bool) {
+		t.Helper()
+		_, d := h.do("GET", "/api/v1/settings/sections/updates", nil, nil)
+		st, b := h.do("PUT", "/api/v1/settings/sections/updates", map[string]any{"revision": d["revision"], "values": map[string]any{"windows_updates_enabled": on}}, nil)
+		if st != 200 {
+			t.Fatalf("save: %d %v", st, b)
+		}
+	}
+	put(false)
+	for _, c := range windows {
+		var method, path string
+		for i := range c {
+			if c[i] == ' ' {
+				method, path = c[:i], c[i+1:]
+				break
+			}
+		}
+		st, b := h.do(method, path, nil, nil)
+		if st != 404 || (b["error"] != nil && b["error"].(map[string]any)["code"] != "windows_updates_off") {
+			t.Fatalf("%s with Windows updates off: %d %v", c, st, b)
+		}
+	}
+	if st, _ := h.do("POST", "/api/v1/devices/"+dev+"/windows-updates/scan", nil, nil); st != 404 {
+		t.Fatalf("scan with Windows updates off: %d", st)
+	}
+	// The dashboard leaves out its Windows update numbers, and keeps the rest.
+	_, dash := h.do("GET", "/api/v1/dashboard", nil, nil)
+	for _, k := range []string{"compliance", "missing_critical_devices", "held_updates"} {
+		if dash[k] != nil {
+			t.Fatalf("the dashboard still shows %s with Windows updates off: %v", k, dash[k])
+		}
+	}
+	if len(dash["top_missing"].([]any)) != 0 || dash["devices"] == nil {
+		t.Fatalf("dashboard: %v", dash)
+	}
+	// What stays: the rings (software policies use them), software updates and restarts.
+	for _, c := range []string{"GET /api/v1/update-rings", "GET /api/v1/software/updates", "GET /api/v1/policies"} {
+		if st := status(c); st != 200 {
+			t.Fatalf("%s must keep working with Windows updates off: %d", c, st)
+		}
+	}
+	if st, b := h.do("POST", "/api/v1/devices/"+dev+"/reboot", map[string]any{"minutes": 5}, nil); st >= 400 && st != 409 {
+		t.Fatalf("restart with Windows updates off: %d %v", st, b)
+	}
+
+	put(true)
+	for _, c := range windows {
+		if st := status(c); st != 200 {
+			t.Fatalf("%s after switching back on: %d", c, st)
+		}
+	}
+}

@@ -5,6 +5,7 @@ import { Modal } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { api, type Device, type WindowsUpdate } from "../api/client";
 import { useSession } from "../api/session";
+import { useFeatures } from "../settings/features";
 import * as I from "./icons";
 import { allowed, flatNav, visibleNav } from "./nav";
 
@@ -78,6 +79,7 @@ export function SearchButton() {
 function Palette({ opened, onClose }: { opened: boolean; onClose: () => void }) {
   const nav = useNavigate();
   const { can, canOrg } = useSession();
+  const features = useFeatures();
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const listId = useId();
@@ -100,15 +102,15 @@ function Palette({ opened, onClose }: { opened: boolean; onClose: () => void }) 
   const updates = useQuery({
     queryKey: ["updates", "search", dq],
     queryFn: () => api<{ items: WindowsUpdate[] }>("GET", `/updates?limit=6&q=${encodeURIComponent(dq)}`),
-    enabled: opened && dq.length >= 2 && can("updates:read"),
+    enabled: opened && dq.length >= 2 && can("updates:read") && features.windowsUpdates,
     staleTime: 30_000,
   });
 
   const results = useMemo<Result[]>(() => {
     const needle = q.trim();
-    const groups = visibleNav({ can, canOrg });
+    const groups = visibleNav({ can, canOrg, features });
     const pages = flatNav(groups)
-      .filter(({ item }) => allowed(item, { can, canOrg }))
+      .filter(({ item }) => allowed(item, { can, canOrg, features }))
       .filter(({ item, group, parent }) => !needle || matches([item.label, parent?.label, group.label, ...(item.keywords ?? [])].filter(Boolean).join(" "), needle))
       .slice(0, needle ? 8 : 7)
       .map<Result>(({ item, group, parent }) => ({
@@ -134,7 +136,7 @@ function Palette({ opened, onClose }: { opened: boolean; onClose: () => void }) 
           })
         : [];
     return [...pages, ...devs, ...ups];
-  }, [q, dq, devices.data, updates.data, can, canOrg]);
+  }, [q, dq, devices.data, updates.data, can, canOrg, features]);
 
   useEffect(() => setActive(0), [q]);
 

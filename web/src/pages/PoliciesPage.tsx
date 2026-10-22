@@ -8,11 +8,12 @@ import { describePrompts, fromPrompts, needsPrograms, toPrompts, type PromptsFor
 import { RolloutModal } from "../components/RolloutModal";
 import { summarizeRollout } from "../components/rollout";
 import { SoftwareApprovalsCard } from "../components/SoftwareApprovalsCard";
-import { DataTable, EmptyState, Icons, IconButton, Page, PageHeader, StatGrid, StatTile, StatusPill, TileSkeleton, toast, useConfirm, type Column } from "../ui";
+import { DataTable, EmptyState, Icons, IconButton, StatGrid, StatTile, StatusPill, TileSkeleton, toast, useConfirm, type Column } from "../ui";
 
 const kindLabel: Record<string, string> = { keep_updated: "Keep updated", baseline: "Install on new devices" };
 
-export function PoliciesPage() {
+/** The Software tab of Automations: one policy keeps one package current (or installs it on new devices), optionally in stages through the rings and with approval. */
+export function SoftwarePoliciesPanel() {
   const { canOrg } = useSession();
   const canWrite = canOrg("policies:write");
   const qc = useQueryClient();
@@ -102,18 +103,17 @@ export function PoliciesPage() {
   const handled = items.reduce((n, p) => n + p.devices_attempted, 0);
 
   return (
-    <Page>
-      <PageHeader
-        title="Software policies"
-        description="A policy keeps a package current on a group (after a delay you choose), or installs it on devices that newly join a group. Each run creates an ordinary deployment you can follow under Deployments; a device that fails three times is left alone."
-        actions={
-          canWrite ? (
-            <Button onClick={() => setEdit("new")} leftSection={<Icons.Plus size={16} aria-hidden />}>
-              Add policy
-            </Button>
-          ) : undefined
-        }
-      />
+    <>
+      <Group justify="space-between" align="flex-end" wrap="wrap">
+        <Text size="sm" c="dimmed" maw="72ch">
+          A policy keeps a package current on a group (after a delay you choose), or installs it on devices that newly join a group. Each run creates an ordinary deployment you can follow under Deployments; a device that fails three times is left alone.
+        </Text>
+        {canWrite && (
+          <Button onClick={() => setEdit("new")} leftSection={<Icons.Plus size={16} aria-hidden />}>
+            Add policy
+          </Button>
+        )}
+      </Group>
       {q.isLoading ? (
         <TileSkeleton count={3} />
       ) : items.length > 0 ? (
@@ -165,7 +165,7 @@ export function PoliciesPage() {
       />
       {viewing && <RolloutModal policy={viewing} onClose={() => setViewing(null)} />}
       {edit && <PolicyModal policy={edit === "new" ? undefined : edit} groups={groups.data?.items ?? []} onClose={() => setEdit(null)} />}
-    </Page>
+    </>
   );
 }
 
@@ -218,7 +218,7 @@ function PolicyModal({ policy, groups, onClose }: { policy?: SoftwarePolicy; gro
           {kind === "keep_updated" && (
             <Checkbox
               label="Roll new versions out in stages, through the update rings"
-              description="The first ring gets the version first; the next ring follows when the first has done well (see Update rings and rules). Devices that are in no ring get it last."
+              description="The first ring gets the version first; the next ring follows when the first has done well (see Rings, below). Devices that are in no ring get it last."
               checked={useRings}
               onChange={(e) => setUseRings(e.currentTarget.checked)}
             />

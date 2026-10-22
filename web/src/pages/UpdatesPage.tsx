@@ -183,7 +183,7 @@ export function UpdatesPage() {
         description="Everything Windows Update has offered your devices. Approve an update and the rings install it, pilot first. Updates stay untouched until you approve them or a rule does."
         actions={
           can("updates:policy") ? (
-            <Button component={Link} to="/update-policy" variant="default" leftSection={<Icons.NavPolicy size={16} aria-hidden />}>
+            <Button component={Link} to="/automations?tab=windows" variant="default" leftSection={<Icons.NavPolicy size={16} aria-hidden />}>
               Rings, rules and sources
             </Button>
           ) : undefined

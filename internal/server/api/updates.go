@@ -14,9 +14,24 @@ import (
 	"github.com/auzring1/librepatch/internal/server/updates"
 )
 
+// updatesSvc is for the handlers that need the updates service but are not Windows update features (rings, restart,
+// wake, the read-only views).
 func (s *server) updatesSvc(w http.ResponseWriter) bool {
 	if s.Updates == nil {
 		writeError(w, http.StatusServiceUnavailable, "unavailable", "Windows Update management is not available.")
+		return false
+	}
+	return true
+}
+
+// windowsUpdates guards every Windows update feature: it answers 404 when the organization has switched them off
+// (Settings > Update defaults), so nothing here can scan, approve or install while the switch is off.
+func (s *server) windowsUpdates(w http.ResponseWriter, r *http.Request) bool {
+	if !s.updatesSvc(w) {
+		return false
+	}
+	if !s.Updates.On(r.Context(), principalFrom(r).OrgID) {
+		writeError(w, http.StatusNotFound, "windows_updates_off", "Windows updates are switched off for this organization (Settings, Update defaults).")
 		return false
 	}
 	return true
@@ -45,6 +60,8 @@ func (s *server) updatesError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "not_found", "Not found.")
 	case errors.Is(err, updates.ErrConflict):
 		writeError(w, http.StatusConflict, "conflict", "An item with that name or order already exists.")
+	case errors.Is(err, updates.ErrDisabled):
+		writeError(w, http.StatusNotFound, "windows_updates_off", "Windows updates are switched off for this organization (Settings, Update defaults).")
 	case errors.Is(err, updates.ErrOffline):
 		writeError(w, http.StatusConflict, "device_offline", "The device is offline. A restart is only sent to a device that is connected.")
 	default:
@@ -86,6 +103,9 @@ func nz(s []string) []string {
 
 // listUpdates: GET /updates
 func (s *server) listUpdates(w http.ResponseWriter, r *http.Request) {
+	if !s.windowsUpdates(w, r) {
+		return
+	}
 	limit, offset, ok := paging(w, r, 100, 500)
 	if !ok {
 		return
@@ -121,7 +141,7 @@ func (s *server) listUpdates(w http.ResponseWriter, r *http.Request) {
 
 // decideUpdates: POST /updates/decision
 func (s *server) decideUpdates(w http.ResponseWriter, r *http.Request) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	var req struct {
@@ -142,6 +162,9 @@ func (s *server) decideUpdates(w http.ResponseWriter, r *http.Request) {
 
 // updateDevices: GET /updates/{id}/devices
 func (s *server) updateDevices(w http.ResponseWriter, r *http.Request) {
+	if !s.windowsUpdates(w, r) {
+		return
+	}
 	id, ok := idParam(w, r)
 	if !ok {
 		return
@@ -177,7 +200,7 @@ func (s *server) updateDevices(w http.ResponseWriter, r *http.Request) {
 
 // installUpdate: POST /updates/{id}/install {device_ids?, restart?}
 func (s *server) installUpdate(w http.ResponseWriter, r *http.Request) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	id, ok := idParam(w, r)
@@ -200,14 +223,14 @@ func (s *server) installUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) getUpdateSettings(w http.ResponseWriter, r *http.Request) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.Updates.GetSettings(r.Context(), principalFrom(r).OrgID))
 }
 
 func (s *server) putUpdateSettings(w http.ResponseWriter, r *http.Request) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	var req updates.Settings
@@ -222,7 +245,7 @@ func (s *server) putUpdateSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) listUpdateRules(w http.ResponseWriter, r *http.Request) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	items, err := s.Updates.ListRules(r.Context(), principalFrom(r).OrgID)
@@ -234,7 +257,7 @@ func (s *server) listUpdateRules(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) createUpdateRule(w http.ResponseWriter, r *http.Request) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	var in updates.Rule
@@ -250,7 +273,7 @@ func (s *server) createUpdateRule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) putUpdateRule(w http.ResponseWriter, r *http.Request) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	id, ok := idParam(w, r)
@@ -270,7 +293,7 @@ func (s *server) putUpdateRule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) deleteUpdateRule(w http.ResponseWriter, r *http.Request) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	id, ok := idParam(w, r)
@@ -348,7 +371,7 @@ func (s *server) deleteUpdateRing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) listUpdateHolds(w http.ResponseWriter, r *http.Request) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	items, err := s.Updates.ListHolds(r.Context(), principalFrom(r).OrgID)
@@ -360,7 +383,7 @@ func (s *server) listUpdateHolds(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) releaseUpdateHold(w http.ResponseWriter, r *http.Request) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	id, ok := idParam(w, r)
@@ -376,6 +399,9 @@ func (s *server) releaseUpdateHold(w http.ResponseWriter, r *http.Request) {
 
 // updateConflicts: GET /update-conflicts — devices whose update policy is managed by something else.
 func (s *server) updateConflicts(w http.ResponseWriter, r *http.Request) {
+	if !s.windowsUpdates(w, r) {
+		return
+	}
 	rows, err := s.q().CountPolicyConflicts(r.Context(), principalFrom(r).OrgID)
 	if err != nil {
 		internalError(w)
@@ -395,6 +421,9 @@ func (s *server) updateConflicts(w http.ResponseWriter, r *http.Request) {
 
 // deviceWindowsUpdates: GET /devices/{id}/windows-updates
 func (s *server) deviceWindowsUpdates(w http.ResponseWriter, r *http.Request) {
+	if !s.windowsUpdates(w, r) {
+		return
+	}
 	d, ok := s.deviceFromURL(w, r)
 	if !ok {
 		return
@@ -446,7 +475,7 @@ func (s *server) deviceJobResponse(w http.ResponseWriter, id uuid.UUID, err erro
 }
 
 func (s *server) scanDeviceUpdates(w http.ResponseWriter, r *http.Request) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	d, ok := s.deviceFromURL(w, r)
@@ -459,7 +488,7 @@ func (s *server) scanDeviceUpdates(w http.ResponseWriter, r *http.Request) {
 
 // scanDeviceUpdatesOnline: POST /devices/{id}/windows-updates/scan-online (updates:policy).
 func (s *server) scanDeviceUpdatesOnline(w http.ResponseWriter, r *http.Request) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	d, ok := s.deviceFromURL(w, r)
@@ -480,7 +509,7 @@ func (s *server) installDeviceUpdatesOnline(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *server) installOnDevice(w http.ResponseWriter, r *http.Request, online bool) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	var req struct {
@@ -503,7 +532,7 @@ func (s *server) installOnDevice(w http.ResponseWriter, r *http.Request, online 
 }
 
 func (s *server) hideDeviceUpdates(w http.ResponseWriter, r *http.Request) {
-	if !s.updatesSvc(w) {
+	if !s.windowsUpdates(w, r) {
 		return
 	}
 	var req struct {

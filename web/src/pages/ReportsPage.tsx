@@ -5,6 +5,7 @@ import { Alert, Button } from "@mantine/core";
 import { api, errorMessage, type ComplianceRow, type ReportOverview } from "../api/client";
 import { dateTime } from "../api/format";
 import { useSession } from "../api/session";
+import { useFeatures } from "../settings/features";
 import { useBranding } from "../branding/BrandingProvider";
 import { LifecycleCard } from "../components/LifecycleCard";
 import { Card, DataTable, Donut, EmptyState, Icons, Page, PageHeader, StackedBar, StatGrid, StatTile, Status, StatusPill, TileSkeleton, type Column } from "../ui";
@@ -19,12 +20,13 @@ interface JobRow {
 
 export function ReportsPage() {
   const { can } = useSession();
+  const { windowsUpdates } = useFeatures();
   const brand = useBranding();
   const [urlParams] = useSearchParams();
   const urlState = urlParams.get("state");
   const preset = useMemo(() => (urlState === "non_compliant" || urlState === "unknown" ? { filters: [{ id: "state", value: urlState }] } : undefined), [urlState]);
   const ov = useQuery({ queryKey: ["reports", "overview"], queryFn: () => api<ReportOverview>("GET", "/reports/overview"), refetchInterval: 60_000 });
-  const rows = useQuery({ queryKey: ["reports", "compliance"], queryFn: () => api<{ items: ComplianceRow[] }>("GET", "/reports/compliance") });
+  const rows = useQuery({ queryKey: ["reports", "compliance"], queryFn: () => api<{ items: ComplianceRow[] }>("GET", "/reports/compliance"), enabled: windowsUpdates });
   const o = ov.data;
   const compliant = o?.compliance.compliant ?? 0;
   const nonCompliant = o?.compliance.non_compliant ?? 0;
@@ -104,16 +106,20 @@ export function ReportsPage() {
     <Page>
       <PageHeader
         title={brand.org_name ? `${brand.org_name} · Reports` : "Reports"}
-        description="How well your devices are patched, and what the server has been doing for them."
+        description={windowsUpdates ? "How well your devices are patched, and what the server has been doing for them." : "Your devices at a glance, their operating-system support, and what the server has been doing for them."}
         actions={
           can("inventory:export") ? (
             <>
-              <Button component="a" href="/api/v1/reports/compliance.html" target="_blank" rel="noopener" variant="default" leftSection={<Icons.External size={16} aria-hidden />}>
-                Printable patch compliance report
-              </Button>
-              <Button component="a" href="/api/v1/reports/compliance.csv" download variant="default" leftSection={<Icons.Download size={16} aria-hidden />}>
-                Export patch compliance (CSV)
-              </Button>
+              {windowsUpdates && (
+                <>
+                  <Button component="a" href="/api/v1/reports/compliance.html" target="_blank" rel="noopener" variant="default" leftSection={<Icons.External size={16} aria-hidden />}>
+                    Printable patch compliance report
+                  </Button>
+                  <Button component="a" href="/api/v1/reports/compliance.csv" download variant="default" leftSection={<Icons.Download size={16} aria-hidden />}>
+                    Export patch compliance (CSV)
+                  </Button>
+                </>
+              )}
               <Button component="a" href="/api/v1/reports/lifecycle.csv" download variant="default" leftSection={<Icons.Download size={16} aria-hidden />}>
                 Export OS support (CSV)
               </Button>
@@ -132,26 +138,28 @@ export function ReportsPage() {
           <StatGrid label="Fleet summary">
             <StatTile label="Devices" value={active} kind="accent" icon={<Icons.NavDevices size={16} aria-hidden />} to="/devices" />
             <StatTile label="Online now" value={online} kind="success" icon={<Icons.Online size={16} aria-hidden />} hint={active ? `${Math.round((100 * online) / active)}% of devices` : undefined} />
-            <StatTile label="Patch compliant" value={`${pct}%`} kind={pctKind} icon={<Icons.NavUpdates size={16} aria-hidden />} hint={`${compliant} of ${total} scanned devices`} />
+            {windowsUpdates && <StatTile label="Patch compliant" value={`${pct}%`} kind={pctKind} icon={<Icons.NavUpdates size={16} aria-hidden />} hint={`${compliant} of ${total} scanned devices`} />}
             <StatTile label="Waiting for a restart" value={restart} kind={restart > 0 ? "warning" : "neutral"} icon={<Icons.Restart size={16} aria-hidden />} />
-            <StatTile label="Non-compliant" value={nonCompliant} kind={nonCompliant > 0 ? "danger" : "neutral"} icon={<Icons.Danger size={16} aria-hidden />} />
-            <StatTile label="Not scanned lately" value={unknown} kind="neutral" icon={<Icons.Unknown size={16} aria-hidden />} />
+            {windowsUpdates && <StatTile label="Non-compliant" value={nonCompliant} kind={nonCompliant > 0 ? "danger" : "neutral"} icon={<Icons.Danger size={16} aria-hidden />} />}
+            {windowsUpdates && <StatTile label="Not scanned lately" value={unknown} kind="neutral" icon={<Icons.Unknown size={16} aria-hidden />} />}
             <StatTile label="Not seen for a week" value={o.devices.not_seen_for_a_week ?? 0} kind={(o.devices.not_seen_for_a_week ?? 0) > 0 ? "warning" : "neutral"} icon={<Icons.Offline size={16} aria-hidden />} />
             <StatTile label="Pending approval" value={o.devices.pending ?? 0} kind={(o.devices.pending ?? 0) > 0 ? "warning" : "neutral"} icon={<Icons.Clock size={16} aria-hidden />} />
           </StatGrid>
           <div style={{ display: "grid", gap: "var(--lp-space-4)", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
-            <Card title="Compliance" description="Compliant = no approved or critical update missing, no failed install, and a Windows Update scan within the last week.">
-              <Donut
-                label="Device compliance"
-                center={`${pct}%`}
-                sub="compliant"
-                slices={[
-                  { label: "Compliant", value: compliant, token: "success" },
-                  { label: "Not compliant", value: nonCompliant, token: "danger" },
-                  { label: "Not scanned lately", value: unknown, token: "neutral" },
-                ]}
-              />
-            </Card>
+            {windowsUpdates && (
+              <Card title="Compliance" description="Compliant = no approved or critical update missing, no failed install, and a Windows Update scan within the last week.">
+                <Donut
+                  label="Device compliance"
+                  center={`${pct}%`}
+                  sub="compliant"
+                  slices={[
+                    { label: "Compliant", value: compliant, token: "success" },
+                    { label: "Not compliant", value: nonCompliant, token: "danger" },
+                    { label: "Not scanned lately", value: unknown, token: "neutral" },
+                  ]}
+                />
+              </Card>
+            )}
             <Card title="Fleet" description="Active devices by connection, plus the ones that need attention.">
               <StackedBar
                 label="Active devices by connection"
@@ -175,24 +183,26 @@ export function ReportsPage() {
         </>
       )}
       <LifecycleCard />
-      <Card title="Devices to look at" description="Devices that are not compliant, or have not reported a Windows Update scan lately.">
-        <DataTable<ComplianceRow>
-          id="reports-noncompliant"
-          label="Devices that are not compliant"
-          data={rows.isLoading ? undefined : bad}
-          loading={rows.isLoading}
-          error={rows.error}
-          columns={badColumns}
-          preset={preset}
-          rowId={(r) => r.device_id}
-          rowHref={(r) => `/devices/${r.device_id}`}
-          rowLabel={(r) => r.hostname}
-          searchPlaceholder="Search devices…"
-          exportName="devices-to-look-at"
-          initialSort={{ id: "critical", desc: true }}
-          empty={<EmptyState icon={<Icons.Success size={26} />} title="Every scanned device is compliant" description="Nothing needs attention right now." />}
-        />
-      </Card>
+      {windowsUpdates && (
+        <Card title="Devices to look at" description="Devices that are not compliant, or have not reported a Windows Update scan lately.">
+          <DataTable<ComplianceRow>
+            id="reports-noncompliant"
+            label="Devices that are not compliant"
+            data={rows.isLoading ? undefined : bad}
+            loading={rows.isLoading}
+            error={rows.error}
+            columns={badColumns}
+            preset={preset}
+            rowId={(r) => r.device_id}
+            rowHref={(r) => `/devices/${r.device_id}`}
+            rowLabel={(r) => r.hostname}
+            searchPlaceholder="Search devices…"
+            exportName="devices-to-look-at"
+            initialSort={{ id: "critical", desc: true }}
+            empty={<EmptyState icon={<Icons.Success size={26} />} title="Every scanned device is compliant" description="Nothing needs attention right now." />}
+          />
+        </Card>
+      )}
       {o && (
         <Card title="Jobs in the last 30 days" description="What the server asked devices to do, by type.">
           <DataTable<JobRow>

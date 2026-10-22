@@ -394,8 +394,10 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await shot(page, "16-updates-catalog");
 
       // Policy: a ring over the saved group, a rule, and the update source.
-      await mainNav(page).getByRole("link", { name: "Update rings and rules", exact: true }).click();
-      await expect(page.getByRole("heading", { name: "Update policy", exact: true })).toBeVisible();
+      await mainNav(page).getByRole("link", { name: "Automations", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Automations", exact: true })).toBeVisible();
+      await page.getByRole("tab", { name: "Windows", exact: true }).click();
+      await expect(page.getByRole("table", { name: "Update rings" })).toBeVisible();
       await page.getByRole("button", { name: "Add ring" }).click();
       await page.getByRole("dialog").getByLabel("Name").fill("Pilot");
       await page.getByRole("dialog").getByLabel("Groups").click();
@@ -614,7 +616,10 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await mainNav(page).getByRole("link", { name: "Dashboard", exact: true }).click();
 
   // --- Automation: a software policy, the reports page, and the audit chain check ---
-  await mainNav(page).getByRole("link", { name: "Software policies", exact: true }).click();
+  // Software policies live on the Software tab of Automations (the first tab).
+  await mainNav(page).getByRole("link", { name: "Automations", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Software", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("table", { name: "Update rings" })).toBeVisible(); // the same rings, shown on this tab too
   await page.getByRole("button", { name: "Add policy" }).click();
   const pd = page.getByRole("dialog");
   await pd.getByLabel(/^Name/).fill("Keep Acme Tool current");
@@ -626,6 +631,14 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await pd.getByRole("button", { name: "Save policy" }).click();
   await expect(page.getByRole("table", { name: "Software policies" }).getByText("Keep Acme Tool current")).toBeVisible();
   await shot(page, "22-policies");
+  await a11y(page, "automations-software");
+  // The old addresses still lead to the right tab.
+  await page.goto("/update-policy");
+  await expect(page).toHaveURL(/\/automations\?tab=windows/);
+  await expect(page.getByRole("tab", { name: "Windows", exact: true })).toHaveAttribute("aria-selected", "true");
+  await a11y(page, "automations-windows");
+  await page.goto("/policies");
+  await expect(page).toHaveURL(/\/automations$/);
   // A policy that rolls out in stages through the update rings and waits for approval of each new version.
   await page.getByRole("button", { name: "Add policy" }).click();
   const sd = page.getByRole("dialog");
@@ -753,6 +766,30 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
     await a11y(page, `settings-${name.toLowerCase().replace(/ /g, "-")}`);
   }
+  // Windows updates can be switched off for the whole organization: their pages, the Windows tab and the device tab go away, software stays.
+  await setNav.getByRole("link", { name: "Update defaults", exact: true }).click();
+  await page.getByRole("switch", { name: /^Manage Windows updates/ }).uncheck({ force: true });
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Update defaults settings saved.")).toBeVisible();
+  await expect(mainNav(page).getByRole("link", { name: "Windows updates", exact: true })).toHaveCount(0);
+  await expect(mainNav(page).getByRole("link", { name: "Held updates", exact: true })).toHaveCount(0);
+  await expect(mainNav(page).getByRole("link", { name: "Software updates", exact: true })).toBeVisible();
+  await mainNav(page).getByRole("link", { name: "Automations", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Automations", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Windows", exact: true })).toHaveCount(0);
+  await page.goto("/automations?tab=windows"); // there is no Windows tab now: the Software tab shows instead
+  await expect(page.getByRole("table", { name: "Software policies" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Update rings" })).toBeVisible();
+  await a11y(page, "automations-windows-off");
+  await page.goto("/devices");
+  await page.getByTestId("device-row").first().click();
+  await expect(page.getByRole("tab", { name: "Software updates" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Windows updates" })).toHaveCount(0);
+  await page.goto("/settings/updates");
+  await page.getByRole("switch", { name: /^Manage Windows updates/ }).check({ force: true });
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Update defaults settings saved.")).toBeVisible();
+  await expect(mainNav(page).getByRole("link", { name: "Windows updates", exact: true })).toBeVisible();
   // A custom device field is defined here and then offered on the device page and in the device list.
   await setNav.getByRole("link", { name: "Device defaults", exact: true }).click();
   await page.getByRole("group", { name: "Custom device fields" }).getByRole("button", { name: "Add" }).click();

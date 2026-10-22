@@ -153,6 +153,9 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 	a.Branding = &branding.Service{Pool: pool, Log: log.With("component", "branding")}
 	a.Dashboard = &dashboard.Service{Pool: pool, Log: log.With("component", "dashboard")}
 	a.Settings = &settings.Service{Pool: pool, Sealer: sealer, Log: log.With("component", "settings")}
+	a.Updates.Enabled = func(ctx context.Context, org uuid.UUID) bool {
+		return a.Settings.Peek(ctx, org, "updates").Bool("windows_updates_enabled")
+	}
 	a.Deploy.PeerCache = func(ctx context.Context, org uuid.UUID) bool {
 		return a.Settings.Peek(ctx, org, "downloads").Bool("peer_cache")
 	}

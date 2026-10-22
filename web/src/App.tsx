@@ -31,7 +31,7 @@ const GroupsPage = page(() => import("./pages/GroupsPage"), "GroupsPage");
 const SoftwarePage = page(() => import("./pages/SoftwarePage"), "SoftwarePage");
 const SoftwareUpdatesPage = page(() => import("./pages/SoftwareUpdatesPage"), "SoftwareUpdatesPage");
 const TokensPage = page(() => import("./pages/TokensPage"), "TokensPage");
-const PoliciesPage = page(() => import("./pages/PoliciesPage"), "PoliciesPage");
+const AutomationsPage = page(() => import("./pages/AutomationsPage"), "AutomationsPage");
 const ScriptsPage = page(() => import("./pages/ScriptsPage"), "ScriptsPage");
 const ReportsPage = page(() => import("./pages/ReportsPage"), "ReportsPage");
 const VulnerabilitiesPage = page(() => import("./pages/VulnerabilitiesPage"), "VulnerabilitiesPage");
@@ -39,7 +39,6 @@ const AgentUpdatesPage = page(() => import("./pages/AgentUpdatesPage"), "AgentUp
 const AccountPage = page(() => import("./pages/AccountPage"), "AccountPage");
 const SitesPage = page(() => import("./pages/SitesPage"), "SitesPage");
 const UsersPage = page(() => import("./pages/UsersPage"), "UsersPage");
-const UpdatePolicyPage = page(() => import("./pages/UpdatePolicyPage"), "UpdatePolicyPage");
 const UpdatesPage = page(() => import("./pages/UpdatesPage"), "UpdatesPage");
 
 export function App() {
@@ -84,7 +83,9 @@ export function App() {
         <Route path="/groups" element={<GroupsPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/catalog/:id" element={<PackagePage />} />
-        <Route path="/policies" element={<PoliciesPage />} />
+        <Route path="/automations" element={<AutomationsPage />} />
+        {/* The software policies and the update rings and rules used to be two pages. */}
+        <Route path="/policies" element={<Navigate to="/automations" replace />} />
         <Route path="/scripts" element={<ScriptsPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/vulnerabilities" element={<VulnerabilitiesPage />} />
@@ -94,7 +95,7 @@ export function App() {
         <Route path="/sites" element={<SitesPage />} />
         <Route path="/updates" element={<UpdatesPage />} />
         <Route path="/updates/held" element={<HeldUpdatesPage />} />
-        <Route path="/update-policy" element={<UpdatePolicyPage />} />
+        <Route path="/update-policy" element={<Navigate to="/automations?tab=windows" replace />} />
         <Route path="/deployments" element={<DeploymentsPage />} />
         <Route path="/deployments/new" element={<NewDeploymentPage />} />
         <Route path="/deployments/:id" element={<DeploymentPage />} />

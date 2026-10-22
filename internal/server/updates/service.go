@@ -24,6 +24,8 @@ var (
 	ErrNotFound = errors.New("updates: not found")
 	ErrConflict = errors.New("updates: conflict")
 	ErrOffline  = errors.New("updates: the device is offline")
+	// ErrDisabled: Windows updates are switched off for the organization (Settings > Update defaults).
+	ErrDisabled = errors.New("updates: Windows updates are switched off")
 )
 
 func invalid(format string, a ...any) error {
@@ -42,6 +44,9 @@ type Service struct {
 	// OnHold, if set, is told when a ring raises a hold (the notification hook).
 	OnHold func(ctx context.Context, org uuid.UUID, title, ring, reason string)
 
+	// Enabled, if set, says whether Windows update management is switched on for an organization. Nil means on.
+	Enabled func(ctx context.Context, org uuid.UUID) bool
+
 	Pool   *pgxpool.Pool
 	Deploy *deploy.Service
 	Events *events.Broker
@@ -56,6 +61,12 @@ type ringCache struct {
 	at      time.Time
 	version time.Time // the ring's updated_at when it was resolved
 	members map[uuid.UUID]bool
+}
+
+// On reports whether Windows update management is switched on for the organization. When it is off nothing here scans,
+// approves, schedules or installs, and what devices report about Windows updates is discarded.
+func (s *Service) On(ctx context.Context, org uuid.UUID) bool {
+	return s.Enabled == nil || s.Enabled(ctx, org)
 }
 
 func (s *Service) now() time.Time {

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Menu, Tooltip } from "@mantine/core";
 import { api, errorMessage, type Device } from "../api/client";
 import { useSession } from "../api/session";
+import { useFeatures } from "../settings/features";
 import { Icons, toast } from "../ui";
 import {
   fetchWindowsUpdates,
@@ -41,7 +42,10 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
   const { can } = useSession();
   const qc = useQueryClient();
   const canDevices = can("devices:write");
-  const canUpdates = can("updates:read") && can("updates:write") && d.status === "active";
+  const features = useFeatures();
+  // A restart is not a Windows update feature: it stays when Windows updates are switched off.
+  const canRestart = can("updates:read") && can("updates:write") && d.status === "active";
+  const canWindows = canRestart && features.windowsUpdates;
   const scan = useScanUpdates(d.id);
   const install = useInstallUpdates(d.id);
   const reboot = useRebootDevice(d.id);
@@ -83,7 +87,7 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
           Approve
         </Button>
       )}
-      {canUpdates && (
+      {canWindows && (
         <>
           <Button variant="default" onClick={() => scan.mutate()} loading={scan.isPending} leftSection={<Icons.NavAgentUpdates size={16} aria-hidden />}>
             Scan for updates
@@ -91,10 +95,12 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
           <Button variant="default" onClick={() => void openInstall()} loading={loadingInstall || install.isPending} leftSection={<Icons.Download size={16} aria-hidden />}>
             Install updates
           </Button>
-          <Button variant="default" onClick={() => setRestartOpen(true)} loading={reboot.isPending} leftSection={<Icons.Restart size={16} aria-hidden />}>
-            Restart
-          </Button>
         </>
+      )}
+      {canRestart && (
+        <Button variant="default" onClick={() => setRestartOpen(true)} loading={reboot.isPending} leftSection={<Icons.Restart size={16} aria-hidden />}>
+          Restart
+        </Button>
       )}
       {canWake && (
         <Tooltip label="Another online computer on the same network sends a Wake-on-LAN packet">

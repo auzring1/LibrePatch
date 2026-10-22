@@ -77,6 +77,9 @@ var stateLabels = map[string]string{"compliant": "Compliant", "non_compliant": "
 // complianceHTML: GET /reports/compliance.html — the compliance report as a printable page that carries the
 // deployment's report logo, organization name and footer text.
 func (s *server) complianceHTML(w http.ResponseWriter, r *http.Request) {
+	if !s.windowsUpdates(w, r) {
+		return
+	}
 	p := principalFrom(r)
 	rows, err := s.complianceRows(r)
 	if err != nil {

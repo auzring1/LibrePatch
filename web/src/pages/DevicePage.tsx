@@ -5,6 +5,7 @@ import { Alert, Button, Modal, Stack, Tabs, Text, TextInput } from "@mantine/cor
 import { api, errorMessage, type Device } from "../api/client";
 import { ago } from "../api/format";
 import { useSession } from "../api/session";
+import { useFeatures } from "../settings/features";
 import { DeviceActions } from "../components/DeviceActions";
 import { ActivityTab } from "../components/DeviceActivity";
 import { HardwareTab } from "../components/DeviceHardware";
@@ -67,7 +68,8 @@ export function DevicePage() {
   });
   const d = q.data;
   const { loading: sessionLoading, can, canOrg } = useSession();
-  const access = { hasUpdates: can("updates:read"), hasSoftwareUpdates: can("deployments:read"), hasJobs: can("deployments:read"), hasInspect: can("devices:inspect") && d?.status === "active", hasActivity: canOrg("audit:read") };
+  const features = useFeatures();
+  const access = { hasUpdates: can("updates:read") && features.windowsUpdates, hasSoftwareUpdates: can("deployments:read"), hasJobs: can("deployments:read"), hasInspect: can("devices:inspect") && d?.status === "active", hasActivity: canOrg("audit:read") };
   const [params, setParams] = useSearchParams();
   const rawTab = params.get("tab");
   const tab = resolveDeviceTab(rawTab, access);

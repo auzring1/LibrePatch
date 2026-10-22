@@ -96,6 +96,9 @@ func (s *Service) Decide(ctx context.Context, a Actor, ids []uuid.UUID, decision
 
 // hideEverywhere queues a hide (or unhide) job on every active device whose last scan lists the update.
 func (s *Service) hideEverywhere(ctx context.Context, a Actor, update uuid.UUID, hide bool) (int, error) {
+	if !s.On(ctx, a.Org) {
+		return 0, ErrDisabled
+	}
 	q := dbq.New(s.Pool)
 	rows, err := q.ListUpdateDeviceStates(ctx, dbq.ListUpdateDeviceStatesParams{OrgID: a.Org, UpdateID: update})
 	if err != nil {

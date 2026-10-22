@@ -803,3 +803,51 @@ func TestStaleRestartRequiredFromAScanBeforeTheLastBootIsIgnored(t *testing.T) {
 		}
 	}
 }
+
+// With the organization's Windows updates switched off nothing is scanned, approved, scheduled or installed, what devices
+// report is dropped, and a restart (not a Windows update feature) still works. Switching back on picks the work up again.
+func TestSwitchingWindowsUpdatesOffStopsEverything(t *testing.T) {
+	r := newRingFixture(t, 0, 90)
+	ctx := context.Background()
+	on := true
+	r.svc.Enabled = func(context.Context, uuid.UUID) bool { return on }
+
+	on = false
+	// The scheduler leaves the rings and the rules alone.
+	r.svc.Tick(ctx)
+	r.dep.Wait()
+	if n := len(r.jobsFor(r.p1)) + len(r.jobsFor(r.p2)) + len(r.jobsFor(r.b1)); n != 0 {
+		t.Fatalf("%d install jobs were queued while Windows updates are off", n)
+	}
+	// Every administrator action is refused.
+	if _, err := r.svc.ScanDevice(ctx, r.actor(), r.p1.ID); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("scan: %v", err)
+	}
+	if _, err := r.svc.InstallOnDevice(ctx, r.actor(), r.p1.ID, []string{uid(1)}, RebootCfg{}); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("install on a device: %v", err)
+	}
+	if _, err := r.svc.InstallUpdate(ctx, r.actor(), r.update, nil, RebootCfg{}); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("install everywhere: %v", err)
+	}
+	if _, err := r.svc.HideOnDevice(ctx, r.actor(), r.p1.ID, []string{uid(1)}, true); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("hide: %v", err)
+	}
+	// What a device reports is acknowledged and dropped.
+	before := r.count("SELECT count(*) FROM wu_updates WHERE org_id = $1", r.org)
+	r.snapshot(r.p1, 2, upd(7, "Security Updates", "Critical", missing))
+	if after := r.count("SELECT count(*) FROM wu_updates WHERE org_id = $1", r.org); after != before {
+		t.Fatalf("a report was stored while Windows updates are off: %d -> %d", before, after)
+	}
+	// A restart is not a Windows update feature.
+	if _, err := r.svc.RebootDevice(ctx, r.actor(), r.p1.ID, 5, "test"); err != nil {
+		t.Fatalf("restart must keep working: %v", err)
+	}
+	r.dep.Wait()
+
+	on = true
+	r.svc.Tick(ctx)
+	r.dep.Wait()
+	if len(r.jobsFor(r.p1)) != 1 || len(r.jobsFor(r.p2)) != 1 {
+		t.Fatalf("switching back on must resume the rollout: %d %d", len(r.jobsFor(r.p1)), len(r.jobsFor(r.p2)))
+	}
+}

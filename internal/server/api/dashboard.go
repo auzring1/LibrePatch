@@ -134,6 +134,9 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 		devSc, updSc, jobSc = devSc.only(id), updSc.only(id), jobSc.only(id)
 	}
+	if s.Updates != nil && !s.Updates.On(ctx, p.OrgID) {
+		updSc = scope{} // Windows updates are switched off: no compliance, missing-update or hold numbers
+	}
 	fail := func(what string, err error) bool {
 		if err != nil {
 			s.Log.Error("dashboard "+what, "err", err)
