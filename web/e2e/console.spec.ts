@@ -397,7 +397,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await mainNav(page).getByRole("link", { name: "Automations", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Automations", exact: true })).toBeVisible();
       await page.getByRole("tab", { name: "Windows", exact: true }).click();
-      await expect(page.getByRole("table", { name: "Update rings" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Rings", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Add ring" }).click();
       await page.getByRole("dialog").getByLabel("Name").fill("Pilot");
       await page.getByRole("dialog").getByLabel("Groups").click();
@@ -619,7 +619,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   // Software policies live on the Software tab of Automations (the first tab).
   await mainNav(page).getByRole("link", { name: "Automations", exact: true }).click();
   await expect(page.getByRole("tab", { name: "Software", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("table", { name: "Update rings" })).toBeVisible(); // the same rings, shown on this tab too
+  await expect(page.getByRole("heading", { name: "Rings", exact: true })).toBeVisible(); // the same rings, shown on this tab too
   await page.getByRole("button", { name: "Add policy" }).click();
   const pd = page.getByRole("dialog");
   await pd.getByLabel(/^Name/).fill("Keep Acme Tool current");
@@ -779,7 +779,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await expect(page.getByRole("tab", { name: "Windows", exact: true })).toHaveCount(0);
   await page.goto("/automations?tab=windows"); // there is no Windows tab now: the Software tab shows instead
   await expect(page.getByRole("table", { name: "Software policies" })).toBeVisible();
-  await expect(page.getByRole("table", { name: "Update rings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Rings", exact: true })).toBeVisible();
   await a11y(page, "automations-windows-off");
   await page.goto("/devices");
   await page.getByTestId("device-row").first().click();
