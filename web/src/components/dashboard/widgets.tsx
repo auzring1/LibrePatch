@@ -3,9 +3,10 @@ import { Link } from "react-router-dom";
 import { ago } from "../../api/format";
 import type { Dashboard } from "../../api/client";
 import { Card, Donut, Icons, SeverityBadge, StatGrid, StatTile, StatusPill, type PillKind } from "../../ui";
+import { describeAudit } from "../auditText";
 import { complianceSummary } from "../compliance";
 import { ComplianceChart } from "./ComplianceChart";
-import { REASON_TEXT, type Reason, historySummary, humanAction, kbLabel, missingUpdateLink, normaliseHistory, positiveKind } from "./format";
+import { REASON_TEXT, type Reason, historySummary, kbLabel, missingUpdateLink, normaliseHistory, positiveKind } from "./format";
 import type { WidgetId } from "./layout";
 
 type Props = { d: Dashboard };
@@ -226,10 +227,8 @@ export function ActivityWidget({ d, now }: Props & { now?: number }) {
           <li key={a.id}>
             <div className="lp-dash-row">
               <span className="lp-dash-row__main">
-                <span className="lp-dash-row__title">{humanAction(a.action)}</span>
+                <span className="lp-dash-row__title">{describeAudit(a)}</span>
                 <span className="lp-dash-row__meta">
-                  {a.actor_name || a.actor_type}
-                  {" · "}
                   <time dateTime={a.ts}>{ago(a.ts, now)}</time>
                 </span>
               </span>
