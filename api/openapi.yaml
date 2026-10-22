@@ -4180,6 +4180,22 @@ components:
         product: { type: string }
         installed: { type: string }
         fixed_in: { type: string, description: The version that fixes it; empty when none is known }
+        update:
+          nullable: true
+          description: The update of the same program on that device, when there is one (only for callers who may read deployments for the whole organization)
+          type: object
+          required: [package_name, in_catalog, latest_version, verified, self_updating, deployable, scope, fixes]
+          properties:
+            package_id: { type: string, format: uuid, nullable: true, description: Null while the program is not in the catalog yet }
+            package_name: { type: string }
+            winget_id: { type: string }
+            in_catalog: { type: boolean }
+            latest_version: { type: string }
+            verified: { type: boolean }
+            self_updating: { type: boolean }
+            deployable: { type: boolean, description: False when the program is left to its own updater }
+            scope: { type: string, enum: [machine, user] }
+            fixes: { type: string, enum: ["yes", "no", "unknown"], description: "Whether the newest version is at or past the fixed version (unknown when the advisory names none)" }
     DeviceVulnerability:
       allOf:
         - { $ref: "#/components/schemas/Vulnerability" }

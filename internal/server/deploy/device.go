@@ -512,6 +512,8 @@ type FleetUpdateDevice struct {
 	InstalledVersion string    `json:"installed_version"`
 	Scope            string    `json:"scope"`
 	MatchedBy        string    `json:"matched_by,omitempty"`
+	// NormalizedName is the inventory's name for the program (what the vulnerability lookup matches on); not sent to the console.
+	NormalizedName string `json:"-"`
 }
 
 // FleetUpdate is a package that is out of date on at least one active device.
@@ -631,7 +633,7 @@ func groupFleetUpdates(rows []fleetRow, u *updater) []FleetUpdate {
 			continue
 		}
 		seen[dk] = true
-		f.Devices = append(f.Devices, FleetUpdateDevice{DeviceID: r.deviceID, Hostname: r.hostname, InstalledVersion: r.row.version, Scope: r.scope, MatchedBy: c.matchedBy})
+		f.Devices = append(f.Devices, FleetUpdateDevice{DeviceID: r.deviceID, Hostname: r.hostname, InstalledVersion: r.row.version, Scope: r.scope, MatchedBy: c.matchedBy, NormalizedName: r.row.normalizedName})
 	}
 	out := make([]FleetUpdate, 0, len(order))
 	for _, k := range order {

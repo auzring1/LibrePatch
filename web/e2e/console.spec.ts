@@ -452,6 +452,10 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       const cd = page.getByRole("dialog");
       await expect(cd.getByText("GNU Bash e2e vulnerability")).toBeVisible();
       await expect(cd.getByText(/fix due 2026-10-22|fix is due today|fix was due 2026-10-22/)).toBeVisible();
+      // The window says what can be done about it: here the program is in no catalog, so there is nothing to install from this page.
+      await expect(cd.getByText("No update to offer from here")).toBeVisible();
+      await expect(cd.getByRole("columnheader", { name: "What you can do" })).toBeVisible();
+      await expect(cd.getByRole("button", { name: /^Update \d+ device/ })).toHaveCount(0);
       await cd.getByRole("link", { name: /^\S+$/ }).filter({ hasNotText: "NVD page" }).first().click();
       await expect(page).toHaveURL(/\?tab=vulnerabilities$/);
       await expect(page.getByRole("table", { name: "Known vulnerabilities on this device" }).getByText("CVE-2026-9001")).toBeVisible();

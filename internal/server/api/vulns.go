@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"errors"
 	"net/http"
 	"strconv"
@@ -8,9 +9,13 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/auzring1/librepatch/internal/server/audit"
+	"github.com/auzring1/librepatch/internal/server/auth"
+	"github.com/auzring1/librepatch/internal/server/deploy"
 	"github.com/auzring1/librepatch/internal/server/vulns"
+	"github.com/auzring1/librepatch/internal/shared/vercmp"
 )
 
 func (s *server) vulnSvc(w http.ResponseWriter) bool {
@@ -92,7 +97,82 @@ func (s *server) vulnerabilityDevices(w http.ResponseWriter, r *http.Request) {
 		s.vulnError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": hits})
+	// Whoever may see the software updates also learns which of them fix the hits (D134).
+	var ups []deploy.FleetUpdate
+	if s.Deploy != nil && principalFrom(r).Access.OrgHas(auth.PermDeploymentsRead) {
+		if ups, err = s.Deploy.FleetUpdates(r.Context(), principalFrom(r).OrgID); err != nil {
+			s.Log.Error("vulnerability fixes", "err", err)
+			internalError(w)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": attachFixes(hits, ups)})
+}
+
+// vulnFix is the update that would fix a hit: the newest version LibrePatch can install of the program on that device.
+type vulnFix struct {
+	PackageID     *uuid.UUID `json:"package_id"` // null while the program is not in the catalog yet
+	PackageName   string     `json:"package_name"`
+	WingetID      string     `json:"winget_id,omitempty"`
+	InCatalog     bool       `json:"in_catalog"`
+	LatestVersion string     `json:"latest_version"`
+	Verified      bool       `json:"verified"`
+	SelfUpdating  bool       `json:"self_updating"`
+	Deployable    bool       `json:"deployable"`
+	Scope         string     `json:"scope"`
+	// Fixes: "yes" when the newest version is at least the version the advisory names, "no" when it is older (the
+	// newest version is still affected), "unknown" when the advisory names no fixed version.
+	Fixes string `json:"fixes"`
+}
+
+type vulnHit struct {
+	vulns.DeviceHit
+	Update *vulnFix `json:"update"`
+}
+
+// attachFixes ties each hit to the update of the same program on the same device, found through the inventory's name for
+// the program and the installed version (a program listed twice keeps its own versions apart).
+func attachFixes(hits []vulns.DeviceHit, ups []deploy.FleetUpdate) []vulnHit {
+	type key struct {
+		device      uuid.UUID
+		title, vers string
+	}
+	by := map[key]*vulnFix{}
+	for i := range ups {
+		u := &ups[i]
+		for _, d := range u.Devices {
+			k := key{d.DeviceID, d.NormalizedName, d.InstalledVersion}
+			if d.NormalizedName == "" || by[k] != nil {
+				continue
+			}
+			f := &vulnFix{PackageName: u.PackageName, WingetID: u.WingetID, InCatalog: u.InCatalog, LatestVersion: u.LatestVersion, Verified: u.Verified,
+				SelfUpdating: u.SelfUpdating, Deployable: u.Deployable, Scope: d.Scope}
+			if u.InCatalog {
+				id := u.PackageID
+				f.PackageID = &id
+			}
+			by[k] = f
+		}
+	}
+	out := make([]vulnHit, 0, len(hits))
+	for _, h := range hits {
+		v := vulnHit{DeviceHit: h}
+		if f := by[key{h.DeviceID, h.Title, h.Installed}]; f != nil && h.Title != "" {
+			c := *f
+			latest, fixed := vercmp.Key(c.LatestVersion), vercmp.Key(h.FixedIn)
+			switch {
+			case latest == nil || fixed == nil:
+				c.Fixes = "unknown"
+			case bytes.Compare(latest, fixed) >= 0:
+				c.Fixes = "yes"
+			default:
+				c.Fixes = "no"
+			}
+			v.Update = &c
+		}
+		out = append(out, v)
+	}
+	return out
 }
 
 // GET /devices/{id}/vulnerabilities

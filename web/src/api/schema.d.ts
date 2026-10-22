@@ -8852,6 +8852,29 @@ export interface components {
             installed: string;
             /** @description The version that fixes it; empty when none is known */
             fixed_in: string;
+            /** @description The update of the same program on that device, when there is one (only for callers who may read deployments for the whole organization) */
+            update?: {
+                /**
+                 * Format: uuid
+                 * @description Null while the program is not in the catalog yet
+                 */
+                package_id?: string | null;
+                package_name: string;
+                winget_id?: string;
+                in_catalog: boolean;
+                latest_version: string;
+                verified: boolean;
+                self_updating: boolean;
+                /** @description False when the program is left to its own updater */
+                deployable: boolean;
+                /** @enum {string} */
+                scope: "machine" | "user";
+                /**
+                 * @description Whether the newest version is at or past the fixed version (unknown when the advisory names none)
+                 * @enum {string}
+                 */
+                fixes: "yes" | "no" | "unknown";
+            } | null;
         };
         DeviceVulnerability: components["schemas"]["Vulnerability"] & {
             product: string;
