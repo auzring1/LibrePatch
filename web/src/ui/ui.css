@@ -177,7 +177,7 @@ a.lp-tile:hover, button.lp-tile:hover { border-color: var(--lp-border-strong); b
 .lp-dt__table { border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: var(--lp-text-sm); }
 .lp-dt__table th, .lp-dt__table td { padding: var(--lp-cell-py) var(--lp-cell-px); text-align: left; vertical-align: middle; border-bottom: 1px solid var(--lp-border); overflow: hidden; text-overflow: ellipsis; }
 .lp-dt__table td { height: var(--lp-row-h); background: var(--lp-surface); }
-.lp-dt__table th { position: sticky; top: 0; z-index: 2; height: 40px; padding-top: 0; padding-bottom: 0; background: var(--lp-surface-sunken); color: var(--lp-text-muted); font-size: var(--lp-text-xs); font-weight: var(--lp-weight-semibold); letter-spacing: 0.03em; text-transform: uppercase; white-space: nowrap; user-select: none; }
+.lp-dt__table th { position: sticky; top: 0; z-index: 2; height: 40px; padding-top: 0; padding-bottom: 0; background: var(--lp-surface-sunken); color: var(--lp-text-muted); font-size: var(--lp-text-xs); font-weight: var(--lp-weight-semibold); letter-spacing: 0.03em; text-transform: uppercase; white-space: normal; line-height: 1.2; user-select: none; }
 .lp-dt__table th[data-align="right"], .lp-dt__table td[data-align="right"] { text-align: right; }
 .lp-dt__table th[data-align="center"], .lp-dt__table td[data-align="center"] { text-align: center; }
 .lp-dt__table td[data-wrap="true"] { white-space: normal; overflow: visible; }
@@ -188,6 +188,7 @@ a.lp-tile:hover, button.lp-tile:hover { border-color: var(--lp-border-strong); b
 .lp-dt__table th[data-sticky="true"], .lp-dt__table td[data-sticky="true"] { position: sticky; left: 0; z-index: 1; }
 .lp-dt__table th[data-sticky="true"] { z-index: 3; }
 .lp-dt__sort { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; max-width: 100%; border-radius: var(--lp-radius-sm); }
+.lp-dt__label { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.2; text-align: left; }
 .lp-dt__sort:focus-visible { outline: 2px solid var(--lp-focus); outline-offset: 2px; }
 .lp-dt__sort[data-active="true"] { color: var(--lp-text); }
 .lp-dt__resize { position: absolute; right: 0; top: 0; bottom: 0; width: 9px; cursor: col-resize; touch-action: none; display: flex; justify-content: center; background: transparent; border: 0; padding: 0; }

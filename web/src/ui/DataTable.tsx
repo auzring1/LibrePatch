@@ -114,6 +114,22 @@ const loadLayout = (id: string): Partial<Layout> => {
   }
 };
 
+/**
+ * How much to shrink the columns the person has not resized so the table fits its frame. Columns keep at least 85% of
+ * their width (and their own minimum): past that the table scrolls sideways as before, rather than squeezing text away.
+ */
+export function fitScale(frame: number, cols: { id: string; width: number; min: number }[], sizes: Record<string, number>, fixed: number): number {
+  if (frame <= 0) return 1;
+  let flex = 0;
+  let pinned = fixed;
+  for (const c of cols) {
+    if (sizes[c.id] !== undefined) pinned += sizes[c.id]!;
+    else flex += c.width;
+  }
+  if (flex <= 0 || pinned + flex <= frame) return 1;
+  return Math.max(0.85, (frame - pinned) / flex);
+}
+
 const text = (v: unknown) => (v === null || v === undefined ? "" : v instanceof Date ? v.toISOString() : String(v));
 
 export function DataTable<T>(p: DataTableProps<T>) {
@@ -145,6 +161,22 @@ export function DataTable<T>(p: DataTableProps<T>) {
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: saved.pageSize ?? p.pageSize ?? 25 });
   const [activeView, setActiveView] = useState<string>("");
+  // How wide the table's frame is, so columns can share it instead of pushing the table into a sideways scroll.
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  const [boxW, setBoxW] = useState(0);
+  useEffect(() => {
+    if (!box) return;
+    const measure = () => setBoxW(box.clientWidth);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [box]);
+  const fit = useMemo(
+    () => fitScale(boxW, columns.filter((c) => visibility[c.id] !== false).map((c) => ({ id: c.id, width: c.width ?? 160, min: c.minWidth ?? 70 })), sizes, (p.selectable ? 44 : 0) + (p.rowActions ? 132 : 0)),
+    [boxW, columns, visibility, sizes, p.selectable, p.rowActions],
+  );
 
   // Keep the layout across visits on this device.
   useEffect(() => {
@@ -169,7 +201,7 @@ export function DataTable<T>(p: DataTableProps<T>) {
         header: c.header,
         accessorFn: (row) => (c.value ? (c.value(row) ?? "") : ""),
         cell: (ctx) => (c.cell ? c.cell(ctx.row.original) : text(c.value?.(ctx.row.original)) || "—"),
-        size: c.width ?? 160,
+        size: Math.max(c.minWidth ?? 70, Math.round((c.width ?? 160) * fit)),
         minSize: c.minWidth ?? 70,
         enableSorting: c.sortable ?? !!c.value,
         enableHiding: !c.required,
@@ -183,7 +215,7 @@ export function DataTable<T>(p: DataTableProps<T>) {
     }
     if (p.rowActions) out.push({ id: ACTIONS, header: "", size: 132, enableSorting: false, enableHiding: false, enableResizing: false });
     return out;
-  }, [columns, p.selectable, p.rowActions]);
+  }, [columns, p.selectable, p.rowActions, fit]);
 
   const fullOrder = useMemo(() => {
     const known = new Set(order);
@@ -458,7 +490,7 @@ export function DataTable<T>(p: DataTableProps<T>) {
           (p.empty ?? <EmptyState title="Nothing here yet" />)
         ) : (
           <>
-            <div className="lp-dt__scroll" ref={scrollRef} tabIndex={0} role="region" aria-label={`${p.label} table, scrollable`}>
+            <div className="lp-dt__scroll" ref={(el) => ((scrollRef.current = el), setBox(el))} tabIndex={0} role="region" aria-label={`${p.label} table, scrollable`}>
               <table className="lp-dt__table" style={{ width: Math.max(totalWidth, 0), minWidth: "100%" }} aria-label={p.label} aria-rowcount={filteredRows.length}>
                 <colgroup>
                   {visibleCols.map((c) => (
@@ -485,7 +517,7 @@ export function DataTable<T>(p: DataTableProps<T>) {
                               <span className="lp-visually-hidden">Actions</span>
                             ) : canSort ? (
                               <button type="button" className="lp-dt__sort" data-active={dir ? "true" : "false"} onClick={h.column.getToggleSortingHandler()} title={`Sort by ${meta?.header ?? h.id}`}>
-                                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{flexRender(h.column.columnDef.header, h.getContext())}</span>
+                                <span className="lp-dt__label">{flexRender(h.column.columnDef.header, h.getContext())}</span>
                                 {dir === "asc" ? <I.SortAsc size={14} aria-hidden /> : dir === "desc" ? <I.SortDesc size={14} aria-hidden /> : <I.SortNone size={14} aria-hidden style={{ opacity: 0.55 }} />}
                               </button>
                             ) : (

@@ -49,12 +49,12 @@ export function SoftwarePoliciesPanel() {
 
   const columns = useMemo<Column<SoftwarePolicy>[]>(
     () => [
-      { id: "name", header: "Name", value: (p) => p.name, required: true, width: 240 },
+      { id: "name", header: "Name", value: (p) => p.name, required: true, width: 200 },
       {
         id: "status",
         header: "Status",
         value: (p) => policyState(p.state).label,
-        width: 330,
+        width: 300,
         wrap: true,
         csv: (p) => `${policyState(p.state).label}: ${p.state_text}`,
         cell: (p) => (
@@ -75,7 +75,7 @@ export function SoftwarePoliciesPanel() {
       {
         id: "checked",
         header: "Last checked",
-        width: 130,
+        width: 150,
         value: (p) => (p.last_check_at ? new Date(p.last_check_at).getTime() : 0),
         csv: (p) => p.last_check_at ?? "",
         cell: (p) => <span title={p.last_check_at ? dateTime(p.last_check_at) : undefined}>{p.last_check_at ? ago(p.last_check_at) : "—"}</span>,
@@ -92,7 +92,7 @@ export function SoftwarePoliciesPanel() {
       {
         id: "install",
         header: "Last install",
-        width: 140,
+        width: 130,
         value: (p) => (p.last_run_at ? new Date(p.last_run_at).getTime() : 0),
         csv: (p) => p.last_run_at ?? "",
         cell: (p) =>
@@ -112,7 +112,8 @@ export function SoftwarePoliciesPanel() {
         id: "kind",
         header: "What",
         value: (p) => kindLabel[p.kind] ?? p.kind,
-        width: 190,
+        width: 160,
+        wrap: true,
         filter: {
           type: "select",
           options: Object.entries(kindLabel).map(([, label]) => ({ value: label, label })),
@@ -122,7 +123,7 @@ export function SoftwarePoliciesPanel() {
         id: "package",
         header: "Package",
         value: (p) => (p.auto ? `All apps (${p.apps})` : p.package_name),
-        width: 200,
+        width: 150,
         cell: (p) =>
           p.auto ? (
             <Anchor component="button" type="button" size="sm" onClick={() => setAppsOf(p)} aria-label={`Show the ${p.apps} apps of ${p.name}`}>
@@ -133,7 +134,7 @@ export function SoftwarePoliciesPanel() {
           ),
       },
       // The group names resolve once the groups have loaded, so the value follows `groups.data`.
-      { id: "groups", header: "Groups", value: (p) => p.group_ids.map(groupName).join(", "), width: 220, wrap: true },
+      { id: "groups", header: "Groups", value: (p) => p.group_ids.map(groupName).join(", "), width: 170, wrap: true },
       {
         id: "messages",
         header: "Messages to the user",

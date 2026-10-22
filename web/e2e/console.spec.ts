@@ -518,6 +518,9 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   expect(temp.length).toBeGreaterThanOrEqual(16);
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("user-row").filter({ hasText: "tech@example.com" })).toContainText("site Branch office");
+  // The users table shares its frame between its columns instead of scrolling sideways.
+  const usersFrame = page.getByRole("region", { name: /Users table, scrollable/ });
+  expect(await usersFrame.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await shot(page, "19-users");
 
   // The technician: forced password change, authenticator enrollment, and a console limited to devices.

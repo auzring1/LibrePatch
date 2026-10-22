@@ -233,7 +233,7 @@ export function SoftwareTab({ id, hostname, active }: { id: string; hostname: st
       { id: "version", header: "Version", value: (s) => s.version ?? "", width: 130, cell: (s) => <span className="lp-mono">{s.version || "—"}</span> },
       { id: "publisher", header: "Publisher", value: (s) => s.publisher ?? "", width: 190 },
       { id: "for", header: "Installed for", value: (s) => who(s.user_sid ?? ""), width: 150 },
-      { id: "type", header: "Type", value: (s) => s.source, width: 110, cell: (s) => <StatusPill kind="neutral" size="sm" icon={null}>{s.source}</StatusPill>, filter: { type: "text" } },
+      { id: "type", header: "Type", value: (s) => s.source, width: 110, defaultHidden: true, cell: (s) => <StatusPill kind="neutral" size="sm" icon={null}>{s.source}</StatusPill>, filter: { type: "text" } },
       {
         id: "update",
         header: "Update status",
