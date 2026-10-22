@@ -11,6 +11,7 @@ var (
 		22631: {"windows_11_23h2", "Windows 11 23H2"},
 		26100: {"windows_11_24h2", "Windows 11 24H2"},
 		26200: {"windows_11_25h2", "Windows 11 25H2"},
+		26300: {"windows_11_26h2", "Windows 11 26H2"},
 	}
 	serverOS = map[int][2]string{
 		14393: {"windows_server_2016", "Windows Server 2016"},

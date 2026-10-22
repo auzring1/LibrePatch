@@ -57,6 +57,7 @@ var client = []release{
 	{22631, "Windows 11", "23H2", day(2025, 11, 11), day(2026, 11, 10)},
 	{26100, "Windows 11", "24H2", day(2026, 10, 13), day(2027, 10, 12)},
 	{26200, "Windows 11", "25H2", day(2027, 10, 12), day(2028, 10, 10)},
+	{26300, "Windows 11", "26H2", day(2028, 10, 10), day(2029, 10, 9)},
 }
 
 // ltsc lists the long-term servicing releases, which run on their own builds. iot is the date for the IoT Enterprise
