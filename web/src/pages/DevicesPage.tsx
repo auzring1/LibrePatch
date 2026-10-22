@@ -6,6 +6,7 @@ import { useSession } from "../api/session";
 import { useFeatures } from "../settings/features";
 import { api, errorMessage, type Device, type ReportOverview } from "../api/client";
 import { ago } from "../api/format";
+import { complianceSummary } from "../components/compliance";
 import { useSiteScope } from "../ui/SiteScope";
 import { useEffective } from "../settings/useEffective";
 import { DataTable, EmptyState, Icons, IconButton, Page, PageHeader, StatGrid, StatTile, Status, StatusPill, TileSkeleton, toast, useConfirm, type Column } from "../ui";
@@ -200,7 +201,12 @@ export function DevicesPage() {
           <StatTile label="Offline" value={Math.max(active - online, 0)} kind="neutral" icon={<Icons.Offline size={16} aria-hidden />} hint={`${o.devices.not_seen_for_a_week ?? 0} not seen for a week`} />
           <StatTile label="Waiting for approval" value={pending.data?.total ?? o.devices.pending ?? 0} kind="warning" icon={<Icons.Clock size={16} aria-hidden />} onClick={() => setStatus("pending")} selected={status === "pending"} />
           <StatTile label="Waiting for a restart" value={o.devices.reboot_pending ?? 0} kind={(o.devices.reboot_pending ?? 0) > 0 ? "warning" : "neutral"} icon={<Icons.Restart size={16} aria-hidden />} />
-          {features.windowsUpdates && <StatTile label="Not patch compliant" value={o.compliance.non_compliant ?? 0} kind={(o.compliance.non_compliant ?? 0) > 0 ? "danger" : "success"} icon={<Icons.NavUpdates size={16} aria-hidden />} to="/reports" hint="Open the patch compliance report" />}
+          {features.windowsUpdates &&
+            (() => {
+              const c = complianceSummary(o.compliance);
+              const bad = o.compliance.non_compliant ?? 0;
+              return <StatTile label="Not patch compliant" value={c.scanned === 0 ? "—" : bad} kind={c.scanned === 0 ? "neutral" : bad > 0 ? "danger" : "success"} icon={<Icons.NavUpdates size={16} aria-hidden />} to="/reports" hint={c.scanned === 0 ? c.hint : "Open the patch compliance report"} />;
+            })()}
         </StatGrid>
       ) : null}
       <DataTable<Device>

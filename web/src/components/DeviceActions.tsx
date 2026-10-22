@@ -66,8 +66,8 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
       const wu = await qc.fetchQuery({ queryKey: windowsUpdatesKey(d.id), queryFn: () => fetchWindowsUpdates(d.id), staleTime: 0 });
       const items = installable(wu.items);
       const online = fromOnlineCheck(wu);
-      if (items.length === 0) toast.info("Nothing to install: no missing Windows updates are known for this device. Scan for updates first.");
-      else if (online && !can("updates:policy")) toast.info("These updates come from an online check, which only people with the update-policy permission can install. Scan for updates to go back to the usual source.");
+      if (items.length === 0) toast.info("Nothing to install: no missing Windows updates are known for this device. Scan Windows updates first.");
+      else if (online && !can("updates:policy")) toast.info("These updates come from an online check, which only people with the update-policy permission can install. Scan Windows updates to go back to the usual source.");
       else setInstallFor({ items, online });
     } catch (e) {
       toast.error(errorMessage(e));
@@ -90,10 +90,10 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
       {canWindows && (
         <>
           <Button variant="default" onClick={() => scan.mutate()} loading={scan.isPending} leftSection={<Icons.NavAgentUpdates size={16} aria-hidden />}>
-            Scan for updates
+            Scan Windows updates
           </Button>
           <Button variant="default" onClick={() => void openInstall()} loading={loadingInstall || install.isPending} leftSection={<Icons.Download size={16} aria-hidden />}>
-            Install updates
+            Install Windows updates
           </Button>
         </>
       )}
@@ -112,7 +112,7 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
       {canDevices && d.status === "active" && (
         <Tooltip label={d.online ? "Ask the device to send its hardware, software and user information now" : "The device is offline"}>
           <Button variant="default" onClick={() => refreshDevice.mutate()} loading={refreshDevice.isPending} disabled={!d.online} leftSection={<Icons.NavAgentUpdates size={16} aria-hidden />}>
-            Refresh
+            Refresh inventory
           </Button>
         </Tooltip>
       )}

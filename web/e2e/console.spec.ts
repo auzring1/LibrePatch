@@ -189,7 +189,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await shot(page, "05-device-hardware");
 
       // Software inventory: the dev agent on Linux reports dpkg packages.
-      await page.getByRole("tab", { name: /^Software(?! updates)/ }).click();
+      await page.getByRole("tab", { name: /^Installed software/ }).click();
       await expect(page.getByTestId("software-row").first()).toBeVisible({ timeout: 30_000 });
       await shot(page, "05-device-software");
       await page.getByLabel("Search Installed software").fill("zzz-no-such-package");
@@ -264,6 +264,13 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await shot(page, "09-custom-upload");
       await page.getByRole("button", { name: "Upload and add" }).click();
       await expect(page.getByRole("heading", { name: "Acme Tool", exact: true })).toBeVisible();
+      // The overrides read in plain words: a version choice instead of pin syntax, switches and detection rules kept behind "Advanced".
+      await expect(page.getByText("Which version to install")).toBeVisible();
+      await page.getByRole("combobox", { name: "Which version to install" }).click();
+      await page.getByRole("option", { name: "Stay on one version" }).click();
+      await expect(page.getByRole("combobox", { name: "Version to stay on" })).toBeVisible();
+      await page.getByRole("button", { name: /Advanced: install switches/ }).click();
+      await expect(page.getByLabel("Silent arguments")).toBeVisible();
       await shot(page, "10-package");
       await page.getByRole("link", { name: "Deploy", exact: true }).click();
       await page.getByRole("combobox", { name: "Devices" }).click();
@@ -286,7 +293,8 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       // Linux test agent cannot see people's programs, so it installs as before; the choice must still be kept and shown.
       await mainNav(page).getByRole("link", { name: "Catalog", exact: true }).click();
       await page.getByRole("link", { name: "Acme Tool" }).first().click();
-      await page.getByLabel("Programs this update replaces").fill("acme.exe");
+      await page.getByRole("combobox", { name: "Programs this update replaces" }).fill("acme.exe");
+      await page.keyboard.press("Enter");
       await page.getByRole("button", { name: "Save overrides" }).click();
       await expect(page.getByText("Overrides saved.")).toBeVisible();
       await page.getByRole("link", { name: "Deploy", exact: true }).click();
@@ -352,7 +360,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
           events: [{ time: Math.floor(Date.now() / 1000) - 600, level: 2, provider: "Acme-Disk", id: 7, message: "The device has a bad block." }],
         }),
       );
-      await page.getByRole("tab", { name: "Look at" }).click();
+      await page.getByRole("tab", { name: "Inspect" }).click();
       await page.getByRole("button", { name: "Show", exact: true }).click();
       await expect(page.getByRole("table", { name: "Running programs" }).getByRole("cell", { name: "acme-dev.exe", exact: true })).toBeVisible({ timeout: 30_000 });
       await page.getByText("Services", { exact: true }).click();
@@ -468,7 +476,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await expect(page.getByText("Device information refreshed.")).toBeVisible({ timeout: 30_000 });
       await page.getByRole("tab", { name: "Software updates" }).click();
       await expect(page.getByText(/No missing updates/)).toBeVisible();
-      await page.getByRole("tab", { name: /^Software(?! updates)/ }).click();
+      await page.getByRole("tab", { name: /^Installed software/ }).click();
       await expect(page.getByTestId("software-row").first()).toBeVisible();
       await expect(page.getByRole("button", { name: "Uninstall Software" })).toHaveCount(0); // the bulk bar appears with a selection
       await page.getByTestId("software-row").first().getByRole("checkbox").check();
@@ -728,6 +736,13 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await mainNav(page).getByRole("link", { name: "Reports", exact: true }).click();
   await expect(page.getByRole("heading", { name: /^(.* · )?Reports$/ })).toBeVisible();
   await expect(page.getByText("Patch compliant")).toBeVisible();
+  // With no scanned device the headline says so instead of claiming 0% compliance.
+  const cmp = (await (await page.request.get("/api/v1/reports/overview")).json()).compliance;
+  const tile = page.getByLabel("Fleet summary").locator(".lp-tile", { hasText: "Patch compliant" });
+  if ((cmp.compliant ?? 0) + (cmp.non_compliant ?? 0) === 0) {
+    await expect(tile).toContainText("—");
+    await expect(tile).not.toContainText("0%");
+  }
   // The operating-system support report: its summary and its table are there, and the API answers with the data date.
   await expect(page.getByRole("heading", { name: "Operating system support" })).toBeVisible();
   const lifecycle = await page.request.get("/api/v1/reports/lifecycle");

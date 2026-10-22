@@ -135,12 +135,12 @@ export function DevicePage() {
               <Tabs.List>
                 <Tabs.Tab value="overview">Overview</Tabs.Tab>
                 <Tabs.Tab value="hardware">Hardware</Tabs.Tab>
-                <Tabs.Tab value="software">Software{d.software_count ? ` (${d.software_count})` : ""}</Tabs.Tab>
+                <Tabs.Tab value="software">Installed software{d.software_count ? ` (${d.software_count})` : ""}</Tabs.Tab>
                 <Tabs.Tab value="vulnerabilities">Vulnerabilities</Tabs.Tab>
                 {access.hasSoftwareUpdates && <Tabs.Tab value="software-updates">Software updates</Tabs.Tab>}
                 {access.hasUpdates && <Tabs.Tab value="updates">Windows updates</Tabs.Tab>}
                 {access.hasJobs && <Tabs.Tab value="jobs">Jobs</Tabs.Tab>}
-                {access.hasInspect && <Tabs.Tab value="inspect">Look at</Tabs.Tab>}
+                {access.hasInspect && <Tabs.Tab value="inspect">Inspect</Tabs.Tab>}
                 {access.hasActivity && <Tabs.Tab value="activity">Activity</Tabs.Tab>}
               </Tabs.List>
 

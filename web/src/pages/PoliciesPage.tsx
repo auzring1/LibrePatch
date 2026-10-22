@@ -345,7 +345,7 @@ function AppsPreview({ policyId, groups, filter, onLeaveAlone }: { policyId?: st
                         <StatusPill kind="success" size="sm">
                           Kept updated
                         </StatusPill>
-                        <Button size="compact-xs" variant="subtle" onClick={() => onLeaveAlone(m.identifier)}>
+                        <Button size="compact-xs" variant="default" onClick={() => onLeaveAlone(m.identifier)}>
                           Leave alone
                         </Button>
                       </Group>

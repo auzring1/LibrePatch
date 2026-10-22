@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Alert, Button, Checkbox, Select, Textarea, TextInput } from "@mantine/core";
+import { Alert, Button, Checkbox, Collapse, Select, TagsInput, Textarea, TextInput } from "@mantine/core";
 import { api, errorMessage, type Detection, type Installer, type PackageDetail, type PackageOverride } from "../api/client";
 import { bytes, dateTime } from "../api/format";
 import { useSession } from "../api/session";
-import { parsePrograms } from "../components/prompts";
+import { describePin, formatPin, parsePin, type PinMode } from "../components/pin";
 import { PackageBadges } from "./CatalogPage";
 import { PRODUCT_NAME } from "../brand.generated";
 import { Card, DataTable, EmptyState, Icons, Page, PageHeader, StatusPill, TileSkeleton, toast, useConfirm, type Column } from "../ui";
@@ -13,16 +13,22 @@ import { Fields } from "../ui/PageBits";
 
 const policies = [
   { value: "", label: "Use the organization default" },
-  { value: "report_only", label: "Report only: never touch per-user installs" },
-  { value: "update_in_place", label: "Update per-user installs in place" },
-  { value: "convert_to_machine", label: "Convert: remove the per-user copy and install machine-wide" },
-  { value: "remove", label: "Remove per-user installs" },
+  { value: "report_only", label: "Leave them alone, only report them" },
+  { value: "update_in_place", label: "Update them where they are" },
+  { value: "convert_to_machine", label: "Replace each with one install for the whole PC" },
+  { value: "remove", label: "Remove them" },
 ];
 
 const selfUpdatePolicies = [
-  { value: "", label: "Default (vendor updater for self-updating apps)" },
-  { value: "defer_to_vendor", label: "Defer to the vendor's updater" },
-  { value: "enforce", label: "Enforce the pinned version anyway" },
+  { value: "", label: "Leave it to the app if it updates itself (default)" },
+  { value: "defer_to_vendor", label: "Always leave it to the app's own updater" },
+  { value: "enforce", label: "Install updates anyway, following the version choice above" },
+];
+
+const pinModes: { value: PinMode; label: string }[] = [
+  { value: "newest", label: "Always the newest version (default)" },
+  { value: "exact", label: "Stay on one version" },
+  { value: "below", label: "Stay below a version" },
 ];
 
 export function PackagePage() {
@@ -263,25 +269,27 @@ function Overrides({ detail }: { detail: PackageDetail }) {
   const qc = useQueryClient();
   const o = detail.override;
   const [args, setArgs] = useState((o.silent_args ?? []).join(" "));
-  const [pin, setPin] = useState(o.pin ?? "");
+  const [pin, setPin] = useState(() => parsePin(o.pin));
+  const [advanced, setAdvanced] = useState(false);
   const [excluded, setExcluded] = useState(!!o.excluded);
   const [userPolicy, setUserPolicy] = useState<string>(o.user_scope_policy ?? "");
   const [selfPolicy, setSelfPolicy] = useState<string>(o.self_update_policy ?? "");
   const [detection, setDetection] = useState(detectionToText(o.extra_detection));
-  const [programs, setPrograms] = useState((o.processes ?? []).join(", "));
+  const [programs, setPrograms] = useState<string[]>(o.processes ?? []);
   const [error, setError] = useState("");
   useEffect(() => setError(""), [args, pin, excluded, userPolicy, selfPolicy, detection, programs]);
+  const versions = (detail.versions ?? []).map((v) => v.version);
   const editable = can("catalog:override");
   const save = useMutation({
     mutationFn: () => {
       const body: PackageOverride = {
         silent_args: args.trim() ? args.trim().split(/\s+/) : [],
         extra_detection: textToDetection(detection),
-        pin: pin.trim(),
+        pin: formatPin(pin),
         excluded,
         user_scope_policy: userPolicy as PackageOverride["user_scope_policy"],
         self_update_policy: selfPolicy as PackageOverride["self_update_policy"],
-        processes: parsePrograms(programs),
+        processes: programs,
       };
       return api("PUT", `/catalog/packages/${detail.package.id}/overrides`, body);
     },
@@ -301,42 +309,67 @@ function Overrides({ detail }: { detail: PackageDetail }) {
       }
     >
       <div className="lp-block">
-        <TextInput
-          label="Silent arguments"
-          description="Replaces the manifest's switches. Only plain switches such as /S or /quiet are accepted."
-          value={args}
+        <Select
+          label="Which version to install"
+          description={describePin(pin)}
+          data={pin.mode === "custom" ? [...pinModes, { value: "custom", label: `Written by hand: ${pin.version}` }] : pinModes}
+          value={pin.mode}
           disabled={!editable}
-          onChange={(e) => setArgs(e.currentTarget.value)}
+          onChange={(v) => v && setPin({ mode: v as PinMode, version: v === "newest" ? "" : v === pin.mode ? pin.version : "" })}
+          allowDeselect={false}
+          maw={420}
         />
-        <TextInput
-          label="Version pin"
-          description={'Empty (newest), "latest", "= 24.08" (exactly) or "< 25" (anything older than)'}
-          value={pin}
-          disabled={!editable}
-          onChange={(e) => setPin(e.currentTarget.value)}
-          maw={300}
-        />
-        <TextInput
+        {pin.mode === "exact" && (
+          <Select
+            label="Version to stay on"
+            description={versions.length === 0 ? "No versions have been imported yet." : undefined}
+            data={versions}
+            value={pin.version || null}
+            disabled={!editable}
+            onChange={(v) => setPin({ mode: "exact", version: v ?? "" })}
+            searchable
+            placeholder="Pick one of the imported versions"
+            maw={300}
+          />
+        )}
+        {pin.mode === "below" && <TextInput label="Stay below version" placeholder="25" value={pin.version} disabled={!editable} onChange={(e) => setPin({ mode: "below", version: e.currentTarget.value })} maw={300} />}
+        <TagsInput
           label="Programs this update replaces"
-          description="File names such as chrome.exe, separated by commas. A deployment can then wait for them to be closed, ask the user to close them, or close them. Empty = silent installs only."
-          placeholder="chrome.exe, GoogleUpdate.exe"
+          description="File names such as chrome.exe. Press Enter after each one. A deployment can then wait for them to be closed, ask the user to close them, or close them. Leave empty to install silently."
+          placeholder="chrome.exe"
           value={programs}
           disabled={!editable}
-          onChange={(e) => setPrograms(e.currentTarget.value)}
+          onChange={setPrograms}
         />
-        <Select label="Per-user installs of this app" data={policies} value={userPolicy} disabled={!editable} onChange={(v) => setUserPolicy(v ?? "")} allowDeselect={false} />
-        <Select label="Self-updating behaviour" data={selfUpdatePolicies} value={selfPolicy} disabled={!editable} onChange={(v) => setSelfPolicy(v ?? "")} allowDeselect={false} />
-        <Textarea
-          label="Extra detection rules"
-          description="One per line: kind|key|value name|version|eq or ge. Kinds: msi, registry, file, appx."
-          value={detection}
-          disabled={!editable}
-          onChange={(e) => setDetection(e.currentTarget.value)}
-          autosize
-          minRows={2}
-          ff="monospace"
-        />
-        <Checkbox label="Exclude this package from deployments" checked={excluded} disabled={!editable} onChange={(e) => setExcluded(e.currentTarget.checked)} />
+        <Select label="Copies installed for one user only" description="Some programs are installed for a single person instead of the whole PC." data={policies} value={userPolicy} disabled={!editable} onChange={(v) => setUserPolicy(v ?? "")} allowDeselect={false} maw={520} />
+        <Select label="If the app updates itself" data={selfUpdatePolicies} value={selfPolicy} disabled={!editable} onChange={(v) => setSelfPolicy(v ?? "")} allowDeselect={false} maw={520} />
+        <Checkbox label="Never deploy or update this package" description="It is left out of every deployment, policy and update list." checked={excluded} disabled={!editable} onChange={(e) => setExcluded(e.currentTarget.checked)} />
+        <div>
+          <Button variant="default" size="compact-sm" onClick={() => setAdvanced((a) => !a)} aria-expanded={advanced} leftSection={advanced ? <Icons.ChevronDown size={14} aria-hidden /> : <Icons.ChevronRight size={14} aria-hidden />}>
+            Advanced: install switches and detection rules
+          </Button>
+          <Collapse expanded={advanced}>
+            <div className="lp-block" style={{ paddingTop: "var(--lp-space-3)" }}>
+              <TextInput
+                label="Silent arguments"
+                description="Replaces the manifest's switches. Only plain switches such as /S or /quiet are accepted."
+                value={args}
+                disabled={!editable}
+                onChange={(e) => setArgs(e.currentTarget.value)}
+              />
+              <Textarea
+                label="Extra detection rules"
+                description="One per line: kind|key|value name|version|eq or ge. Kinds: msi, registry, file, appx."
+                value={detection}
+                disabled={!editable}
+                onChange={(e) => setDetection(e.currentTarget.value)}
+                autosize
+                minRows={2}
+                ff="monospace"
+              />
+            </div>
+          </Collapse>
+        </div>
         {error && (
           <Alert color="red" icon={<Icons.Danger size={18} aria-hidden />}>
             {error}

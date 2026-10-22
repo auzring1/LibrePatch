@@ -7,6 +7,7 @@ import { dateTime } from "../api/format";
 import { useSession } from "../api/session";
 import { useFeatures } from "../settings/features";
 import { useBranding } from "../branding/BrandingProvider";
+import { complianceSummary } from "../components/compliance";
 import { LifecycleCard } from "../components/LifecycleCard";
 import { Card, DataTable, Donut, EmptyState, Icons, Page, PageHeader, StackedBar, StatGrid, StatTile, Status, StatusPill, TileSkeleton, type Column } from "../ui";
 
@@ -31,9 +32,7 @@ export function ReportsPage() {
   const compliant = o?.compliance.compliant ?? 0;
   const nonCompliant = o?.compliance.non_compliant ?? 0;
   const unknown = o?.compliance.unknown ?? 0;
-  const total = compliant + nonCompliant + unknown;
-  const pct = total > 0 ? Math.round((100 * compliant) / total) : 0;
-  const pctKind = pct >= 90 ? "success" : pct >= 70 ? "warning" : "danger";
+  const summary = complianceSummary(o?.compliance);
 
   const bad = useMemo(() => (rows.data?.items ?? []).filter((r) => r.state !== "compliant"), [rows.data]);
   const jobs = useMemo<JobRow[]>(() => {
@@ -138,7 +137,7 @@ export function ReportsPage() {
           <StatGrid label="Fleet summary">
             <StatTile label="Devices" value={active} kind="accent" icon={<Icons.NavDevices size={16} aria-hidden />} to="/devices" />
             <StatTile label="Online now" value={online} kind="success" icon={<Icons.Online size={16} aria-hidden />} hint={active ? `${Math.round((100 * online) / active)}% of devices` : undefined} />
-            {windowsUpdates && <StatTile label="Patch compliant" value={`${pct}%`} kind={pctKind} icon={<Icons.NavUpdates size={16} aria-hidden />} hint={`${compliant} of ${total} scanned devices`} />}
+            {windowsUpdates && <StatTile label="Patch compliant" value={summary.value} kind={summary.kind} icon={<Icons.NavUpdates size={16} aria-hidden />} hint={summary.hint} />}
             <StatTile label="Waiting for a restart" value={restart} kind={restart > 0 ? "warning" : "neutral"} icon={<Icons.Restart size={16} aria-hidden />} />
             {windowsUpdates && <StatTile label="Non-compliant" value={nonCompliant} kind={nonCompliant > 0 ? "danger" : "neutral"} icon={<Icons.Danger size={16} aria-hidden />} />}
             {windowsUpdates && <StatTile label="Not scanned lately" value={unknown} kind="neutral" icon={<Icons.Unknown size={16} aria-hidden />} />}
@@ -150,7 +149,7 @@ export function ReportsPage() {
               <Card title="Compliance" description="Compliant = no approved or critical update missing, no failed install, and a Windows Update scan within the last week.">
                 <Donut
                   label="Device compliance"
-                  center={`${pct}%`}
+                  center={summary.value}
                   sub="compliant"
                   slices={[
                     { label: "Compliant", value: compliant, token: "success" },

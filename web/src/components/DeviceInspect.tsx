@@ -96,7 +96,7 @@ export function InspectTab({ id, online, hostname }: { id: string; online: boole
 
   return (
     <Card
-      title="Look at this computer"
+      title="Inspect this computer"
       description={`Read-only: ${hostname} reports what is running now. Nothing on it is changed. The Security event log is never offered, and the answer is deleted from the server after an hour.`}
     >
       <div style={{ display: "grid", gap: "var(--lp-space-3)" }}>

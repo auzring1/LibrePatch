@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ago } from "../../api/format";
 import type { Dashboard } from "../../api/client";
 import { Card, Donut, Icons, SeverityBadge, StatGrid, StatTile, StatusPill, type PillKind } from "../../ui";
+import { complianceSummary } from "../compliance";
 import { ComplianceChart } from "./ComplianceChart";
 import { REASON_TEXT, type Reason, historySummary, humanAction, kbLabel, missingUpdateLink, normaliseHistory, positiveKind } from "./format";
 import type { WidgetId } from "./layout";
@@ -108,6 +109,7 @@ export function ComplianceWidget({ d }: Props) {
     { label: "Not scanned", value: c.unknown ?? 0, token: "neutral", state: "unknown" },
   ];
   const total = slices.reduce((s, x) => s + x.value, 0);
+  const summary = complianceSummary(c);
   return (
     <Card title="Patch compliance over time" description="Devices per compliance state, one snapshot per day" footer={<Link to="/reports" className="lp-dash-foot">Open reports</Link>}>
       <div className="lp-dash-compliance">
@@ -125,6 +127,11 @@ export function ComplianceWidget({ d }: Props) {
         </div>
         <div>
           <Donut label="Compliance now" center={total} sub="devices" size={120} slices={slices.map(({ label, value, token }) => ({ label, value, token }))} />
+          {total > 0 && summary.scanned === 0 && (
+            <p className="lp-dash-empty" style={{ padding: "var(--lp-space-2) 0 0", maxWidth: "18rem" }}>
+              No device has reported a Windows Update scan yet, so there is nothing to judge. Devices are scanned on a schedule; you can also scan one from its page.
+            </p>
+          )}
           <ul className="lp-dash-states" aria-label="Show devices by compliance">
             {slices.map((s) => (
               <li key={s.state}>
