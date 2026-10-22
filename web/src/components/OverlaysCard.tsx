@@ -91,6 +91,7 @@ export function OverlaysCard() {
         rowLabel={(s) => s.label}
         initialSort={{ id: "priority" }}
         exportName="catalog-overlays"
+        simple
         rowActions={
           canEdit
             ? (s) => (

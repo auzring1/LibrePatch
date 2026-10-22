@@ -149,3 +149,6 @@ SELECT id FROM jobs
 WHERE device_id = $1 AND type = 'inventory_full' AND status IN ('queued', 'sent', 'accepted', 'waiting', 'running')
   AND created_at > now() - interval '2 minutes'
 ORDER BY created_at DESC LIMIT 1;
+
+-- name: CountDeployments :one
+SELECT count(*) FROM deployments WHERE org_id = $1;

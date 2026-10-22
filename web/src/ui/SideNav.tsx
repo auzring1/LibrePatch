@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import { useSession } from "../api/session";
 import { useFeatures } from "../settings/features";
 import * as I from "./icons";
-import { locate, visibleNav, type NavItem } from "./nav";
+import { locate, sidebarNav, type NavItem } from "./nav";
 import { useNavLayout } from "./useNavLayout";
 
 interface Props {
@@ -22,7 +22,7 @@ export function SideNav({ onNavigate, id, rail = false }: Props) {
   const loc = useLocation();
   const uid = useId();
   const features = useFeatures();
-  const groups = visibleNav({ can, canOrg, features });
+  const groups = sidebarNav({ can, canOrg, features });
   const here = locate(loc.pathname);
   const pending = useQuery({
     queryKey: ["devices", "pending-count"],

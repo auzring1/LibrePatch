@@ -179,7 +179,7 @@ a.lp-tile:hover, button.lp-tile:hover { border-color: var(--lp-border-strong); b
 .lp-chip button:hover { background: var(--lp-surface-hover); }
 .lp-dt__bulk { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lp-space-3); padding: var(--lp-space-2) var(--lp-space-3); background: var(--lp-accent-subtle); color: var(--lp-accent-subtle-text); border: 1px solid var(--lp-accent-border); border-radius: var(--lp-radius-lg); font-weight: var(--lp-weight-medium); }
 .lp-dt__frame { background: var(--lp-surface); border: 1px solid var(--lp-border); border-radius: var(--lp-radius-lg); box-shadow: var(--lp-shadow-1); overflow: hidden; }
-.lp-dt__scroll { overflow: auto; max-height: var(--lp-dt-max-h, calc(100vh - 300px)); min-height: 120px; }
+.lp-dt__scroll { overflow: auto; max-height: var(--lp-dt-max-h, calc(100vh - 300px)); min-height: 0; }
 .lp-dt__table { border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: var(--lp-text-sm); }
 .lp-dt__table th, .lp-dt__table td { padding: var(--lp-cell-py) var(--lp-cell-px); text-align: left; vertical-align: middle; border-bottom: 1px solid var(--lp-border); overflow: hidden; text-overflow: ellipsis; }
 .lp-dt__table td { height: var(--lp-row-h); background: var(--lp-surface); }

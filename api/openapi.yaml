@@ -3505,6 +3505,14 @@ components:
         missing_critical_devices: { type: integer, nullable: true }
         failed_jobs_24h: { type: integer, nullable: true }
         held_updates: { type: integer, nullable: true }
+        setup:
+          nullable: true
+          description: What has been set up so far, for the getting-started checklist (needs deployments:read for the whole organization)
+          type: object
+          required: [policies, deployments]
+          properties:
+            policies: { type: integer, format: int64, description: Software policies made (one-app policies and all-apps policies) }
+            deployments: { type: integer, format: int64 }
         software:
           nullable: true
           description: The apps that are out of date (organization-wide, like the Software updates page; needs deployments:read for the whole organization)

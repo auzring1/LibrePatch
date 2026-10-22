@@ -29,8 +29,8 @@ export function StackedBar({ slices, label }: { slices: Slice[]; label: string }
   );
 }
 
-/** A donut with the total in the middle and a legend. */
-export function Donut({ slices, label, center, sub, size = 132 }: { slices: Slice[]; label: string; center?: ReactNode; sub?: string; size?: number }) {
+/** A donut with the total in the middle and a legend (`legend={false}` when the page lists the numbers itself). */
+export function Donut({ slices, label, center, sub, size = 132, legend = true }: { slices: Slice[]; label: string; center?: ReactNode; sub?: string; size?: number; legend?: boolean }) {
   const total = slices.reduce((s, x) => s + x.value, 0);
   const r = 46;
   const c = 2 * Math.PI * r;
@@ -57,14 +57,16 @@ export function Donut({ slices, label, center, sub, size = 132 }: { slices: Slic
           </text>
         )}
       </svg>
-      <ul className="lp-legend" style={{ flexDirection: "column", margin: 0 }}>
-        {slices.map((s) => (
-          <li key={s.label}>
-            <span className="lp-dot" style={{ background: fill(s.token) }} aria-hidden="true" />
-            {s.label} <b>{s.value}</b>
-          </li>
-        ))}
-      </ul>
+      {legend && (
+        <ul className="lp-legend" style={{ flexDirection: "column", margin: 0 }}>
+          {slices.map((s) => (
+            <li key={s.label}>
+              <span className="lp-dot" style={{ background: fill(s.token) }} aria-hidden="true" />
+              {s.label} <b>{s.value}</b>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

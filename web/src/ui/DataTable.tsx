@@ -81,6 +81,11 @@ export interface DataTableProps<T> {
   initialSort?: { id: string; desc?: boolean };
   /** First column stays in view when scrolling sideways. */
   stickyFirst?: boolean;
+  /**
+   * For a short list inside a card (a few rings, rules or overlays): show the search, filter, views and columns controls
+   * only when there are many rows or a search or filter is in use, so a page with several lists is not several toolbars.
+   */
+  simple?: boolean;
   /** data-testid of each body row (default "row"). */
   rowTestId?: string;
   /** Called with the rows that are currently shown after filtering (for tiles that mirror the table). */
@@ -104,6 +109,8 @@ interface Layout {
 
 const EMPTY: never[] = []; // a stable empty list: a fresh [] every render would reset the page index forever
 const SELECT = "__select";
+/** A `simple` table shows its controls only above this many rows. */
+const SIMPLE_ROWS = 8;
 const ACTIONS = "__actions";
 const layoutKey = (id: string) => `lp-dt:${id}`;
 const loadLayout = (id: string): Partial<Layout> => {
@@ -348,110 +355,113 @@ export function DataTable<T>(p: DataTableProps<T>) {
   const from = filteredRows.length === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1;
   const to = Math.min(filteredRows.length, (pagination.pageIndex + 1) * pagination.pageSize);
 
+  const lean = !!p.simple && (p.data?.length ?? 0) <= SIMPLE_ROWS && filters.length === 0 && !search;
   return (
     <div className="lp-dt" data-testid={`table-${p.id}`}>
-      <div className="lp-dt__toolbar" role="toolbar" aria-label={`${p.label} controls`}>
-        <label className="lp-dt__searchbox">
-          <I.Search size={16} aria-hidden="true" />
-          <span className="lp-visually-hidden">Search {p.label}</span>
-          <input value={search} onChange={(e) => setSearch(e.currentTarget.value)} placeholder={p.searchPlaceholder ?? "Search"} type="search" />
-        </label>
-        {filterable.length > 0 && (
-          <Popover opened={fOpen} onChange={setFOpen} position="bottom-start" withArrow shadow="md" trapFocus>
+      {!lean && (
+        <div className="lp-dt__toolbar" role="toolbar" aria-label={`${p.label} controls`}>
+          <label className="lp-dt__searchbox">
+            <I.Search size={16} aria-hidden="true" />
+            <span className="lp-visually-hidden">Search {p.label}</span>
+            <input value={search} onChange={(e) => setSearch(e.currentTarget.value)} placeholder={p.searchPlaceholder ?? "Search"} type="search" />
+          </label>
+          {filterable.length > 0 && (
+            <Popover opened={fOpen} onChange={setFOpen} position="bottom-start" withArrow shadow="md" trapFocus>
+              <Popover.Target>
+                <Button variant="default" leftSection={<I.Filter size={16} aria-hidden />} onClick={() => setFOpen((o) => !o)} aria-haspopup="dialog">
+                  Add filter
+                </Button>
+              </Popover.Target>
+              <Popover.Dropdown>
+                <Stack gap="sm" w={260}>
+                  <Select label="Column" data={filterable.map((c) => ({ value: c.id, label: c.header }))} value={fCol} onChange={(v) => (setFCol(v), setFVal(""))} allowDeselect={false} comboboxProps={{ withinPortal: false }} />
+                  {fSpec?.type === "select" && <Select label="Value" data={fSpec.options ?? []} value={fVal || null} onChange={(v) => setFVal(v ?? "")} allowDeselect={false} comboboxProps={{ withinPortal: false }} />}
+                  {fSpec?.type === "text" && <TextInput label="Contains" value={fVal} onChange={(e) => setFVal(e.currentTarget.value)} onKeyDown={(e) => e.key === "Enter" && addFilter()} />}
+                  <Button onClick={addFilter} disabled={!fCol || !fVal.trim()}>
+                    Apply filter
+                  </Button>
+                </Stack>
+              </Popover.Dropdown>
+            </Popover>
+          )}
+          {p.toolbar}
+          <span className="lp-dt__toolbar-spacer" />
+          <Menu position="bottom-end" shadow="md" withinPortal>
+            <Menu.Target>
+              <Button variant="default" leftSection={<I.Bookmark size={16} aria-hidden />} rightSection={<I.ChevronDown size={14} aria-hidden />} aria-label="Saved views">
+                {myViews.find((v) => v.id === activeView)?.name ?? "Views"}
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown miw={230}>
+              <Menu.Label>Saved views</Menu.Label>
+              <Menu.Item onClick={() => (resetLayout(), setActiveView(""))} leftSection={<I.Restore size={15} aria-hidden />}>
+                Default view
+              </Menu.Item>
+              {myViews.map((v) => (
+                <Menu.Item
+                  key={v.id}
+                  onClick={() => (applyState(v.state), setActiveView(v.id))}
+                  leftSection={v.id === activeView ? <I.Check size={15} aria-hidden /> : <span style={{ width: 15 }} />}
+                  rightSection={
+                    <IconButton
+                      label={`Delete view ${v.name}`}
+                      icon={<I.Trash size={14} aria-hidden />}
+                      size="sm"
+                      onClick={(e) => (e.stopPropagation(), saveViews(p.id, myViews.filter((x) => x.id !== v.id)), v.id === activeView && setActiveView(""))}
+                    />
+                  }
+                >
+                  {v.name}
+                </Menu.Item>
+              ))}
+              <Menu.Divider />
+              <Menu.Item leftSection={<I.BookmarkAdd size={15} aria-hidden />} onClick={() => setSaveOpen(true)}>
+                Save current view…
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+          <Popover position="bottom-end" withArrow shadow="md">
             <Popover.Target>
-              <Button variant="default" leftSection={<I.Filter size={16} aria-hidden />} onClick={() => setFOpen((o) => !o)} aria-haspopup="dialog">
-                Add filter
+              <Button variant="default" leftSection={<I.Columns size={16} aria-hidden />} aria-haspopup="dialog">
+                Columns
               </Button>
             </Popover.Target>
             <Popover.Dropdown>
-              <Stack gap="sm" w={260}>
-                <Select label="Column" data={filterable.map((c) => ({ value: c.id, label: c.header }))} value={fCol} onChange={(v) => (setFCol(v), setFVal(""))} allowDeselect={false} comboboxProps={{ withinPortal: false }} />
-                {fSpec?.type === "select" && <Select label="Value" data={fSpec.options ?? []} value={fVal || null} onChange={(v) => setFVal(v ?? "")} allowDeselect={false} comboboxProps={{ withinPortal: false }} />}
-                {fSpec?.type === "text" && <TextInput label="Contains" value={fVal} onChange={(e) => setFVal(e.currentTarget.value)} onKeyDown={(e) => e.key === "Enter" && addFilter()} />}
-                <Button onClick={addFilter} disabled={!fCol || !fVal.trim()}>
-                  Apply filter
+              <Stack gap={4} w={260}>
+                {fullOrder
+                  .filter((id) => id !== SELECT && id !== ACTIONS)
+                  .map((id, i, list) => {
+                    const c = columns.find((x) => x.id === id)!;
+                    const col = table.getColumn(id)!;
+                    return (
+                      <Group key={id} justify="space-between" wrap="nowrap" gap="xs">
+                        <Checkbox label={c.header} checked={col.getIsVisible()} disabled={c.required} onChange={(e) => col.toggleVisibility(e.currentTarget.checked)} />
+                        <Group gap={0} wrap="nowrap">
+                          <IconButton label={`Move ${c.header} left`} icon={<I.ArrowUp size={14} aria-hidden />} size="sm" disabled={i === 0} onClick={() => setOrder(move(list, i, -1))} />
+                          <IconButton label={`Move ${c.header} right`} icon={<I.ArrowDown size={14} aria-hidden />} size="sm" disabled={i === list.length - 1} onClick={() => setOrder(move(list, i, 1))} />
+                        </Group>
+                      </Group>
+                    );
+                  })}
+                <Button variant="subtle" size="xs" onClick={() => (setVisibility(Object.fromEntries(defaults.hidden.map((id) => [id, false]))), setOrder(columns.map((c) => c.id)), setSizes({}))}>
+                  Reset columns
                 </Button>
               </Stack>
             </Popover.Dropdown>
           </Popover>
-        )}
-        {p.toolbar}
-        <span className="lp-dt__toolbar-spacer" />
-        <Menu position="bottom-end" shadow="md" withinPortal>
-          <Menu.Target>
-            <Button variant="default" leftSection={<I.Bookmark size={16} aria-hidden />} rightSection={<I.ChevronDown size={14} aria-hidden />} aria-label="Saved views">
-              {myViews.find((v) => v.id === activeView)?.name ?? "Views"}
+          <IconButton
+            label={density === "compact" ? "Density: compact (switch to comfortable)" : "Density: comfortable (switch to compact)"}
+            icon={density === "compact" ? <I.DensityCompact size={18} aria-hidden /> : <I.DensityComfortable size={18} aria-hidden />}
+            variant="default"
+            onClick={() => setDensity(density === "compact" ? "comfortable" : "compact")}
+          />
+          {p.exportName && (
+            <Button variant="default" leftSection={<I.Download size={16} aria-hidden />} onClick={exportCsv} disabled={filteredRows.length === 0}>
+              {selected.length ? `Export ${selected.length} selected` : "Export CSV"}
             </Button>
-          </Menu.Target>
-          <Menu.Dropdown miw={230}>
-            <Menu.Label>Saved views</Menu.Label>
-            <Menu.Item onClick={() => (resetLayout(), setActiveView(""))} leftSection={<I.Restore size={15} aria-hidden />}>
-              Default view
-            </Menu.Item>
-            {myViews.map((v) => (
-              <Menu.Item
-                key={v.id}
-                onClick={() => (applyState(v.state), setActiveView(v.id))}
-                leftSection={v.id === activeView ? <I.Check size={15} aria-hidden /> : <span style={{ width: 15 }} />}
-                rightSection={
-                  <IconButton
-                    label={`Delete view ${v.name}`}
-                    icon={<I.Trash size={14} aria-hidden />}
-                    size="sm"
-                    onClick={(e) => (e.stopPropagation(), saveViews(p.id, myViews.filter((x) => x.id !== v.id)), v.id === activeView && setActiveView(""))}
-                  />
-                }
-              >
-                {v.name}
-              </Menu.Item>
-            ))}
-            <Menu.Divider />
-            <Menu.Item leftSection={<I.BookmarkAdd size={15} aria-hidden />} onClick={() => setSaveOpen(true)}>
-              Save current view…
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-        <Popover position="bottom-end" withArrow shadow="md">
-          <Popover.Target>
-            <Button variant="default" leftSection={<I.Columns size={16} aria-hidden />} aria-haspopup="dialog">
-              Columns
-            </Button>
-          </Popover.Target>
-          <Popover.Dropdown>
-            <Stack gap={4} w={260}>
-              {fullOrder
-                .filter((id) => id !== SELECT && id !== ACTIONS)
-                .map((id, i, list) => {
-                  const c = columns.find((x) => x.id === id)!;
-                  const col = table.getColumn(id)!;
-                  return (
-                    <Group key={id} justify="space-between" wrap="nowrap" gap="xs">
-                      <Checkbox label={c.header} checked={col.getIsVisible()} disabled={c.required} onChange={(e) => col.toggleVisibility(e.currentTarget.checked)} />
-                      <Group gap={0} wrap="nowrap">
-                        <IconButton label={`Move ${c.header} left`} icon={<I.ArrowUp size={14} aria-hidden />} size="sm" disabled={i === 0} onClick={() => setOrder(move(list, i, -1))} />
-                        <IconButton label={`Move ${c.header} right`} icon={<I.ArrowDown size={14} aria-hidden />} size="sm" disabled={i === list.length - 1} onClick={() => setOrder(move(list, i, 1))} />
-                      </Group>
-                    </Group>
-                  );
-                })}
-              <Button variant="subtle" size="xs" onClick={() => (setVisibility(Object.fromEntries(defaults.hidden.map((id) => [id, false]))), setOrder(columns.map((c) => c.id)), setSizes({}))}>
-                Reset columns
-              </Button>
-            </Stack>
-          </Popover.Dropdown>
-        </Popover>
-        <IconButton
-          label={density === "compact" ? "Density: compact (switch to comfortable)" : "Density: comfortable (switch to compact)"}
-          icon={density === "compact" ? <I.DensityCompact size={18} aria-hidden /> : <I.DensityComfortable size={18} aria-hidden />}
-          variant="default"
-          onClick={() => setDensity(density === "compact" ? "comfortable" : "compact")}
-        />
-        {p.exportName && (
-          <Button variant="default" leftSection={<I.Download size={16} aria-hidden />} onClick={exportCsv} disabled={filteredRows.length === 0}>
-            {selected.length ? `Export ${selected.length} selected` : "Export CSV"}
-          </Button>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {filters.length > 0 && (
         <div className="lp-chips" aria-label="Active filters">

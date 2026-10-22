@@ -8101,6 +8101,16 @@ export interface components {
             missing_critical_devices?: number | null;
             failed_jobs_24h?: number | null;
             held_updates?: number | null;
+            /** @description What has been set up so far, for the getting-started checklist (needs deployments:read for the whole organization) */
+            setup?: {
+                /**
+                 * Format: int64
+                 * @description Software policies made (one-app policies and all-apps policies)
+                 */
+                policies: number;
+                /** Format: int64 */
+                deployments: number;
+            } | null;
             /** @description The apps that are out of date (organization-wide, like the Software updates page; needs deployments:read for the whole organization) */
             software?: {
                 /** @description Apps with a newer version that LibrePatch can install */

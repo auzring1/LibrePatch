@@ -52,6 +52,7 @@ export function HoldsCard({ canEdit, always }: { canEdit: boolean; always?: bool
         rowLabel={(h) => h.title ?? h.update_id}
         initialSort={{ id: "since", desc: true }}
         searchPlaceholder="Search held updates…"
+        simple
         exportName="held-updates"
         rowActions={(h) =>
           canEdit ? (

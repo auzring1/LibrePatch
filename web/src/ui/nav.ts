@@ -25,6 +25,8 @@ export interface NavItem {
   keywords?: string[];
   /** A submenu. */
   children?: NavItem[];
+  /** False: not in the sidebar (the page is reached from another page), but still found by the command palette. */
+  sidebar?: false;
 }
 export interface NavGroup {
   id: string;
@@ -80,8 +82,7 @@ export const NAV: NavGroup[] = [
         icon: I.NavPolicy,
         keywords: ["policy", "policies", "keep updated", "baseline", "rings", "rules", "rollout", "approval", "restart", "schedule", "update rings and rules", "software policies"],
       },
-      { id: "held-updates", to: "/updates/held", label: "Held updates", perm: "updates:read", feature: "windows-updates", icon: I.NavHeld, keywords: ["holds", "blocked"] },
-      { id: "agent-updates", to: "/agent-updates", label: "Agent updates", perm: "releases:read", icon: I.NavAgentUpdates, keywords: ["releases", "self-update"] },
+      { id: "held-updates", to: "/updates/held", label: "Held updates", perm: "updates:read", feature: "windows-updates", sidebar: false, icon: I.NavHeld, keywords: ["holds", "blocked"] },
     ],
   },
   {
@@ -108,6 +109,7 @@ export const NAV: NavGroup[] = [
     items: [
       { id: "users", to: "/users", label: "Users and roles", perm: "users:read", icon: I.NavUsers, keywords: ["accounts", "rbac", "tokens"] },
       { id: "audit", to: "/audit", label: "Audit log", perm: "audit:read", icon: I.NavAudit, keywords: ["history", "events"] },
+      { id: "agent-updates", to: "/agent-updates", label: "Agent updates", perm: "releases:read", icon: I.NavAgentUpdates, keywords: ["releases", "self-update", "agent versions"] },
       { id: "settings", to: "/settings", label: "Settings", perm: "catalog:read", icon: I.NavSettings, children: SETTINGS_SECTIONS, keywords: ["configuration", "options"] },
       { id: "styleguide", to: "/styleguide", label: "Style guide", perm: "branding:write", icon: I.Palette },
     ],
@@ -127,6 +129,13 @@ export const allowed = (n: NavItem, a: Allow) => {
   if (n.anyOf) return n.anyOf.some((p) => a.canOrg(p));
   return n.perm === "" || (n.any ? a.can(n.perm) : a.canOrg(n.perm));
 };
+
+/** What the sidebar shows: the navigation without the pages that are reached from another page. */
+export function sidebarNav(a: Allow): NavGroup[] {
+  return visibleNav(a)
+    .map((g) => ({ ...g, items: g.items.filter((i) => i.sidebar !== false) }))
+    .filter((g) => g.items.length > 0);
+}
 
 /** The navigation filtered for a person: empty groups and unavailable links are dropped. */
 export function visibleNav(a: Allow): NavGroup[] {

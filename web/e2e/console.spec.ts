@@ -140,8 +140,13 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   // Apps that are out of date have a tile and a widget of their own, next to the Windows numbers.
   await expect(page.getByLabel("Key numbers").getByText("Apps out of date")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Apps out of date" })).toBeVisible();
+  // A new installation starts with a short checklist; it can be put away.
+  await expect(page.getByRole("heading", { name: "Getting started" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Getting started steps" }).getByText("Add your first computer")).toBeVisible();
   await a11y(page, "dashboard");
   await shot(page, "01b-dashboard");
+  await page.getByRole("button", { name: "Hide this" }).click();
+  await expect(page.getByRole("heading", { name: "Getting started" })).toHaveCount(0);
   await mainNav(page).getByRole("link", { name: "Devices", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Devices", exact: true })).toBeVisible();
   await expect(page.getByText("No devices yet")).toBeVisible();
@@ -625,6 +630,9 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await savedOnTheAccount(page, false);
   await page.goto("/devices?state=offline");
   await expect(page.getByRole("heading", { name: "Devices", exact: true })).toBeVisible();
+  // Held updates is not in the sidebar (Windows updates, Automations and the dashboard lead to it); the page itself still works.
+  await expect(mainNav(page).getByRole("link", { name: "Held updates", exact: true })).toHaveCount(0);
+  await expect(mainNav(page).getByRole("link", { name: "Agent updates", exact: true })).toBeVisible();
   await page.goto("/updates/held");
   await expect(page.getByRole("heading", { name: "Held updates", exact: true })).toBeVisible();
   // Software updates: the page for programs that are out of date, between "Held updates"-style pages in the Updates group.
@@ -638,6 +646,9 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await mainNav(page).getByRole("link", { name: "Automations", exact: true }).click();
   await expect(page.getByRole("tab", { name: "Software", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "Rings", exact: true })).toBeVisible(); // the same rings, shown on this tab too
+  // A short list (one ring) does not carry a toolbar of its own; the policies table above it does.
+  await expect(page.getByRole("toolbar", { name: "Update rings controls" })).toHaveCount(0);
+  await expect(page.getByRole("toolbar", { name: "Software policies controls" })).toBeVisible();
   await page.getByRole("button", { name: "Add policy" }).click();
   const pd = page.getByRole("dialog");
   await pd.getByLabel(/^Name/).fill("Keep Acme Tool current");

@@ -2,12 +2,14 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ago } from "../../api/format";
 import type { Dashboard } from "../../api/client";
+import { Button } from "@mantine/core";
 import { Card, Donut, Icons, SeverityBadge, StatGrid, StatTile, StatusPill, type PillKind } from "../../ui";
 import { describeAudit } from "../auditText";
 import { complianceSummary } from "../compliance";
 import { ComplianceChart } from "./ComplianceChart";
 import { REASON_TEXT, type Reason, historySummary, kbLabel, missingUpdateLink, normaliseHistory, positiveKind } from "./format";
 import type { WidgetId } from "./layout";
+import { startSteps, startVisible } from "./start";
 
 type Props = { d: Dashboard };
 
@@ -48,6 +50,45 @@ export function TilesWidget({ d }: Props) {
         <StatTile key={key} {...t} />
       ))}
     </StatGrid>
+  );
+}
+
+/** The first steps, as a checklist; each one links to where it is done. */
+export function StartWidget({ d, canOrg, onDismiss }: Props & { canOrg: (perm: string) => boolean; onDismiss: () => void }) {
+  const steps = startSteps(d, canOrg);
+  const left = steps.filter((s) => !s.done).length;
+  return (
+    <Card
+      title="Getting started"
+      description={left === 1 ? "One step left" : `${left} steps left`}
+      footer={
+        <Button variant="default" size="compact-sm" onClick={onDismiss}>
+          Hide this
+        </Button>
+      }
+    >
+      <ol className="lp-dash-steps" aria-label="Getting started steps">
+        {steps.map((s) => (
+          <li key={s.id} data-done={s.done ? "true" : "false"}>
+            <span className="lp-dash-steps__mark" aria-hidden="true">
+              {s.done ? <Icons.Success size={20} /> : <Icons.Unknown size={20} />}
+            </span>
+            <span className="lp-dash-steps__body">
+              <span className="lp-dash-steps__title">
+                {s.title}
+                {s.done && <span className="lp-visually-hidden"> (done)</span>}
+              </span>
+              <span className="lp-dash-row__meta">{s.text}</span>
+            </span>
+            {!s.done && (
+              <Button component={Link} to={s.to} variant="default" size="compact-md">
+                {s.cta}
+              </Button>
+            )}
+          </li>
+        ))}
+      </ol>
+    </Card>
   );
 }
 
@@ -127,7 +168,7 @@ export function ComplianceWidget({ d }: Props) {
           )}
         </div>
         <div>
-          <Donut label="Compliance now" center={total} sub="devices" size={120} slices={slices.map(({ label, value, token }) => ({ label, value, token }))} />
+          <Donut label="Compliance now" center={total} sub="devices" size={120} legend={false} slices={slices.map(({ label, value, token }) => ({ label, value, token }))} />
           {total > 0 && summary.scanned === 0 && (
             <p className="lp-dash-empty" style={{ padding: "var(--lp-space-2) 0 0", maxWidth: "18rem" }}>
               No device has reported a Windows Update scan yet, so there is nothing to judge. Devices are scanned on a schedule; you can also scan one from its page.
@@ -280,8 +321,9 @@ export function AgentsWidget({ d }: Props) {
 }
 
 /** Which widgets the data allows this person to see. A section the server left out (or an empty log) is not offered. */
-export function availableWidgets(d: Dashboard): WidgetId[] {
+export function availableWidgets(d: Dashboard, start?: { canOrg: (perm: string) => boolean; dismissed: boolean }): WidgetId[] {
   const out: WidgetId[] = [];
+  if (start && startVisible(startSteps(d, start.canOrg), start.dismissed)) out.push("start");
   if (tileList(d).length > 0) out.push("tiles");
   if (d.software) out.push("apps");
   if (d.compliance) out.push("compliance", "top-missing");

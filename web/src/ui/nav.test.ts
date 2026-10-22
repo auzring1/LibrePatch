@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALL_NAV_ITEMS, flatNav, locate, trail, visibleNav } from "./nav";
+import { ALL_NAV_ITEMS, flatNav, locate, sidebarNav, trail, visibleNav } from "./nav";
 
 const everything = { can: () => true, canOrg: () => true };
 const nothing = { can: () => false, canOrg: () => false };
@@ -86,5 +86,20 @@ describe("locate and trail", () => {
     expect(trail("/settings/branding").map((c) => c.label)).toEqual(["Administration", "Settings", "Branding"]);
     expect(trail("/").map((c) => c.label)).toEqual(["Dashboard"]);
     expect(trail("/account")).toEqual([]);
+  });
+});
+
+describe("the sidebar", () => {
+  const ids = (a: Parameters<typeof visibleNav>[0]) => sidebarNav(a).flatMap((g) => g.items.map((i) => i.id));
+  it("keeps Held updates out of the sidebar but in the palette's list", () => {
+    expect(ids(everything)).not.toContain("held-updates");
+    expect(visibleNav(everything).flatMap((g) => g.items.map((i) => i.id))).toContain("held-updates");
+    expect(locate("/updates/held")?.item.id).toBe("held-updates");
+  });
+  it("lists only what you patch with in the Updates group, and Agent updates under Administration", () => {
+    const groups = sidebarNav(everything);
+    expect(groups.find((g) => g.id === "updates")!.items.map((i) => i.id)).toEqual(["software-updates", "windows-updates", "automations"]);
+    expect(groups.find((g) => g.id === "administration")!.items.map((i) => i.id)).toContain("agent-updates");
+    expect(locate("/agent-updates")?.group.id).toBe("administration");
   });
 });

@@ -153,6 +153,12 @@ func dashSoftwareFrom(updates []deploy.FleetUpdate, keep func(uuid.UUID) bool, a
 	return out
 }
 
+// dashSetup is what the "getting started" checklist needs to know: whether the first steps have been taken.
+type dashSetup struct {
+	Policies    int64 `json:"policies"`
+	Deployments int64 `json:"deployments"`
+}
+
 // dashboardView is everything the landing page shows. A section the caller may not see is left out (null), so the
 // console hides its widget; site-limited callers get numbers for their sites only.
 type dashboardView struct {
@@ -169,6 +175,8 @@ type dashboardView struct {
 	HeldUpdates     *int64             `json:"held_updates"`
 	// Software is the apps that are out of date; null for a caller who may not see deployments for the whole organization.
 	Software *dashSoftware `json:"software"`
+	// Setup counts what has been set up, for the getting-started checklist; null for a caller who may not read deployments.
+	Setup *dashSetup `json:"setup"`
 }
 
 type dashCompliance struct {
@@ -259,6 +267,19 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out.Software = dashSoftwareFrom(ups, keep, automated, all)
+		hand, err := q.CountHandPolicies(ctx, p.OrgID)
+		if fail("policy count", err) {
+			return
+		}
+		allApps, err := q.CountAllAppsPolicies(ctx, p.OrgID)
+		if fail("policy count", err) {
+			return
+		}
+		deps, err := q.CountDeployments(ctx, p.OrgID)
+		if fail("deployment count", err) {
+			return
+		}
+		out.Setup = &dashSetup{Policies: hand + allApps, Deployments: deps}
 	}
 
 	if devSc.ok {

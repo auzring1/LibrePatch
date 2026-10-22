@@ -139,8 +139,6 @@ export function ReportsPage() {
             <StatTile label="Online now" value={online} kind="success" icon={<Icons.Online size={16} aria-hidden />} hint={active ? `${Math.round((100 * online) / active)}% of devices` : undefined} />
             {windowsUpdates && <StatTile label="Patch compliant" value={summary.value} kind={summary.kind} icon={<Icons.NavUpdates size={16} aria-hidden />} hint={summary.hint} />}
             <StatTile label="Waiting for a restart" value={restart} kind={restart > 0 ? "warning" : "neutral"} icon={<Icons.Restart size={16} aria-hidden />} />
-            {windowsUpdates && <StatTile label="Non-compliant" value={nonCompliant} kind={nonCompliant > 0 ? "danger" : "neutral"} icon={<Icons.Danger size={16} aria-hidden />} />}
-            {windowsUpdates && <StatTile label="Not scanned lately" value={unknown} kind="neutral" icon={<Icons.Unknown size={16} aria-hidden />} />}
             <StatTile label="Not seen for a week" value={o.devices.not_seen_for_a_week ?? 0} kind={(o.devices.not_seen_for_a_week ?? 0) > 0 ? "warning" : "neutral"} icon={<Icons.Offline size={16} aria-hidden />} />
             <StatTile label="Pending approval" value={o.devices.pending ?? 0} kind={(o.devices.pending ?? 0) > 0 ? "warning" : "neutral"} icon={<Icons.Clock size={16} aria-hidden />} />
           </StatGrid>

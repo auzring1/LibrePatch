@@ -142,6 +142,7 @@ export function RingsCard({ canEdit, context = "windows" }: { canEdit: boolean; 
         rowLabel={(r) => r.name}
         initialSort={{ id: "ordinal" }}
         searchPlaceholder="Search rings…"
+        simple
         exportName="update-rings"
         rowActions={(r) =>
           canEdit && r.id ? (
@@ -346,6 +347,7 @@ export function RulesCard({ canEdit }: { canEdit: boolean }) {
         rowLabel={(r) => r.name}
         initialSort={{ id: "name" }}
         searchPlaceholder="Search rules…"
+        simple
         exportName="update-rules"
         rowActions={(r) =>
           canEdit && r.id ? (
@@ -461,6 +463,7 @@ export function ConflictsCard() {
         rowLabel={(c) => c.hostname}
         initialSort={{ id: "device" }}
         searchPlaceholder="Search devices…"
+        simple
         exportName="update-policy-conflicts"
       />
     </Card>

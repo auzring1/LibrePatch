@@ -225,3 +225,10 @@ SELECT DISTINCT package_id FROM software_policies WHERE org_id = $1 AND enabled 
 
 -- name: HasEnabledAllAppsPolicy :one
 SELECT EXISTS (SELECT 1 FROM software_auto_policies WHERE org_id = $1 AND enabled) AS present;
+
+-- name: CountHandPolicies :one
+-- One-app software policies somebody made (not the ones an all-apps policy added).
+SELECT count(*) FROM software_policies p WHERE p.org_id = $1 AND p.auto_policy_id IS NULL;
+
+-- name: CountAllAppsPolicies :one
+SELECT count(*) FROM software_auto_policies a WHERE a.org_id = $1;

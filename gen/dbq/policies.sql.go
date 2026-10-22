@@ -98,6 +98,29 @@ func (q *Queries) ComplianceReport(ctx context.Context, orgID uuid.UUID) ([]Comp
 	return items, nil
 }
 
+const countAllAppsPolicies = `-- name: CountAllAppsPolicies :one
+SELECT count(*) FROM software_auto_policies a WHERE a.org_id = $1
+`
+
+func (q *Queries) CountAllAppsPolicies(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countAllAppsPolicies, orgID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countHandPolicies = `-- name: CountHandPolicies :one
+SELECT count(*) FROM software_policies p WHERE p.org_id = $1 AND p.auto_policy_id IS NULL
+`
+
+// One-app software policies somebody made (not the ones an all-apps policy added).
+func (q *Queries) CountHandPolicies(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countHandPolicies, orgID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteAutoChild = `-- name: DeleteAutoChild :exec
 DELETE FROM software_policies WHERE id = $1 AND auto_policy_id IS NOT NULL
 `
