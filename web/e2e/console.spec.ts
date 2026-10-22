@@ -448,7 +448,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await cveRow.click();
       const cd = page.getByRole("dialog");
       await expect(cd.getByText("GNU Bash e2e vulnerability")).toBeVisible();
-      await expect(cd.getByText(/fix due 2026-10-22|fix was due 2026-10-22/)).toBeVisible();
+      await expect(cd.getByText(/fix due 2026-10-22|fix is due today|fix was due 2026-10-22/)).toBeVisible();
       await cd.getByRole("link", { name: /^\S+$/ }).filter({ hasNotText: "NVD page" }).first().click();
       await expect(page).toHaveURL(/\?tab=vulnerabilities$/);
       await expect(page.getByRole("table", { name: "Known vulnerabilities on this device" }).getByText("CVE-2026-9001")).toBeVisible();
