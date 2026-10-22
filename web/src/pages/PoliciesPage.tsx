@@ -184,7 +184,7 @@ export function SoftwarePoliciesPanel() {
       {q.isLoading ? (
         <TileSkeleton count={3} />
       ) : items.length > 0 ? (
-        <StatGrid label="Policy summary">
+        <StatGrid compact label="Policy summary">
           <StatTile label="Policies" value={items.length} kind="accent" icon={<Icons.NavSoftwarePolicy size={16} aria-hidden />} />
           <StatTile label="Enabled" value={enabled} kind="success" icon={<Icons.Play size={16} aria-hidden />} hint={items.length - enabled > 0 ? `${items.length - enabled} disabled` : "all policies are running"} />
           <StatTile label="Need attention" value={attention} kind={attention > 0 ? "warning" : "neutral"} icon={<Icons.Warning size={16} aria-hidden />} hint={attention > 0 ? "approval, a held ring or a failure" : "nothing is waiting for you"} />

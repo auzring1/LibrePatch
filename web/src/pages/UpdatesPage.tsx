@@ -204,7 +204,7 @@ export function UpdatesPage() {
         <TileSkeleton count={6} />
       ) : list.data ? (
         <>
-          <StatGrid label="Updates by severity">
+          <StatGrid compact label="Updates by severity">
             <StatTile label="Critical" value={sev[0]} kind="critical" icon={<Icons.Critical size={16} aria-hidden />} hint="Install first" />
             <StatTile label="Important" value={sev[1]} kind="important" icon={<Icons.Flame size={16} aria-hidden />} />
             <StatTile label="Moderate" value={sev[2]} kind="moderate" icon={<Icons.Caution size={16} aria-hidden />} />

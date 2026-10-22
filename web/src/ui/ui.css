@@ -51,6 +51,12 @@ a.lp-tile:hover, button.lp-tile:hover { border-color: var(--lp-border-strong); b
 .lp-tile__label { display: flex; align-items: center; gap: 0.375rem; color: var(--lp-text-muted); font-size: var(--lp-text-sm); font-weight: var(--lp-weight-medium); }
 .lp-tile__value { font-size: var(--lp-text-3xl); font-weight: var(--lp-weight-semibold); line-height: 1.15; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .lp-tile__hint { color: var(--lp-text-muted); font-size: var(--lp-text-xs); display: flex; align-items: center; gap: 0.25rem; }
+.lp-tiles--compact { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--lp-space-2); }
+.lp-tiles--compact .lp-tile { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--lp-space-3); padding: var(--lp-space-2) var(--lp-space-3) var(--lp-space-2) var(--lp-space-4); box-shadow: none; }
+.lp-tiles--compact .lp-tile::before { top: 8px; bottom: 8px; }
+.lp-tiles--compact .lp-tile__label { font-size: var(--lp-text-sm); min-width: 0; }
+.lp-tiles--compact .lp-tile__value { font-size: var(--lp-text-xl); order: 2; }
+.lp-tiles--compact .lp-tile__hint { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .lp-tile--selected { border-color: var(--lp-accent); box-shadow: 0 0 0 1px var(--lp-accent); }
 
 /* ---------- Page header, breadcrumbs ---------- */

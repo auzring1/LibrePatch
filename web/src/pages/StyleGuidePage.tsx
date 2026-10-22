@@ -288,6 +288,15 @@ export function StyleGuidePage() {
           <StatTile label="Waiting for a restart" value={9} kind="warning" icon={<Icons.Restart size={16} aria-hidden />} to="#tiles" />
           <StatTile label="Filter by this" value={4} kind="info" onClick={() => toast.info("Tiles can act as filters")} />
         </StatGrid>
+        <Text size="sm" c="dimmed">
+          Pages whose main content is a table use compact tiles, one short line each, so the table stays on the screen.
+        </Text>
+        <StatGrid compact label="Example compact tiles">
+          <StatTile label="Devices" value={248} kind="accent" icon={<Icons.NavDevices size={16} aria-hidden />} hint="12 added this week" />
+          <StatTile label="Online now" value={211} kind="success" icon={<Icons.Online size={16} aria-hidden />} hint="85% of devices" />
+          <StatTile label="Critical updates missing" value={37} kind="critical" icon={<Icons.Critical size={16} aria-hidden />} hint="on 21 devices" />
+          <StatTile label="Waiting for a restart" value={9} kind="warning" icon={<Icons.Restart size={16} aria-hidden />} />
+        </StatGrid>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 24 }}>
           <div>
             <Text fw={600} size="sm" mb={8}>

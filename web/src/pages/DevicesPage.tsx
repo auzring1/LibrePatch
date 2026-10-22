@@ -194,7 +194,7 @@ export function DevicesPage() {
       {overview.isLoading ? (
         <TileSkeleton count={5} />
       ) : o ? (
-        <StatGrid label="Fleet summary">
+        <StatGrid compact label="Fleet summary">
           <StatTile label="Active devices" value={active} kind="accent" icon={<Icons.NavDevices size={16} aria-hidden />} onClick={() => setStatus("active")} selected={status === "active"} hint={`${o.devices.pending ?? 0} pending, ${o.devices.revoked ?? 0} revoked`} />
           <StatTile label="Online now" value={online} kind="success" icon={<Icons.Online size={16} aria-hidden />} hint={active ? `${Math.round((100 * online) / active)}% of active devices` : undefined} />
           <StatTile label="Offline" value={Math.max(active - online, 0)} kind="neutral" icon={<Icons.Offline size={16} aria-hidden />} hint={`${o.devices.not_seen_for_a_week ?? 0} not seen for a week`} />

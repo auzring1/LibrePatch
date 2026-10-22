@@ -67,7 +67,7 @@ export function SoftwarePage() {
       {list.isLoading ? (
         <TileSkeleton count={3} />
       ) : items.length > 0 ? (
-        <StatGrid label="Software summary">
+        <StatGrid compact label="Software summary">
           <StatTile label="Products" value={total} kind="accent" icon={<Icons.NavSoftware size={16} aria-hidden />} hint={q ? `matching “${q}”` : system ? "including system components" : "excluding system components"} />
           <StatTile label="With several versions" value={multi} kind={multi > 0 ? "warning" : "success"} icon={<Icons.Timeline size={16} aria-hidden />} hint={truncated ? `among the first ${items.length} products` : "worth a look for version drift"} />
           {top && <StatTile label="Most widely installed" value={top.device_count} kind="info" icon={<Icons.NavDevices size={16} aria-hidden />} hint={`devices have ${top.name}`} />}

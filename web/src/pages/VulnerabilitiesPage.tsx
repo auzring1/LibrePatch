@@ -122,7 +122,7 @@ export function VulnerabilitiesPage() {
         </Alert>
       )}
       {s && state.ok && (
-        <StatGrid label="Vulnerability summary">
+        <StatGrid compact label="Vulnerability summary">
           <StatTile label="Known exploited" value={s.exploited} kind={s.exploited > 0 ? "danger" : "success"} icon={<Icons.Flame size={16} aria-hidden />} hint="on the CISA list: fix these first" />
           <StatTile label="Critical" value={s.critical} kind={s.critical > 0 ? "danger" : "neutral"} icon={<Icons.Critical size={16} aria-hidden />} />
           <StatTile label="High" value={s.high} kind={s.high > 0 ? "warning" : "neutral"} icon={<Icons.Warning size={16} aria-hidden />} />
