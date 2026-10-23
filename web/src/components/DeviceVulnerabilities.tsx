@@ -43,7 +43,7 @@ export function VulnerabilitiesTab({ device: d }: { device: Device }) {
   }
   const noData = q.data && !q.data.has_data;
   return (
-    <Card title="Known vulnerabilities" description="Matched on this server against the public CISA and NIST lists, for Windows and the programs under Vulnerabilities > Programs that are looked up. Programs that are not on that list are not checked.">
+    <Card title="Known vulnerabilities" description="Matched on this server against the public CISA and NIST lists, for Windows and the programs under Vulnerabilities > Programs that are looked up. Programs that are not on that list are not checked. Entries where the NVD names no versions are left out (they list patched computers too) unless they are known to be exploited.">
       {noData ? (
         <EmptyState
           icon={<Icons.Info size={26} />}

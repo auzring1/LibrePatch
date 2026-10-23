@@ -2,6 +2,7 @@ package vulns
 
 import (
 	"context"
+	"html"
 	"strings"
 	"time"
 
@@ -52,34 +53,42 @@ const rangeTest = `
 	  AND (cr.start_key IS NULL OR %[1]s > cr.start_key OR (cr.start_incl AND %[1]s = cr.start_key))
 	  AND (cr.end_key   IS NULL OR %[1]s < cr.end_key   OR (cr.end_incl   AND %[1]s = cr.end_key))`
 
-// A range with no start and no end says "every version". For an old CVE that is almost always the NVD's way of saying it lost
-// track of which versions were meant (decades-old Firefox entries "affect" today's Firefox), so such a range counts only for a
-// CVE published in the last two years or one on the CISA list of exploited vulnerabilities (D144).
-const everyVersionTest = `
-	  AND (cr.start_key IS NOT NULL OR cr.end_key IS NOT NULL OR cv.kev OR cv.published >= now() - interval '2 years')`
+// A range with no start and no end says "every version". The NVD uses that when it does not know which versions are meant:
+// decades-old Firefox entries "affect" today's Firefox, and recent Microsoft entries name a product with no version at all,
+// so a PC that is fully patched is listed anyway. Such a range is therefore not evidence about the installed version. It is
+// left out unless the CVE is on the CISA list of exploited vulnerabilities, or the person asks for the entries that name no
+// versions (D147).
+const versionedTest = `
+	  AND (cr.start_key IS NOT NULL OR cr.end_key IS NOT NULL OR cv.kev)`
 
-func hitsSQL() string {
+func hitsSQL(includeUnspecified bool) string {
+	only := versionedTest
+	if includeUnspecified {
+		only = ""
+	}
 	// $6 narrows the hits to one device; NULL means every device.
 	dev := " AND ($6::uuid IS NULL OR d.id = $6::uuid)"
 	soft := `SELECT d.id AS device_id, cr.cve_id, st.display_name AS label, si.version AS installed,
 	        CASE WHEN cr.end_key IS NOT NULL AND NOT cr.end_incl THEN cr.end_text ELSE '' END AS fixed_in,
-	        st.normalized_name AS title
+	        st.normalized_name AS title,
+	        (cr.start_key IS NULL AND cr.end_key IS NULL) AS unbounded
 	 FROM devices d
 	 JOIN software_installs si ON si.device_id = d.id
 	 JOIN software_titles st ON st.id = si.title_id
 	 JOIN cve_products m ON m.org_id = d.org_id AND m.enabled AND m.normalized_name = st.normalized_name
 	 JOIN cve_ranges cr ON cr.vendor = m.vendor AND cr.product = m.product
 	 JOIN cves cv ON cv.id = cr.cve_id
-	 WHERE d.org_id = $1 AND d.status = 'active' AND si.version_key IS NOT NULL` + strings.ReplaceAll(rangeTest, "%[1]s", "si.version_key") + everyVersionTest + dev
+	 WHERE d.org_id = $1 AND d.status = 'active' AND si.version_key IS NOT NULL` + strings.ReplaceAll(rangeTest, "%[1]s", "si.version_key") + only + dev
 	os := `SELECT d.id, cr.cve_id, og.label, d.os_build, 
 	        CASE WHEN cr.end_key IS NOT NULL AND NOT cr.end_incl THEN cr.end_text ELSE '' END,
-	        ''
+	        '',
+	        (cr.start_key IS NULL AND cr.end_key IS NULL)
 	 FROM devices d
 	 JOIN unnest($2::text[], $3::bool[], $4::text[], $5::text[]) AS og(os_build, server, product, label) ON og.os_build = d.os_build AND og.server = (lower(d.os_caption) LIKE '%server%')
 	 JOIN unnest($2::text[], $7::bytea[]) AS ok(os_build, key) ON ok.os_build = og.os_build
 	 JOIN cve_ranges cr ON cr.vendor = 'microsoft' AND cr.product = og.product
 	 JOIN cves cv ON cv.id = cr.cve_id
-	 WHERE d.org_id = $1 AND d.status = 'active'` + strings.ReplaceAll(rangeTest, "%[1]s", "ok.key") + everyVersionTest + dev
+	 WHERE d.org_id = $1 AND d.status = 'active'` + strings.ReplaceAll(rangeTest, "%[1]s", "ok.key") + only + dev
 	return "WITH hits AS (" + soft + " UNION ALL " + os + ")"
 }
 
@@ -112,6 +121,9 @@ type Item struct {
 	Devices       int        `json:"devices"`
 	Products      []string   `json:"products"`
 	FixedIn       []string   `json:"fixed_in"`
+	// NoVersions is true when the NVD names no versions for any of the hits: it says the product is affected without saying
+	// which versions, so a patched PC is listed too. Such entries are shown only when asked for (or when exploited).
+	NoVersions bool `json:"no_versions"`
 }
 
 // Summary counts what affects the fleet.
@@ -124,14 +136,18 @@ type Summary struct {
 	// Covered is how many active devices have something the lookup knows about (a mapped program or a tracked Windows build).
 	Covered int `json:"devices_covered"`
 	Active  int `json:"devices_active"`
+	// NoVersions is how many CVEs are left out of this list because the NVD names no versions for them (0 when they are included).
+	NoVersions int `json:"no_versions"`
 }
 
 // Filter narrows the list.
 type Filter struct {
-	Exploited bool
-	Severity  []string
-	Query     string
-	Limit     int
+	// IncludeNoVersions also lists the CVEs for which the NVD names no versions (D147).
+	IncludeNoVersions bool
+	Exploited         bool
+	Severity          []string
+	Query             string
+	Limit             int
 }
 
 var severityRank = `CASE c.severity WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0 END`
@@ -143,7 +159,7 @@ func (s *Store) Overview(ctx context.Context, org uuid.UUID, f Filter) ([]Item, 
 	if err != nil {
 		return nil, Summary{}, err
 	}
-	base := hitsSQL()
+	base := hitsSQL(f.IncludeNoVersions)
 	args := func(extra ...any) []any {
 		return append([]any{org, builds, servers, products, labels}, extra...)
 	}
@@ -159,6 +175,15 @@ func (s *Store) Overview(ctx context.Context, org uuid.UUID, f Filter) ([]Item, 
 		FROM hits h JOIN cves c ON c.id = h.cve_id`, args6()...).Scan(&sum.CVEs, &sum.Exploited, &sum.Critical, &sum.High, &sum.Devices)
 	if err != nil {
 		return nil, sum, err
+	}
+	if !f.IncludeNoVersions {
+		// How many more there would be: shown next to the switch that includes them.
+		var all int
+		// nosemgrep: no-sql-string-building
+		if err := s.Pool.QueryRow(ctx, hitsSQL(true)+`SELECT count(DISTINCT h.cve_id) FROM hits h JOIN cves c ON c.id = h.cve_id`, args6()...).Scan(&all); err != nil {
+			return nil, sum, err
+		}
+		sum.NoVersions = max(all-sum.CVEs, 0)
 	}
 	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM devices WHERE org_id = $1 AND status = 'active'`, org).Scan(&sum.Active); err != nil {
 		return nil, sum, err
@@ -183,7 +208,8 @@ func (s *Store) Overview(ctx context.Context, org uuid.UUID, f Filter) ([]Item, 
 		SELECT c.id, c.published, c.summary, c.cvss, c.severity, c.kev, c.kev_name, c.kev_added, c.kev_due, c.kev_ransomware, c.kev_action,
 		       count(DISTINCT h.device_id)::int,
 		       COALESCE(array_agg(DISTINCT h.label), '{}'),
-		       COALESCE(array_agg(DISTINCT h.label || ' ' || h.fixed_in) FILTER (WHERE h.fixed_in <> ''), '{}')
+		       COALESCE(array_agg(DISTINCT h.label || ' ' || h.fixed_in) FILTER (WHERE h.fixed_in <> ''), '{}'),
+		       bool_and(h.unbounded)
 		FROM hits h JOIN cves c ON c.id = h.cve_id
 		WHERE ($8::boolean IS NOT TRUE OR c.kev)
 		  AND (cardinality($9::text[]) = 0 OR c.severity = ANY($9::text[]))
@@ -199,9 +225,10 @@ func (s *Store) Overview(ctx context.Context, org uuid.UUID, f Filter) ([]Item, 
 	out := []Item{}
 	for rows.Next() {
 		var it Item
-		if err := rows.Scan(&it.ID, &it.Published, &it.Summary, &it.CVSS, &it.Severity, &it.Exploited, &it.ExploitedName, &it.KEVAdded, &it.KEVDue, &it.Ransomware, &it.Action, &it.Devices, &it.Products, &it.FixedIn); err != nil {
+		if err := rows.Scan(&it.ID, &it.Published, &it.Summary, &it.CVSS, &it.Severity, &it.Exploited, &it.ExploitedName, &it.KEVAdded, &it.KEVDue, &it.Ransomware, &it.Action, &it.Devices, &it.Products, &it.FixedIn, &it.NoVersions); err != nil {
 			return nil, sum, err
 		}
+		it.Summary = html.UnescapeString(it.Summary) // text stored before the feed was unescaped on download
 		out = append(out, it)
 	}
 	return out, sum, rows.Err()
@@ -219,14 +246,14 @@ type DeviceHit struct {
 }
 
 // DevicesFor lists the devices a CVE affects.
-func (s *Store) DevicesFor(ctx context.Context, org uuid.UUID, cve string) ([]DeviceHit, error) {
+func (s *Store) DevicesFor(ctx context.Context, org uuid.UUID, cve string, includeNoVersions bool) ([]DeviceHit, error) {
 	builds, servers, products, labels, keys, err := s.osArgs(ctx, org)
 	if err != nil {
 		return nil, err
 	}
 	// hitsSQL() and the text added here are all fixed strings; every value goes in as a $n parameter.
 	// nosemgrep: no-sql-string-building
-	rows, err := s.Pool.Query(ctx, hitsSQL()+`
+	rows, err := s.Pool.Query(ctx, hitsSQL(includeNoVersions)+`
 		SELECT DISTINCT ON (h.device_id, h.label) h.device_id, d.hostname, h.label, h.installed, h.fixed_in, h.title
 		FROM hits h JOIN devices d ON d.id = h.device_id WHERE h.cve_id = $8
 		ORDER BY h.device_id, h.label, h.fixed_in DESC LIMIT 5000`, org, builds, servers, products, labels, nil, keys, cve)
@@ -254,16 +281,16 @@ type DeviceItem struct {
 }
 
 // ForDevice lists the CVEs that affect one device.
-func (s *Store) ForDevice(ctx context.Context, org, device uuid.UUID) ([]DeviceItem, error) {
+func (s *Store) ForDevice(ctx context.Context, org, device uuid.UUID, includeNoVersions bool) ([]DeviceItem, error) {
 	builds, servers, products, labels, keys, err := s.osArgs(ctx, org)
 	if err != nil {
 		return nil, err
 	}
 	// hitsSQL() and the text added here are all fixed strings; every value goes in as a $n parameter.
 	// nosemgrep: no-sql-string-building
-	rows, err := s.Pool.Query(ctx, hitsSQL()+`
+	rows, err := s.Pool.Query(ctx, hitsSQL(includeNoVersions)+`
 		SELECT DISTINCT ON (c.id, h.label) c.id, c.published, c.summary, c.cvss, c.severity, c.kev, c.kev_name, c.kev_added, c.kev_due, c.kev_ransomware, c.kev_action,
-		       h.label, h.installed, h.fixed_in
+		       h.label, h.installed, h.fixed_in, h.unbounded
 		FROM hits h JOIN cves c ON c.id = h.cve_id
 		ORDER BY c.id, h.label, h.fixed_in DESC LIMIT 5000`, org, builds, servers, products, labels, device, keys)
 	if err != nil {
@@ -274,9 +301,10 @@ func (s *Store) ForDevice(ctx context.Context, org, device uuid.UUID) ([]DeviceI
 	for rows.Next() {
 		var it DeviceItem
 		var fixed string
-		if err := rows.Scan(&it.ID, &it.Published, &it.Summary, &it.CVSS, &it.Severity, &it.Exploited, &it.ExploitedName, &it.KEVAdded, &it.KEVDue, &it.Ransomware, &it.Action, &it.Product, &it.Installed, &fixed); err != nil {
+		if err := rows.Scan(&it.ID, &it.Published, &it.Summary, &it.CVSS, &it.Severity, &it.Exploited, &it.ExploitedName, &it.KEVAdded, &it.KEVDue, &it.Ransomware, &it.Action, &it.Product, &it.Installed, &fixed, &it.NoVersions); err != nil {
 			return nil, err
 		}
+		it.Summary = html.UnescapeString(it.Summary)
 		it.Devices = 1
 		it.Products = []string{it.Product}
 		if fixed != "" {

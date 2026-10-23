@@ -158,3 +158,18 @@ func TestACPEWithoutAVersionIsNotEveryVersion(t *testing.T) {
 		t.Fatalf("a bound is kept: %+v %v", r, ok)
 	}
 }
+
+// The NVD sends quotation marks and the like as HTML entities, and a long description is cut with an ellipsis.
+func TestNVDSummariesAreReadableText(t *testing.T) {
+	body := `{"resultsPerPage":1,"startIndex":0,"totalResults":1,"vulnerabilities":[{"cve":{"id":"CVE-2026-0001","published":"2026-01-01T00:00:00.000","descriptions":[{"lang":"en","value":"known as &quot;YellowKey&quot; &amp; more"}]}}]}`
+	p, err := ParseNVD([]byte(body), nil)
+	if err != nil || len(p.CVEs) != 1 || p.CVEs[0].Summary != `known as "YellowKey" & more` {
+		t.Fatalf("%+v %v", p, err)
+	}
+	if got := clip(strings.Repeat("a", 700), 600); len([]rune(got)) != 600 || !strings.HasSuffix(got, "…") {
+		t.Fatalf("a cut description ends with an ellipsis: %d", len([]rune(got)))
+	}
+	if got := clip("short", 600); got != "short" {
+		t.Fatal(got)
+	}
+}

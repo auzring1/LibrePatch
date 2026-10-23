@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -223,7 +224,7 @@ func ParseNVD(raw []byte, tracked Tracked) (*Page, error) {
 		out := CVE{ID: id, Published: nvdTime(c.Published), Modified: nvdTime(c.LastModified), Rejected: strings.EqualFold(c.VulnStatus, "Rejected")}
 		for _, d := range c.Descriptions {
 			if d.Lang == "en" {
-				out.Summary = clip(d.Value, 600)
+				out.Summary = clip(html.UnescapeString(d.Value), 600) // the NVD sends &quot; and friends as text
 				break
 			}
 		}

@@ -455,12 +455,25 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       expect((await post("/vulnerabilities/import", { kind: "nvd", data: JSON.stringify(nvdPage) })).status()).toBe(200);
       expect((await post("/vulnerabilities/import", { kind: "kev", data: JSON.stringify(kevFile) })).status()).toBe(200);
       expect((await post("/vulnerabilities/import", { kind: "kev", data: "not a catalog" })).status()).toBe(422);
+      // A recent entry that names a product but no versions: the NVD does that when it does not know which versions are meant, so
+      // a fully patched computer would be listed. It is left out until asked for, and the page says how many.
+      const noVersionsPage = { resultsPerPage: 1, startIndex: 0, totalResults: 1, vulnerabilities: [{ cve: { id: "CVE-2026-9002", published: "2026-09-30T00:00:00.000", lastModified: "2026-10-01T00:00:00.000", vulnStatus: "Analyzed",
+        descriptions: [{ lang: "en", value: "A made-up entry that names no versions, known as &quot;NoVersions&quot;." }], metrics: { cvssMetricV31: [{ cvssData: { baseScore: 7.5, baseSeverity: "HIGH" } }] },
+        configurations: [{ nodes: [{ operator: "OR", cpeMatch: [{ vulnerable: true, criteria: "cpe:2.3:a:gnu:bash:*:*:*:*:*:*:*:*" }] }] }] } }] };
+      expect((await post("/vulnerabilities/import", { kind: "nvd", data: JSON.stringify(noVersionsPage) })).status()).toBe(200);
       await mainNav(page).getByRole("link", { name: "Vulnerabilities", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Vulnerabilities", exact: true })).toBeVisible();
       await expect(page.getByText("Known exploited", { exact: true })).toBeVisible();
       const cveRow = page.getByRole("table", { name: "Vulnerabilities" }).getByText("CVE-2026-9001");
       await expect(cveRow).toBeVisible({ timeout: 30_000 });
       await shot(page, "22c-vulnerabilities");
+      await expect(page.getByRole("table", { name: "Vulnerabilities" }).getByText("CVE-2026-9002")).toHaveCount(0);
+      await expect(page.getByText("Also show 1 entry where the NVD names no versions")).toBeVisible();
+      await page.getByRole("switch", { name: /Also show 1 entry/ }).click({ force: true });
+      await expect(page.getByRole("table", { name: "Vulnerabilities" }).getByText("CVE-2026-9002")).toBeVisible();
+      await expect(page.getByText(/known as “?"?NoVersions/)).toBeVisible();
+      await page.getByRole("switch", { name: /Also showing entries/ }).click({ force: true });
+      await expect(page.getByRole("table", { name: "Vulnerabilities" }).getByText("CVE-2026-9002")).toHaveCount(0);
       await cveRow.click();
       const cd = page.getByRole("dialog");
       await expect(cd.getByText("GNU Bash e2e vulnerability")).toBeVisible();

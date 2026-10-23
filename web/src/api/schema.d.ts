@@ -5429,6 +5429,8 @@ export interface paths {
                     /** @description Text in the CVE id */
                     q?: string;
                     limit?: number;
+                    /** @description Also include vulnerabilities for which the NVD names no versions (left out by default: they list fully patched devices; exploited ones are always listed) */
+                    no_versions?: boolean;
                 };
                 header?: never;
                 path?: never;
@@ -5501,7 +5503,10 @@ export interface paths {
         /** The devices a CVE affects, and what to update (requires reports:read) */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description Also include vulnerabilities for which the NVD names no versions (left out by default: they list fully patched devices; exploited ones are always listed) */
+                    no_versions?: boolean;
+                };
                 header?: never;
                 path: {
                     cve: string;
@@ -5761,7 +5766,10 @@ export interface paths {
         /** The known vulnerabilities that affect one device (requires devices:read for the device) */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description Also include vulnerabilities for which the NVD names no versions (left out by default: they list fully patched devices; exploited ones are always listed) */
+                    no_versions?: boolean;
+                };
                 header?: never;
                 path: {
                     id: components["parameters"]["ID"];
@@ -8851,6 +8859,8 @@ export interface components {
             products: string[];
             /** @description What to update to */
             fixed_in: string[];
+            /** @description The NVD names no versions for it */
+            no_versions: boolean;
         };
         VulnerabilitySummary: {
             cves: number;
@@ -8862,6 +8872,8 @@ export interface components {
             /** @description Devices that have something the lookup knows about */
             devices_covered: number;
             devices_active: number;
+            /** @description Vulnerabilities left out of the list because the NVD names no versions for them (0 when they are included) */
+            no_versions: number;
         };
         VulnerabilityFeed: {
             /** @description kev, or nvd:<vendor>:<product> */
