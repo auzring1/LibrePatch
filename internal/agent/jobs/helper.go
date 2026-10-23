@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -63,6 +65,12 @@ type HelperEnv struct {
 	StageRoot  string
 	Run        func(ctx context.Context, spec RunSpec) (RunResult, error)
 	OpenLocked func(path string) (LockedFile, error)
+}
+
+// baseName is the last element of a Windows or slash path.
+func baseName(p string) string {
+	p = strings.ReplaceAll(p, `\`, "/")
+	return p[strings.LastIndex(p, "/")+1:]
 }
 
 func underPath(p, root string) bool {
@@ -170,7 +178,22 @@ func runTask(ctx context.Context, t *HelperTask, e HelperEnv) HelperResult {
 	if timeout <= 0 || timeout > MaxTimeout {
 		return refuse("timeout out of range")
 	}
-	rr, err := e.Run(ctx, RunSpec{Exe: t.Exe, Args: t.Args, Dir: t.Dir, Timeout: timeout, LogPath: t.LogPath})
+	// The user may read and execute in the staging directory but not write there, so the output and the installer's log go to a
+	// folder of the user's own (their temp folder) for the length of the run (D145).
+	scratch, err := os.MkdirTemp("", "librepatch-")
+	if err != nil {
+		return refuse("cannot make a folder for the installer's output: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(scratch) }()
+	spec := RunSpec{Exe: t.Exe, Args: t.Args, Dir: t.Dir, OutDir: scratch, Timeout: timeout, LogPath: t.LogPath}
+	if t.LogPath != "" {
+		spec.LogPath = filepath.Join(scratch, baseName(t.LogPath))
+		spec.Args = make([]string, len(t.Args))
+		for i, a := range t.Args {
+			spec.Args[i] = strings.ReplaceAll(a, t.LogPath, spec.LogPath)
+		}
+	}
+	rr, err := e.Run(ctx, spec)
 	if err != nil {
 		return refuse("could not run: %v", err)
 	}

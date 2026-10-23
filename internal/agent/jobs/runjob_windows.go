@@ -53,7 +53,11 @@ func runInJobWith(ctx context.Context, spec RunSpec, launch launcher) (RunResult
 	}
 
 	// Output capture: a private inheritable file handle, restricted to this one child.
-	outPath := filepath.Join(spec.Dir, "output.log")
+	outDir := spec.OutDir
+	if outDir == "" {
+		outDir = spec.Dir
+	}
+	outPath := filepath.Join(outDir, "output.log")
 	sa := &windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), InheritHandle: 1}
 	op, _ := windows.UTF16PtrFromString(outPath)
 	outH, err := windows.CreateFile(op, windows.GENERIC_WRITE, windows.FILE_SHARE_READ, sa, windows.CREATE_ALWAYS, windows.FILE_ATTRIBUTE_NORMAL, 0)
