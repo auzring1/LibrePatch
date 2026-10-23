@@ -736,6 +736,11 @@ func (p *planner) planInstall(d dbq.ListActiveDevicesByIDsRow, rows []dbq.ListPa
 // and that the new installer will not upgrade in place. It returns the last job of the chain (nil if
 // there is nothing to remove). Rows the new installer registers under the same key are left to it.
 func (p *planner) planCleanup(d dbq.ListActiveDevicesByIDsRow, rows []dbq.ListPackageInstallsRow, newBody *agentv1.InstallBody) (*uuid.UUID, error) {
+	// An app that updates itself (Edge, Chrome, Firefox, ...) has an installer that upgrades the old copy in place, and the
+	// old copy is usually the program somebody is using right now: removing it first would fail, or close their browser (D143).
+	if p.pkg.SelfUpdating {
+		return nil, nil
+	}
 	var last *uuid.UUID
 	for _, r := range rows {
 		if !olderThanTarget(r, p.targetKey) || replacedInPlace(r.ItemKey, newBody) {

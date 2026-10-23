@@ -52,6 +52,12 @@ const rangeTest = `
 	  AND (cr.start_key IS NULL OR %[1]s > cr.start_key OR (cr.start_incl AND %[1]s = cr.start_key))
 	  AND (cr.end_key   IS NULL OR %[1]s < cr.end_key   OR (cr.end_incl   AND %[1]s = cr.end_key))`
 
+// A range with no start and no end says "every version". For an old CVE that is almost always the NVD's way of saying it lost
+// track of which versions were meant (decades-old Firefox entries "affect" today's Firefox), so such a range counts only for a
+// CVE published in the last two years or one on the CISA list of exploited vulnerabilities (D144).
+const everyVersionTest = `
+	  AND (cr.start_key IS NOT NULL OR cr.end_key IS NOT NULL OR cv.kev OR cv.published >= now() - interval '2 years')`
+
 func hitsSQL() string {
 	// $6 narrows the hits to one device; NULL means every device.
 	dev := " AND ($6::uuid IS NULL OR d.id = $6::uuid)"
@@ -63,7 +69,8 @@ func hitsSQL() string {
 	 JOIN software_titles st ON st.id = si.title_id
 	 JOIN cve_products m ON m.org_id = d.org_id AND m.enabled AND m.normalized_name = st.normalized_name
 	 JOIN cve_ranges cr ON cr.vendor = m.vendor AND cr.product = m.product
-	 WHERE d.org_id = $1 AND d.status = 'active' AND si.version_key IS NOT NULL` + strings.ReplaceAll(rangeTest, "%[1]s", "si.version_key") + dev
+	 JOIN cves cv ON cv.id = cr.cve_id
+	 WHERE d.org_id = $1 AND d.status = 'active' AND si.version_key IS NOT NULL` + strings.ReplaceAll(rangeTest, "%[1]s", "si.version_key") + everyVersionTest + dev
 	os := `SELECT d.id, cr.cve_id, og.label, d.os_build, 
 	        CASE WHEN cr.end_key IS NOT NULL AND NOT cr.end_incl THEN cr.end_text ELSE '' END,
 	        ''
@@ -71,7 +78,8 @@ func hitsSQL() string {
 	 JOIN unnest($2::text[], $3::bool[], $4::text[], $5::text[]) AS og(os_build, server, product, label) ON og.os_build = d.os_build AND og.server = (lower(d.os_caption) LIKE '%server%')
 	 JOIN unnest($2::text[], $7::bytea[]) AS ok(os_build, key) ON ok.os_build = og.os_build
 	 JOIN cve_ranges cr ON cr.vendor = 'microsoft' AND cr.product = og.product
-	 WHERE d.org_id = $1 AND d.status = 'active'` + strings.ReplaceAll(rangeTest, "%[1]s", "ok.key") + dev
+	 JOIN cves cv ON cv.id = cr.cve_id
+	 WHERE d.org_id = $1 AND d.status = 'active'` + strings.ReplaceAll(rangeTest, "%[1]s", "ok.key") + everyVersionTest + dev
 	return "WITH hits AS (" + soft + " UNION ALL " + os + ")"
 }
 

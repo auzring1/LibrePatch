@@ -363,3 +363,42 @@ func TestFleetPairsAreWhatTheFleetHas(t *testing.T) {
 		}
 	}
 }
+
+// A range with no start and no end ("every version") on an old CVE is stale data, not a finding: decades-old Firefox entries
+// must not show up for today's Firefox (D144). A recent one, or one that is on the CISA list, still counts.
+func TestEveryVersionRangesCountOnlyForRecentOrExploitedCVEs(t *testing.T) {
+	f := newFleet(t)
+	ctx := context.Background()
+	f.exec(`INSERT INTO cves (id, published, summary) VALUES ('CVE-2007-1111', now() - interval '19 years', 'old, no versions named')`)
+	f.exec(`INSERT INTO cves (id, published, summary) VALUES ('CVE-2026-2222', now() - interval '3 months', 'recent, no versions named yet')`)
+	f.exec(`INSERT INTO cves (id, published, kev, summary) VALUES ('CVE-2010-3333', now() - interval '16 years', true, 'old but known to be exploited')`)
+	f.exec(`INSERT INTO cves (id, published, summary) VALUES ('CVE-2008-4444', now() - interval '18 years', 'old with a real range')`)
+	for _, id := range []string{"CVE-2007-1111", "CVE-2026-2222", "CVE-2010-3333"} {
+		f.exec(`INSERT INTO cve_ranges (cve_id, vendor, product) VALUES ($1,'acme','tool')`, id)
+	}
+	f.exec(`INSERT INTO cve_ranges (cve_id, vendor, product, end_key, end_text) VALUES ('CVE-2008-4444','acme','tool',$1,'200.0')`, vercmp.Key("200.0"))
+	if _, err := f.st.AddProduct(ctx, f.org, "Acme Tool", "acme", "tool"); err != nil {
+		t.Fatal(err)
+	}
+	d := f.device("PC", "Windows 11 Pro", "26100.3000", "active")
+	f.install(d, "Acme Tool", "150.0")
+	items, _, err := f.st.Overview(ctx, f.org, Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, i := range items {
+		got[i.ID] = true
+	}
+	if got["CVE-2007-1111"] || !got["CVE-2026-2222"] || !got["CVE-2010-3333"] || !got["CVE-2008-4444"] || len(got) != 3 {
+		t.Fatalf("overview: %v", ids(items))
+	}
+	hits, err := f.st.DevicesFor(ctx, f.org, "CVE-2007-1111")
+	if err != nil || len(hits) != 0 {
+		t.Fatalf("the device list agrees: %v %+v", err, hits)
+	}
+	mine, err := f.st.ForDevice(ctx, f.org, d)
+	if err != nil || len(mine) != 3 {
+		t.Fatalf("so does the device page: %v %d", err, len(mine))
+	}
+}

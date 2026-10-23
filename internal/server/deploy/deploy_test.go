@@ -601,7 +601,7 @@ func TestSelfUpdatingAppsAreLeftToTheVendorUnlessEnforced(t *testing.T) {
 	}
 	// An administrator can enforce versions anyway.
 	f.exec("INSERT INTO package_overrides (org_id, package_id, self_update_policy) VALUES ($1,$2,'enforce')", f.org, f.pkg.ID)
-	if plan, err := f.create(Request{Action: "update", Scope: "machine", DeviceIDs: []uuid.UUID{d}}); err != nil || plan.Jobs != 3 { // removal of the old copy + machine update + per-user copy
+	if plan, err := f.create(Request{Action: "update", Scope: "machine", DeviceIDs: []uuid.UUID{d}}); err != nil || plan.Jobs != 2 { // machine update + per-user copy; the old copy of a self-updating app is not removed first (D143)
 		t.Fatalf("enforced update: %+v %v", plan, err)
 	}
 }
