@@ -252,6 +252,11 @@ func (t tempHive) Close() {
 // hive is consistent) into a fresh directory under root and loads the copy.
 func loadOfflineCopy(file, root string) (RegNode, error) {
 	if _, err := os.Stat(file); err != nil {
+		// A user whose profile folder was deleted (the account is gone, the registry entry stayed) is not a problem to
+		// report on every scan; a hive that is merely missing from an existing folder still is.
+		if _, derr := os.Stat(filepath.Dir(file)); errors.Is(derr, os.ErrNotExist) {
+			return nil, ErrProfileGone
+		}
 		return nil, fmt.Errorf("profile hive: %w", err)
 	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
