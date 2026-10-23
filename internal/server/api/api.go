@@ -356,6 +356,7 @@ func (s *server) routes(r chi.Router) {
 	r.With(s.require(auth.PermSettingsIntegrations)).Get("/settings/events", s.settingsEvents)
 	r.With(s.requireSelf).Get("/dashboard", s.dashboard)
 	r.With(s.requireSelf).Get("/notifications", s.notifications)
+	r.With(s.requireSelf).Post("/notifications/dismiss", s.dismissNotifications)
 	r.With(s.requireSelf).Get("/me/preferences", s.getPreferences)
 	r.With(s.requireSelf).Put("/me/preferences", s.putPreferences)
 	r.With(s.requireSelf).Post("/me/api-tokens", s.createAPIToken)

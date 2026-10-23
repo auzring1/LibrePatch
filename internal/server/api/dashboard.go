@@ -410,9 +410,16 @@ type notification struct {
 	At       time.Time `json:"at"`
 }
 
-// GET /notifications: things that need a person's attention, drawn from what they may already see. Nothing is stored;
-// the list is the current state, so an item disappears once the condition is resolved.
-func (s *server) notifications(w http.ResponseWriter, r *http.Request) {
+const (
+	notifFailedJobs = 5   // failed jobs the bell lists
+	notifScanJobs   = 40  // how many recent failed jobs are looked at to find that many that were not dismissed
+	maxDismissIDs   = 100 // ids in one dismiss request
+)
+
+// currentNotifications is the bell as it stands: the things that need a person's attention, drawn from what they may
+// already see. Nothing about them is stored; the list is the current state, so an item disappears once the condition is
+// resolved. Dismissals are applied by the caller.
+func (s *server) currentNotifications(r *http.Request, dismissed map[string]bool) ([]notification, error) {
 	p := principalFrom(r)
 	ctx := r.Context()
 	q := s.q()
@@ -421,36 +428,122 @@ func (s *server) notifications(w http.ResponseWriter, r *http.Request) {
 
 	if sc := scopeOf(p, auth.PermDeploymentsRead); sc.ok {
 		since := now.Add(-24 * time.Hour)
-		total, err := q.CountFailedJobsSince(ctx, dbq.CountFailedJobsSinceParams{OrgID: p.OrgID, Since: since, SiteIds: sc.sites})
+		recent, err := q.ListFailedJobsSince(ctx, dbq.ListFailedJobsSinceParams{OrgID: p.OrgID, Since: since, SiteIds: sc.sites, RowLimit: notifScanJobs})
 		if err != nil {
-			internalError(w)
-			return
+			return nil, err
 		}
-		if total > 0 {
-			recent, err := q.ListFailedJobsSince(ctx, dbq.ListFailedJobsSinceParams{OrgID: p.OrgID, Since: since, SiteIds: sc.sites, RowLimit: 5})
-			if err != nil {
-				internalError(w)
-				return
+		shown := 0
+		for _, j := range recent {
+			id := "job-" + j.ID.String()
+			if dismissed[id] || shown >= notifFailedJobs {
+				continue
 			}
-			for _, j := range recent {
-				items = append(items, notification{ID: "job-" + j.ID.String(), Kind: "failed_job", Severity: "warning", Title: j.Title + " failed on " + j.Hostname, Detail: j.StatusReason, To: "/devices/" + j.DeviceID.String() + "?tab=jobs", At: j.At})
-			}
+			shown++
+			items = append(items, notification{ID: id, Kind: "failed_job", Severity: "warning", Title: j.Title + " failed on " + j.Hostname, Detail: j.StatusReason, To: "/devices/" + j.DeviceID.String() + "?tab=jobs", At: j.At})
 		}
 	}
-	if p.Access.OrgHas(auth.PermUpdatesRead) {
+	if p.Access.OrgHas(auth.PermUpdatesRead) && (s.Updates == nil || s.Updates.On(ctx, p.OrgID)) {
 		holds, err := q.ListHolds(ctx, p.OrgID)
 		if err != nil {
-			internalError(w)
-			return
+			return nil, err
 		}
 		for _, h := range holds {
 			title := "An update"
 			if h.Title != nil && *h.Title != "" {
 				title = *h.Title
 			}
-			items = append(items, notification{ID: "hold-" + h.ID.String(), Kind: "held_update", Severity: "warning", Title: title + " is held", Detail: h.Reason, To: "/updates/held", At: h.CreatedAt})
+			id := "hold-" + h.ID.String()
+			if dismissed[id] {
+				continue
+			}
+			items = append(items, notification{ID: id, Kind: "held_update", Severity: "warning", Title: title + " is held", Detail: h.Reason, To: "/updates/held", At: h.CreatedAt})
 		}
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].At.After(items[j].At) })
+	return items, nil
+}
+
+// GET /notifications: the bell, without what the signed-in person has dismissed.
+func (s *server) notifications(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r)
+	q := s.q()
+	rows, err := q.ListNotificationDismissals(r.Context(), p.UserID)
+	if err != nil {
+		internalError(w)
+		return
+	}
+	dismissed := make(map[string]bool, len(rows))
+	for _, id := range rows {
+		dismissed[id] = true
+	}
+	items, err := s.currentNotifications(r, dismissed)
+	if err != nil {
+		s.Log.Error("notifications", "err", err)
+		internalError(w)
+		return
+	}
+	// A dismissal of something that no longer needs attention is not kept: when the same thing happens again it is a new item
+	// (a new job has a new id), and a held update that is released and held again would otherwise stay hidden.
+	if len(dismissed) > 0 {
+		all, err := s.currentNotifications(r, nil)
+		if err == nil {
+			still := map[string]bool{}
+			for _, n := range all {
+				still[n.ID] = true
+			}
+			var stale []string
+			for id := range dismissed {
+				if !still[id] {
+					stale = append(stale, id)
+				}
+			}
+			if len(stale) > 0 {
+				_ = q.ForgetNotificationDismissals(r.Context(), dbq.ForgetNotificationDismissalsParams{UserID: p.UserID, Column2: stale})
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
+}
+
+// POST /notifications/dismiss: the signed-in person puts items of their bell away. Either the ids to dismiss or all: true for
+// everything the bell shows them now. It only changes what this person sees; it is not an audited action.
+func (s *server) dismissNotifications(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r)
+	var in struct {
+		IDs []string `json:"ids"`
+		All bool     `json:"all"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	ids := in.IDs
+	if in.All {
+		cur, err := s.currentNotifications(r, nil)
+		if err != nil {
+			s.Log.Error("notifications", "err", err)
+			internalError(w)
+			return
+		}
+		for _, n := range cur {
+			ids = append(ids, n.ID)
+		}
+	}
+	if len(ids) > maxDismissIDs {
+		badRequest(w, "dismiss at most 100 items at once")
+		return
+	}
+	for _, id := range ids {
+		if id == "" || len(id) > 100 {
+			badRequest(w, "an item id is empty or too long")
+			return
+		}
+	}
+	if len(ids) > 0 {
+		if err := s.q().DismissNotifications(r.Context(), dbq.DismissNotificationsParams{UserID: p.UserID, Column2: ids}); err != nil {
+			s.Log.Error("dismiss notifications", "err", err)
+			internalError(w)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
