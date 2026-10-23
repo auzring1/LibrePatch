@@ -2256,6 +2256,7 @@ paths:
         - { name: severity, in: query, required: false, schema: { type: string }, description: "Comma-separated: low, medium, high, critical" }
         - { name: q, in: query, required: false, schema: { type: string }, description: Text in the CVE id, summary or software name }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 2000, default: 500 } }
+        - { name: no_versions, in: query, required: false, schema: { type: boolean }, description: "Also include vulnerabilities for which the NVD names no versions (left out by default: they list fully patched devices; exploited ones are always listed)" }
       responses:
         "200":
           description: OK
@@ -2276,7 +2277,9 @@ paths:
     get:
       tags: [vulnerabilities]
       summary: The devices a CVE affects, and what to update (requires reports:read)
-      parameters: [{ name: cve, in: path, required: true, schema: { type: string } }]
+      parameters:
+        - { name: cve, in: path, required: true, schema: { type: string } }
+        - { name: no_versions, in: query, required: false, schema: { type: boolean }, description: "Also include vulnerabilities for which the NVD names no versions (left out by default: they list fully patched devices; exploited ones are always listed)" }
       responses:
         "200":
           description: OK
@@ -2392,7 +2395,9 @@ paths:
     get:
       tags: [vulnerabilities]
       summary: The known vulnerabilities that affect one device (requires devices:read for the device)
-      parameters: [{ $ref: "#/components/parameters/ID" }]
+      parameters:
+        - { $ref: "#/components/parameters/ID" }
+        - { name: no_versions, in: query, required: false, schema: { type: boolean }, description: "Also include vulnerabilities for which the NVD names no versions (left out by default: they list fully patched devices; exploited ones are always listed)" }
       responses:
         "200":
           description: OK
@@ -4136,7 +4141,7 @@ components:
         state: { type: string, enum: [compliant, non_compliant, unknown] }
     Vulnerability:
       type: object
-      required: [id, summary, severity, exploited, exploited_name, ransomware, required_action, devices, products, fixed_in]
+      required: [id, summary, severity, exploited, exploited_name, ransomware, required_action, devices, products, fixed_in, no_versions]
       properties:
         id: { type: string, example: CVE-2026-0001 }
         published: { type: string, format: date-time, nullable: true }
@@ -4152,9 +4157,10 @@ components:
         devices: { type: integer }
         products: { type: array, items: { type: string } }
         fixed_in: { type: array, items: { type: string }, description: What to update to, per product }
+        no_versions: { type: boolean, description: The NVD names no versions for it, so a patched device is listed too (only shown when exploited or asked for) }
     VulnerabilitySummary:
       type: object
-      required: [cves, exploited, critical, high, devices, devices_covered, devices_active]
+      required: [cves, exploited, critical, high, devices, devices_covered, devices_active, no_versions]
       properties:
         cves: { type: integer }
         exploited: { type: integer }
@@ -4163,6 +4169,7 @@ components:
         devices: { type: integer, description: Devices affected by at least one }
         devices_covered: { type: integer, description: Devices that have something the lookup knows about }
         devices_active: { type: integer }
+        no_versions: { type: integer, description: Vulnerabilities left out of the list because the NVD names no versions for them (0 when they are included) }
     VulnerabilityFeed:
       type: object
       required: [feed, last_ok, last_attempt, status, last_error, items]

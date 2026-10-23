@@ -54,7 +54,7 @@ func day(s string) *time.Time {
 func clip(s string, n int) string {
 	r := []rune(strings.TrimSpace(s))
 	if len(r) > n {
-		return string(r[:n])
+		return string(r[:n-1]) + "…" // a cut-off sentence says it was cut
 	}
 	return string(r)
 }

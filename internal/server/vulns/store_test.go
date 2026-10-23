@@ -133,7 +133,7 @@ func TestMatchingFindsWhatTheFleetHas(t *testing.T) {
 	_ = server
 
 	// Who has CVE-2026-0002, and what to do about it.
-	hits, err := f.st.DevicesFor(ctx, f.org, "CVE-2026-0002")
+	hits, err := f.st.DevicesFor(ctx, f.org, "CVE-2026-0002", false)
 	if err != nil || len(hits) != 2 {
 		t.Fatalf("devices: %+v %v", hits, err)
 	}
@@ -142,14 +142,14 @@ func TestMatchingFindsWhatTheFleetHas(t *testing.T) {
 	}
 
 	// What one device has.
-	own, err := f.st.ForDevice(ctx, f.org, unpatched)
+	own, err := f.st.ForDevice(ctx, f.org, unpatched, false)
 	if err != nil || len(own) != 2 || own[0].ID != "CVE-2026-0001" || own[0].Product != "Google Chrome" || own[0].Installed != "129.0.6668.1" || own[1].Product != "Windows 11 24H2" {
 		t.Fatalf("device items: %+v %v", own, err)
 	}
-	if none, _ := f.st.ForDevice(ctx, f.org, patched); len(none) != 0 {
+	if none, _ := f.st.ForDevice(ctx, f.org, patched, false); len(none) != 0 {
 		t.Fatalf("a patched device has nothing: %+v", none)
 	}
-	if none, _ := f.st.ForDevice(ctx, f.org, server); len(none) != 0 {
+	if none, _ := f.st.ForDevice(ctx, f.org, server, false); len(none) != 0 {
 		t.Fatalf("Windows Server 2025 shares a build number with Windows 11 24H2 and must not get its CVEs: %+v", none)
 	}
 
@@ -222,7 +222,7 @@ func TestRangesAreHonoredAtTheirEdges(t *testing.T) {
 	for v, want := range cases {
 		d := f.device("PC-"+v, "Windows 11 Pro", "26100.3000", "active")
 		f.install(d, "Acme Tool", v)
-		got, err := f.st.ForDevice(ctx, f.org, d)
+		got, err := f.st.ForDevice(ctx, f.org, d, false)
 		if err != nil || (len(got) == 1) != want {
 			t.Errorf("version %s: affected=%v, want %v (%+v %v)", v, len(got) == 1, want, got, err)
 		}
@@ -364,13 +364,14 @@ func TestFleetPairsAreWhatTheFleetHas(t *testing.T) {
 	}
 }
 
-// A range with no start and no end ("every version") on an old CVE is stale data, not a finding: decades-old Firefox entries
-// must not show up for today's Firefox (D144). A recent one, or one that is on the CISA list, still counts.
-func TestEveryVersionRangesCountOnlyForRecentOrExploitedCVEs(t *testing.T) {
+// A range with no start and no end ("every version") is the NVD not knowing which versions are meant: decades-old Firefox entries
+// and recent Microsoft ones then list a fully patched PC. Such a CVE is left out unless it is on the CISA list or the person asks
+// for it, and the number left out is reported (D147).
+func TestRangesThatNameNoVersionsAreLeftOutUnlessAskedFor(t *testing.T) {
 	f := newFleet(t)
 	ctx := context.Background()
 	f.exec(`INSERT INTO cves (id, published, summary) VALUES ('CVE-2007-1111', now() - interval '19 years', 'old, no versions named')`)
-	f.exec(`INSERT INTO cves (id, published, summary) VALUES ('CVE-2026-2222', now() - interval '3 months', 'recent, no versions named yet')`)
+	f.exec(`INSERT INTO cves (id, published, summary) VALUES ('CVE-2026-2222', now() - interval '3 months', 'recent, no versions named')`)
 	f.exec(`INSERT INTO cves (id, published, kev, summary) VALUES ('CVE-2010-3333', now() - interval '16 years', true, 'old but known to be exploited')`)
 	f.exec(`INSERT INTO cves (id, published, summary) VALUES ('CVE-2008-4444', now() - interval '18 years', 'old with a real range')`)
 	for _, id := range []string{"CVE-2007-1111", "CVE-2026-2222", "CVE-2010-3333"} {
@@ -382,23 +383,39 @@ func TestEveryVersionRangesCountOnlyForRecentOrExploitedCVEs(t *testing.T) {
 	}
 	d := f.device("PC", "Windows 11 Pro", "26100.3000", "active")
 	f.install(d, "Acme Tool", "150.0")
-	items, _, err := f.st.Overview(ctx, f.org, Filter{})
+
+	items, sum, err := f.st.Overview(ctx, f.org, Filter{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := map[string]bool{}
+	got := map[string]Item{}
 	for _, i := range items {
-		got[i.ID] = true
+		got[i.ID] = i
 	}
-	if got["CVE-2007-1111"] || !got["CVE-2026-2222"] || !got["CVE-2010-3333"] || !got["CVE-2008-4444"] || len(got) != 3 {
-		t.Fatalf("overview: %v", ids(items))
+	if len(got) != 2 || got["CVE-2010-3333"].ID == "" || got["CVE-2008-4444"].ID == "" {
+		t.Fatalf("only the exploited one and the one with a real range: %v", ids(items))
 	}
-	hits, err := f.st.DevicesFor(ctx, f.org, "CVE-2007-1111")
-	if err != nil || len(hits) != 0 {
+	if sum.NoVersions != 2 || sum.CVEs != 2 {
+		t.Fatalf("two were left out, and the summary says so: %+v", sum)
+	}
+	if got["CVE-2008-4444"].NoVersions || !got["CVE-2010-3333"].NoVersions {
+		t.Fatalf("an exploited entry without versions is marked as such: %+v %+v", got["CVE-2008-4444"], got["CVE-2010-3333"])
+	}
+	if hits, err := f.st.DevicesFor(ctx, f.org, "CVE-2026-2222", false); err != nil || len(hits) != 0 {
 		t.Fatalf("the device list agrees: %v %+v", err, hits)
 	}
-	mine, err := f.st.ForDevice(ctx, f.org, d)
-	if err != nil || len(mine) != 3 {
+	if mine, err := f.st.ForDevice(ctx, f.org, d, false); err != nil || len(mine) != 2 {
 		t.Fatalf("so does the device page: %v %d", err, len(mine))
+	}
+
+	all, sum, err := f.st.Overview(ctx, f.org, Filter{IncludeNoVersions: true})
+	if err != nil || len(all) != 4 || sum.NoVersions != 0 {
+		t.Fatalf("asked for: %v %+v %v", ids(all), sum, err)
+	}
+	if hits, err := f.st.DevicesFor(ctx, f.org, "CVE-2026-2222", true); err != nil || len(hits) != 1 {
+		t.Fatalf("and the device list can show them: %v %+v", err, hits)
+	}
+	if mine, err := f.st.ForDevice(ctx, f.org, d, true); err != nil || len(mine) != 4 {
+		t.Fatalf("and the device page: %v %d", err, len(mine))
 	}
 }

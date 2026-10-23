@@ -50,7 +50,7 @@ func (s *server) vulnAudit(r *http.Request, action, target string, details map[s
 
 func vulnFilter(r *http.Request) vulns.Filter {
 	q := r.URL.Query()
-	f := vulns.Filter{Exploited: q.Get("exploited") == "true", Query: q.Get("q")}
+	f := vulns.Filter{Exploited: q.Get("exploited") == "true", Query: q.Get("q"), IncludeNoVersions: q.Get("no_versions") == "true"}
 	for _, sv := range strings.Split(q.Get("severity"), ",") {
 		switch sv = strings.ToLower(strings.TrimSpace(sv)); sv {
 		case "low", "medium", "high", "critical":
@@ -92,7 +92,7 @@ func (s *server) vulnerabilityDevices(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, "that is not a CVE id")
 		return
 	}
-	hits, err := s.Vulns.Store.DevicesFor(r.Context(), principalFrom(r).OrgID, id)
+	hits, err := s.Vulns.Store.DevicesFor(r.Context(), principalFrom(r).OrgID, id, r.URL.Query().Get("no_versions") == "true")
 	if err != nil {
 		s.vulnError(w, err)
 		return
@@ -184,7 +184,7 @@ func (s *server) deviceVulnerabilities(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	items, err := s.Vulns.Store.ForDevice(r.Context(), d.OrgID, d.ID)
+	items, err := s.Vulns.Store.ForDevice(r.Context(), d.OrgID, d.ID, r.URL.Query().Get("no_versions") == "true")
 	if err != nil {
 		s.vulnError(w, err)
 		return

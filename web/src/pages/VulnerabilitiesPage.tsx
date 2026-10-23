@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Alert, Button, Modal, Stack, Table, Text } from "@mantine/core";
+import { Alert, Button, Modal, Stack, Switch, Table, Text } from "@mantine/core";
 import { api, errorMessage, type Vulnerability, type VulnerabilityDevice, type VulnerabilityOverview, type VulnerabilitySyncReport } from "../api/client";
 import { dateTime } from "../api/format";
 import { useSession } from "../api/session";
@@ -34,7 +34,14 @@ export function VulnerabilitiesPage() {
   const { can } = useSession();
   const qc = useQueryClient();
   const [open, setOpen] = useState<Vulnerability | null>(null);
-  const q = useQuery({ queryKey: ["vulnerabilities"], queryFn: () => api<VulnerabilityOverview>("GET", "/vulnerabilities?limit=1000"), refetchInterval: 120_000 });
+  // The NVD sometimes names a product without naming versions; such entries list fully patched devices, so they are left out
+  // until asked for (D147).
+  const [noVersions, setNoVersions] = useState(false);
+  const q = useQuery({
+    queryKey: ["vulnerabilities", { noVersions }],
+    queryFn: () => api<VulnerabilityOverview>("GET", `/vulnerabilities?limit=1000${noVersions ? "&no_versions=true" : ""}`),
+    refetchInterval: 120_000,
+  });
   const sync = useMutation({
     mutationFn: () => api<VulnerabilitySyncReport>("POST", "/vulnerabilities/sync"),
     onSuccess: (r) => {
@@ -76,7 +83,14 @@ export function VulnerabilitiesPage() {
       },
       { id: "software", header: "Affected software", width: 260, wrap: true, value: (v) => v.products.join(", ") },
       { id: "devices", header: "Devices", align: "right", width: 90, value: (v) => v.devices, cell: (v) => <span className="lp-num">{v.devices}</span> },
-      { id: "fix", header: "Fix", width: 300, wrap: true, value: (v) => fixText(v) },
+      {
+        id: "fix",
+        header: "Fix",
+        width: 300,
+        wrap: true,
+        value: (v) => (v.no_versions ? "The NVD names no versions" : fixText(v)),
+        cell: (v) => (v.no_versions ? <span className="lp-muted">The NVD names no versions</span> : fixText(v)),
+      },
       { id: "published", header: "Published", width: 130, value: (v) => (v.published ? new Date(v.published).getTime() : 0), csv: (v) => v.published ?? "", cell: (v) => (v.published ? dateTime(v.published).split(",")[0] : "—") },
       { id: "summary", header: "What it is", width: 420, wrap: true, value: (v) => v.summary },
     ],
@@ -132,6 +146,16 @@ export function VulnerabilitiesPage() {
       )}
       {d && state.ok && (
         <Card title="Vulnerabilities that affect your devices" description="Select one to see which devices have it and what to update. The software list is limited to the programs under Programs that are looked up, plus Windows itself.">
+          {(noVersions || (s?.no_versions ?? 0) > 0) && (
+            <div style={{ marginBottom: "var(--lp-space-3)" }}>
+              <Switch
+                checked={noVersions}
+                onChange={(e) => setNoVersions(e.currentTarget.checked)}
+                label={noVersions ? "Also showing entries where the NVD names no versions" : `Also show ${s?.no_versions} entr${s?.no_versions === 1 ? "y" : "ies"} where the NVD names no versions`}
+                description="The NVD lists a product as affected without saying which versions. A fully patched computer is then listed too, so these are left out unless they are known to be exploited."
+              />
+            </div>
+          )}
           <DataTable<Vulnerability>
             id="vulnerabilities"
             label="Vulnerabilities"
@@ -150,14 +174,17 @@ export function VulnerabilitiesPage() {
         </Card>
       )}
       <TrackedProductsCard />
-      {open && <VulnerabilityModal v={open} onClose={() => setOpen(null)} />}
+      {open && <VulnerabilityModal v={open} noVersions={noVersions} onClose={() => setOpen(null)} />}
     </Page>
   );
 }
 
-function VulnerabilityModal({ v, onClose }: { v: Vulnerability; onClose: () => void }) {
+function VulnerabilityModal({ v, noVersions, onClose }: { v: Vulnerability; noVersions: boolean; onClose: () => void }) {
   const { canOrg } = useSession();
-  const q = useQuery({ queryKey: ["vulnerabilities", v.id, "devices"], queryFn: () => api<{ items: VulnerabilityDevice[] }>("GET", `/vulnerabilities/${encodeURIComponent(v.id)}/devices`) });
+  const q = useQuery({
+    queryKey: ["vulnerabilities", v.id, "devices", { noVersions }],
+    queryFn: () => api<{ items: VulnerabilityDevice[] }>("GET", `/vulnerabilities/${encodeURIComponent(v.id)}/devices${noVersions ? "?no_versions=true" : ""}`),
+  });
   const due = dueText(v.kev_due);
   const deploy = useDeployUpdates();
   const [confirming, setConfirming] = useState(false);
