@@ -145,3 +145,16 @@ func TestParseNVD(t *testing.T) {
 		t.Fatalf("an empty page: %+v %v", p, err)
 	}
 }
+
+// "-" in a CPE name means "not applicable": the product without a version. It is not a statement that every version is affected.
+func TestACPEWithoutAVersionIsNotEveryVersion(t *testing.T) {
+	if _, ok := rangeFor(nvdMatch{Vulnerable: true, Criteria: "cpe:2.3:a:mozilla:firefox:-:*:*:*:*:*:*:*"}, nil); ok {
+		t.Fatal(`"-" must not become a range`)
+	}
+	if r, ok := rangeFor(nvdMatch{Vulnerable: true, Criteria: "cpe:2.3:a:mozilla:firefox:*:*:*:*:*:*:*:*"}, nil); !ok || r.StartKey != nil || r.EndKey != nil {
+		t.Fatalf(`"*" with no bounds is every version: %+v %v`, r, ok)
+	}
+	if r, ok := rangeFor(nvdMatch{Vulnerable: true, Criteria: "cpe:2.3:a:mozilla:firefox:*:*:*:*:*:*:*:*", EndExcluding: "3.0.12"}, nil); !ok || r.EndText != "3.0.12" {
+		t.Fatalf("a bound is kept: %+v %v", r, ok)
+	}
+}

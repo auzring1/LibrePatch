@@ -152,6 +152,9 @@ func rangeFor(m nvdMatch, tracked Tracked) (Range, bool) {
 		if !ok {
 			return Range{}, false
 		}
+	case c.Version == "-":
+		// "Not applicable": the product without a version (a platform the flaw is about), not a statement about versions.
+		return Range{}, false
 	case !c.Any():
 		// One exact version.
 		k := vercmp.Key(c.Version)
