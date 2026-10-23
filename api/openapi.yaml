@@ -1628,6 +1628,24 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Notification" }
         "401": { $ref: "#/components/responses/Error" }
+  /notifications/dismiss:
+    post:
+      tags: [reports]
+      summary: Put items of the caller's own notification bell away (only changes what this person sees; not audited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                ids: { type: array, maxItems: 100, items: { type: string, maxLength: 100 }, description: The ids of the items (as returned by GET /notifications) }
+                all: { type: boolean, description: Dismiss everything the bell shows the caller now }
+      responses:
+        "204": { description: Dismissed }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
   /me/preferences:
     get:
       tags: [identity]

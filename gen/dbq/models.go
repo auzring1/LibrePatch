@@ -469,6 +469,12 @@ type MfaTotp struct {
 	ConfirmedAt  time.Time
 }
 
+type NotificationDismissal struct {
+	UserID      uuid.UUID
+	ItemID      string
+	DismissedAt time.Time
+}
+
 type NotificationOutbox struct {
 	ID        int64
 	OrgID     uuid.UUID

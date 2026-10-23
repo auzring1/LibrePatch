@@ -607,6 +607,34 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await page.getByTestId("notifications").click();
   await expect(page.getByText("Needs attention")).toBeVisible();
   await page.keyboard.press("Escape");
+  // Items of the bell can be dismissed, one by one or all at once (the server's side is covered by its own test; here the
+  // answers are made up so there is something to dismiss).
+  type Note = { id: string; kind: string; severity: string; title: string; detail: string; to: string; at: string };
+  const note = (n: number): Note => ({ id: `job-${n}`, kind: "failed_job", severity: "warning", title: `Update ${n} failed on PC-${n}`, detail: "could not run", to: "/devices", at: new Date().toISOString() });
+  let bellItems: Note[] = [note(1), note(2), note(3)];
+  const dismissed: unknown[] = [];
+  await page.route("**/api/v1/notifications", (r) => r.fulfill({ json: { items: bellItems, total: bellItems.length } }));
+  await page.route("**/api/v1/notifications/dismiss", async (r) => {
+    const body = r.request().postDataJSON() as { ids?: string[]; all?: boolean };
+    dismissed.push(body);
+    bellItems = body.all ? [] : bellItems.filter((i) => !(body.ids ?? []).includes(i.id));
+    await r.fulfill({ status: 204 });
+  });
+  await page.reload();
+  await page.getByTestId("notifications").click();
+  await expect(page.getByText("Update 1 failed on PC-1")).toBeVisible();
+  await a11y(page, "notifications");
+  await shot(page, "24b-notifications");
+  await page.getByRole("button", { name: "Dismiss: Update 1 failed on PC-1" }).click();
+  await expect(page.getByText("Update 1 failed on PC-1")).toHaveCount(0);
+  await expect(page.getByText("Update 2 failed on PC-2")).toBeVisible();
+  expect(dismissed).toEqual([{ ids: ["job-1"] }]);
+  await page.getByRole("button", { name: "Dismiss all" }).click();
+  await expect(page.getByText("You are all caught up.")).toBeVisible();
+  expect(dismissed[1]).toEqual({ all: true });
+  await page.unroute("**/api/v1/notifications");
+  await page.unroute("**/api/v1/notifications/dismiss");
+  await page.keyboard.press("Escape");
   const endpoints = mainNav(page).getByRole("button", { name: "Endpoints" });
   await endpoints.click();
   await expect(endpoints).toHaveAttribute("aria-expanded", "false");

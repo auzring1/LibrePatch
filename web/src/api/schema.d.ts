@@ -3829,6 +3829,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/notifications/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Put items of the caller's own notification bell away (only changes what this person sees; not audited) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description The ids of the items (as returned by GET /notifications) */
+                        ids?: string[];
+                        /** @description Dismiss everything the bell shows the caller now */
+                        all?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Dismissed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["Error"];
+                401: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/preferences": {
         parameters: {
             query?: never;
