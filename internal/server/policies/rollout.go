@@ -79,6 +79,9 @@ type rollout struct {
 	blocked    string
 	stages     []*stage
 	all        []uuid.UUID // the union of the stages' candidates
+	// scopes says, per candidate device, which kinds of copy are out of date there: "machine" (installed for the whole PC)
+	// and/or "user" (installed for one person). A baseline has none: it installs machine-wide.
+	scopes map[uuid.UUID]map[string]bool
 }
 
 func (s *Service) ringMembers(ctx context.Context, org uuid.UUID, r dbq.WuRing) (map[uuid.UUID]bool, error) {
@@ -166,10 +169,11 @@ func (s *Service) plan(ctx context.Context, p dbq.SoftwarePolicy, now time.Time)
 	for i, d := range devs {
 		ids[i] = d.ID
 	}
-	cands, err := s.candidates(ctx, p, pkg, ver, ids)
+	cands, scopes, err := s.candidates(ctx, p, pkg, ver, ids)
 	if err != nil {
 		return nil, err
 	}
+	ro.scopes = scopes
 	ro.stages, err = s.stages(ctx, p, ids, cands)
 	if err != nil {
 		return nil, err
@@ -191,26 +195,47 @@ func (s *Service) plan(ctx context.Context, p dbq.SoftwarePolicy, now time.Time)
 
 // candidates are the targeted devices that need the version: outdated copies for a keep-updated policy, devices without
 // the software for a baseline.
-func (s *Service) candidates(ctx context.Context, p dbq.SoftwarePolicy, pkg dbq.CatalogPackage, ver *dbq.CatalogVersion, ids []uuid.UUID) ([]uuid.UUID, error) {
+func (s *Service) candidates(ctx context.Context, p dbq.SoftwarePolicy, pkg dbq.CatalogPackage, ver *dbq.CatalogVersion, ids []uuid.UUID) ([]uuid.UUID, map[uuid.UUID]map[string]bool, error) {
 	if len(ids) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	q := dbq.New(s.Pool)
 	norm := inventory.NormalizeName(pkg.Name, "")
 	var cands []uuid.UUID
+	var scopes map[uuid.UUID]map[string]bool
 	switch p.Kind {
 	case "keep_updated":
-		rows, err := q.ListOutdatedForPackage(ctx, dbq.ListOutdatedForPackageParams{DeviceIds: ids, NormalizedName: norm, VersionKey: ver.VersionKey})
+		// The same list the Software updates page shows (D143): copies are recognised by the catalog name or by the winget
+		// index, and a copy installed for one person counts like one installed for the whole PC. The policy and the page
+		// must never disagree about whether a device needs an update.
+		ups, err := s.fleetUpdates(ctx, p.OrgID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		for _, r := range rows {
-			cands = append(cands, r.DeviceID)
+		in := make(map[uuid.UUID]bool, len(ids))
+		for _, id := range ids {
+			in[id] = true
+		}
+		scopes = map[uuid.UUID]map[string]bool{}
+		for _, u := range ups {
+			if !u.InCatalog || u.PackageID != pkg.ID {
+				continue
+			}
+			for _, d := range u.Devices {
+				if !in[d.DeviceID] {
+					continue
+				}
+				if scopes[d.DeviceID] == nil {
+					scopes[d.DeviceID] = map[string]bool{}
+					cands = append(cands, d.DeviceID)
+				}
+				scopes[d.DeviceID][d.Scope] = true
+			}
 		}
 	case "baseline":
 		have, err := q.ListDevicesWithPackage(ctx, dbq.ListDevicesWithPackageParams{DeviceIds: ids, NormalizedName: norm})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		has := map[uuid.UUID]bool{}
 		for _, d := range have {
@@ -220,7 +245,7 @@ func (s *Service) candidates(ctx context.Context, p dbq.SoftwarePolicy, pkg dbq.
 		if p.OnlyNewDevices {
 			ts, err := q.ListDeviceEnrollTimes(ctx, ids)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			for _, t := range ts {
 				enrolled[t.ID] = t.EnrolledAt
@@ -233,7 +258,7 @@ func (s *Service) candidates(ctx context.Context, p dbq.SoftwarePolicy, pkg dbq.
 			cands = append(cands, id)
 		}
 	}
-	return cands, nil
+	return cands, scopes, nil
 }
 
 // stages splits the targeted devices into the rollout's stages. Without rings there is one stage. With rings, a device

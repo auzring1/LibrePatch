@@ -359,3 +359,94 @@ func TestPolicyPromptsReachTheJobs(t *testing.T) {
 		t.Fatalf("silent again: %+v", list[0].Prompts)
 	}
 }
+
+// installUser adds a copy of the fixture package installed for one person (not for the whole PC).
+func (f *fx) installUser(dev uuid.UUID, version string) {
+	var title uuid.UUID
+	err := f.pool.QueryRow(context.Background(), `INSERT INTO software_titles (id, org_id, normalized_name, normalized_publisher, display_name, display_publisher)
+		VALUES ($1,$2,'acme tool','acme','Acme Tool','Acme') ON CONFLICT (org_id, normalized_name, normalized_publisher) DO UPDATE SET display_name = EXCLUDED.display_name
+		RETURNING id`, uuid.New(), f.org).Scan(&title)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	f.exec(`INSERT INTO software_installs (device_id, source, scope, user_sid, item_key, title_id, name, version, version_key, first_seen_at, last_seen_at)
+		VALUES ($1,'hku','user','S-1-5-21-1000','AcmeToolUser',$2,'Acme Tool',$3,$4,now(),now())`, dev, title, version, vercmp.Key(version))
+}
+
+// A policy sees what the Software updates page sees: a copy installed for one person is updated too, by a deployment of its own,
+// and a device with both kinds of copy gets both (D143).
+func TestKeepUpdatedAlsoUpdatesCopiesInstalledForOnePerson(t *testing.T) {
+	f := newFx(t)
+	ctx := context.Background()
+	f.userInstaller("2.0")
+	perUser, both, current := f.device("peruser", time.Now()), f.device("both", time.Now()), f.device("current", time.Now())
+	f.installUser(perUser, "1.0")
+	f.install(both, "1.0")
+	f.installUser(both, "1.0")
+	f.install(current, "2.0")
+	g := f.group(perUser, both, current)
+	id := f.policy("keep_updated", []uuid.UUID{g}, func(in *Input) { in.OnlyNewDevices = false })
+	f.svc.Tick(ctx)
+
+	scopes := func(dev uuid.UUID) string {
+		var s string
+		f.pool.QueryRow(ctx, "SELECT coalesce(string_agg(DISTINCT d.scope, ','), '') FROM deployments d JOIN jobs j ON j.deployment_id=d.id WHERE j.device_id=$1", dev).Scan(&s)
+		return s
+	}
+	if got := scopes(perUser); got != "user" {
+		t.Fatalf("the per-user copy is updated by a user-scope deployment: %q", got)
+	}
+	if got := scopes(both); got != "machine,user" {
+		t.Fatalf("a device with both gets both: %q", got)
+	}
+	if got := scopes(current); got != "" {
+		t.Fatalf("a current device gets nothing: %q", got)
+	}
+	if p := f.listOne(id); p.State != StateUpdating || p.LastDeploymentID == nil {
+		t.Fatalf("status: %+v", p)
+	}
+	f.svc.Tick(ctx)
+	if f.count("SELECT count(*) FROM deployments") != 2 {
+		t.Fatalf("a second check must not deploy again: %d deployments", f.count("SELECT count(*) FROM deployments"))
+	}
+}
+
+// userInstaller gives the fixture package a per-user installer for a version, so copies installed for one person can be updated.
+func (f *fx) userInstaller(version string) {
+	ctx := context.Background()
+	q := dbq.New(f.pool)
+	var vid uuid.UUID
+	if err := f.pool.QueryRow(ctx, "SELECT id FROM catalog_versions WHERE package_id=$1 AND version=$2", f.pkg, version).Scan(&vid); err != nil {
+		f.t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte("user" + version))
+	if err := q.InsertCatalogInstaller(ctx, dbq.InsertCatalogInstallerParams{ID: uuid.New(), VersionID: vid, Architecture: "x64", Scope: "user", InstallerType: "exe",
+		Url: "https://v.example/" + version + "-user.exe", Sha256: sum[:], FileName: "a-user.exe", Switches: []byte(`{"silent":["/S"],"custom":[]}`),
+		SuccessCodes: []int32{}, ExpectedCodes: []int32{}, Detection: []byte(`[]`)}); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+// When the package has no installer for copies installed for one person, the PCs' own updates still go out and the
+// device with only a per-user copy is recorded as a failed try (so it is retried a day later, not every five minutes).
+func TestKeepUpdatedWithoutAUserInstallerStillUpdatesTheOthers(t *testing.T) {
+	f := newFx(t)
+	ctx := context.Background()
+	perUser, machine := f.device("peruser", time.Now()), f.device("machine", time.Now())
+	f.installUser(perUser, "1.0")
+	f.install(machine, "1.0")
+	g := f.group(perUser, machine)
+	f.policy("keep_updated", []uuid.UUID{g}, func(in *Input) { in.OnlyNewDevices = false })
+	f.svc.Tick(ctx)
+	if f.jobsFor(machine) != 1 || f.jobsFor(perUser) != 0 {
+		t.Fatalf("machine=%d perUser=%d", f.jobsFor(machine), f.jobsFor(perUser))
+	}
+	var failures int32
+	if err := f.pool.QueryRow(ctx, "SELECT failures FROM policy_attempts WHERE device_id=$1", perUser).Scan(&failures); err != nil || failures != 1 {
+		t.Fatalf("a failed try is recorded: %v %d", err, failures)
+	}
+	f.svc.Tick(ctx)
+	if f.count("SELECT count(*) FROM policy_attempts WHERE device_id=$1 AND failures=1", perUser) != 1 {
+		t.Fatal("not retried at once")
+	}
+}

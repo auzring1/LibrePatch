@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -68,6 +69,46 @@ type Service struct {
 	Import func(ctx context.Context, org, user uuid.UUID, wingetID string) (uuid.UUID, error)
 
 	ringc ringCaches
+	fleet fleetCache
+}
+
+// fleetCache keeps the fleet's available updates for the length of one Tick: every policy of the tick reads the same list,
+// so a few hundred policies cost one query, not one each. Outside a tick (the console listing policies) nothing is kept.
+type fleetCache struct {
+	mu     sync.Mutex
+	active bool
+	byOrg  map[uuid.UUID][]deploy.FleetUpdate
+}
+
+func (s *Service) fleetUpdates(ctx context.Context, org uuid.UUID) ([]deploy.FleetUpdate, error) {
+	s.fleet.mu.Lock()
+	if ups, ok := s.fleet.byOrg[org]; ok && s.fleet.active {
+		s.fleet.mu.Unlock()
+		return ups, nil
+	}
+	s.fleet.mu.Unlock()
+	ups, err := s.Deploy.FleetUpdates(ctx, org)
+	if err != nil {
+		return nil, err
+	}
+	s.fleet.mu.Lock()
+	if s.fleet.active {
+		s.fleet.byOrg[org] = ups
+	}
+	s.fleet.mu.Unlock()
+	return ups, nil
+}
+
+func (s *Service) fleetBegin() {
+	s.fleet.mu.Lock()
+	s.fleet.active, s.fleet.byOrg = true, map[uuid.UUID][]deploy.FleetUpdate{}
+	s.fleet.mu.Unlock()
+}
+
+func (s *Service) fleetEnd() {
+	s.fleet.mu.Lock()
+	s.fleet.active, s.fleet.byOrg = false, nil
+	s.fleet.mu.Unlock()
 }
 
 func (s *Service) now() time.Time {
@@ -335,6 +376,8 @@ func (s *Service) List(ctx context.Context, org uuid.UUID) ([]Policy, error) {
 
 // Tick runs every enabled policy once. All-apps policies first add the apps that newly need handling.
 func (s *Service) Tick(ctx context.Context) {
+	s.fleetBegin()
+	defer s.fleetEnd()
 	s.syncAll(ctx)
 	ps, err := dbq.New(s.Pool).ListEnabledSoftwarePolicies(ctx)
 	if err != nil {
@@ -417,23 +460,83 @@ func (s *Service) act(ctx context.Context, p dbq.SoftwarePolicy, ro *rollout, no
 		if st.ring != nil {
 			name += " (" + st.ring.Name + ")"
 		}
-		plan, err := s.Deploy.Create(ctx, p.OrgID, deploy.Request{Name: name, Action: ro.action, PackageID: ro.pkg.ID,
-			Version: ro.ver.Version, Scope: "machine", DeviceIDs: eligible, ExpiresIn: deployLifetime, Window: windowOf(p, st), UnverifiedConfirmed: p.UnverifiedConfirmed,
-			Policy: p.ID.String(), UserID: *p.CreatedBy, Prompts: deploy.ParsePrompts(p.Prompts)})
-		if err != nil {
-			return err
+		// Copies installed for the whole PC and copies installed for one person are updated by separate deployments, as on the
+		// Software updates page (D143). A device with both gets both.
+		first := map[uuid.UUID]*uuid.UUID{}
+		failed := map[uuid.UUID]bool{}
+		for _, g := range scopeGroups(eligible, ro.scopes) {
+			plan, err := s.Deploy.Create(ctx, p.OrgID, deploy.Request{Name: name, Action: ro.action, PackageID: ro.pkg.ID,
+				Version: ro.ver.Version, Scope: g.scope, DeviceIDs: g.ids, ExpiresIn: deployLifetime, Window: windowOf(p, st), UnverifiedConfirmed: p.UnverifiedConfirmed,
+				Policy: p.ID.String(), UserID: *p.CreatedBy, Prompts: deploy.ParsePrompts(p.Prompts)})
+			if err != nil {
+				if g.scope == "machine" {
+					return err
+				}
+				// A copy installed for one person may have no installer the policy can use; that must not stop the PCs' own updates.
+				s.log().Warn("policy per-user deployment", "policy", p.Name, "devices", len(g.ids), "err", err)
+				for _, d := range g.ids {
+					if first[d] == nil {
+						failed[d] = true
+					}
+				}
+				continue
+			}
+			dep := plan.DeploymentID
+			out.dep = &dep
+			for _, d := range g.ids {
+				if first[d] == nil {
+					id := plan.DeploymentID
+					first[d] = &id
+					delete(failed, d)
+				}
+			}
+			s.log().Debug("policy deployment created", "policy", p.Name, "stage", st.name, "scope", g.scope, "devices", len(g.ids), "jobs", plan.Jobs, "skipped", plan.Skipped)
 		}
-		out.created += len(eligible)
-		dep := plan.DeploymentID
-		out.dep = &dep
-		s.log().Debug("policy deployment created", "policy", p.Name, "stage", st.name, "devices", len(eligible), "jobs", plan.Jobs, "skipped", plan.Skipped)
 		for _, d := range eligible {
-			if err := q.UpsertPolicyAttempt(ctx, dbq.UpsertPolicyAttemptParams{PolicyID: p.ID, DeviceID: d, Version: ro.ver.Version, DeploymentID: &plan.DeploymentID, Failures: fails[d], CreatedAt: now}); err != nil {
+			if first[d] == nil && !failed[d] {
+				continue
+			}
+			n := fails[d]
+			if first[d] == nil {
+				n++ // nothing could be queued for this device: that counts as a failed try
+			} else {
+				out.created++
+			}
+			if err := q.UpsertPolicyAttempt(ctx, dbq.UpsertPolicyAttemptParams{PolicyID: p.ID, DeviceID: d, Version: ro.ver.Version, DeploymentID: first[d], Failures: n, CreatedAt: now}); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// scopeGroup is the devices of one deployment of a policy run.
+type scopeGroup struct {
+	scope string
+	ids   []uuid.UUID
+}
+
+// scopeGroups splits devices by the kind of copy that is out of date: machine-wide first, then per-user. A device with no
+// recorded scope (a baseline install) is machine-wide.
+func scopeGroups(devs []uuid.UUID, scopes map[uuid.UUID]map[string]bool) []scopeGroup {
+	var machine, user []uuid.UUID
+	for _, d := range devs {
+		sc := scopes[d]
+		if len(sc) == 0 || sc["machine"] {
+			machine = append(machine, d)
+		}
+		if sc["user"] {
+			user = append(user, d)
+		}
+	}
+	var out []scopeGroup
+	if len(machine) > 0 {
+		out = append(out, scopeGroup{"machine", machine})
+	}
+	if len(user) > 0 {
+		out = append(out, scopeGroup{"user", user})
+	}
+	return out
 }
 
 // filterAttempts drops devices a policy already handled for this version: a job still running, one

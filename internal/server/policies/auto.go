@@ -308,7 +308,7 @@ func (s *Service) syncAll(ctx context.Context) {
 		}
 		ups, ok := updates[p.OrgID]
 		if !ok {
-			if ups, err = s.Deploy.FleetUpdates(ctx, p.OrgID); err != nil {
+			if ups, err = s.fleetUpdates(ctx, p.OrgID); err != nil {
 				s.log().Error("all-apps policy: reading updates", "policy", p.ID, "err", err)
 				s.setAutoStatus(ctx, p.ID, StateError, "The last check failed: "+err.Error())
 				continue
