@@ -1,15 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { Alert, Button, Checkbox, Group, Modal, MultiSelect, NumberInput, Select, Skeleton, Stack, TextInput } from "@mantine/core";
 import { api, errorMessage, type Group as Grp, type RestartPolicy, type UpdateRing, type UpdateRule, type UpdateSettings, type WuPolicy } from "../api/client";
 import { hhmm, parseHHMM } from "../api/format";
-import { useSession } from "../api/session";
 import { PRODUCT_NAME } from "../brand.generated";
-import { HoldsCard } from "../components/Holds";
 import { ringDefaults, ruleDefaults, ruleTemplates, weekOrder } from "../settings/updateDefaults";
 import { useEffective } from "../settings/useEffective";
-import { Card, DataTable, EmptyState, IconButton, Icons, Page, PageHeader, SeverityBadge, StatusPill, toast, useConfirm, type Column } from "../ui";
+import { Card, DataTable, EmptyState, IconButton, Icons, SeverityBadge, StatusPill, toast, useConfirm, type Column } from "../ui";
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const classifications = ["Security Updates", "Critical Updates", "Definition Updates", "Drivers", "Feature Packs", "Service Packs", "Update Rollups", "Updates", "Upgrades", "Tools"];
@@ -27,34 +24,7 @@ const restartLabel = (r?: RestartPolicy) => {
   return `by deadline (${r.deadline_hours ?? 24} h)`;
 };
 
-export function UpdatePolicyPage() {
-  const { can } = useSession();
-  const canEdit = can("updates:policy");
-  return (
-    <Page>
-      <PageHeader
-        title="Update policy"
-        description={
-          <>
-            Updates only move when you approve them (or a rule does). Rings decide <i>who</i> gets an approved update first, and a ring that fails its success threshold stops the rollout.
-            {!canEdit && " You can look at this page; only administrators can change it."}
-          </>
-        }
-        actions={
-          <Button component={Link} to="/updates" variant="default" leftSection={<Icons.ChevronLeft size={16} aria-hidden />}>
-            Back to Windows updates
-          </Button>
-        }
-      />
-      <SourceCard canEdit={canEdit} />
-      <RingsCard canEdit={canEdit} />
-      <RulesCard canEdit={canEdit} />
-      <HoldsCard canEdit={canEdit} />
-      <ConflictsCard />
-    </Page>
-  );
-}
-
+/** The Windows tab of Automations: where devices look for Windows updates, what is approved on its own, what is held, and what WSUS or Intune policy overrides. */
 const enabledPill = (enabled: boolean | undefined) =>
   enabled === false ? (
     <StatusPill kind="neutral" size="sm" icon={Icons.Pause}>
@@ -70,7 +40,7 @@ const enabledFilter = { type: "select" as const, options: [{ value: "enabled", l
 
 // ----- source settings -----
 
-function SourceCard({ canEdit }: { canEdit: boolean }) {
+export function SourceCard({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["updates", "settings"], queryFn: () => api<UpdateSettings>("GET", "/update-settings") });
   const [service, setService] = useState<string>("default");
@@ -117,7 +87,7 @@ function SourceCard({ canEdit }: { canEdit: boolean }) {
 
 // ----- rings -----
 
-function RingsCard({ canEdit }: { canEdit: boolean }) {
+export function RingsCard({ canEdit, context = "windows" }: { canEdit: boolean; context?: "windows" | "software" }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const rings = useQuery({ queryKey: ["updates", "rings"], queryFn: () => api<{ items: UpdateRing[] }>("GET", "/update-rings") });
@@ -142,13 +112,17 @@ function RingsCard({ canEdit }: { canEdit: boolean }) {
       { id: "soak", header: "Soak", align: "right", width: 90, value: (r) => r.soak_hours ?? 0, cell: (r) => <span className="lp-num">{r.soak_hours ?? 0} h</span> },
       { id: "threshold", header: "Success needed", align: "right", width: 140, value: (r) => r.success_threshold, cell: (r) => <span className="lp-num">{r.success_threshold}%</span> },
       { id: "window", header: "Window", width: 210, value: (r) => (r.window ? `${(r.window.days ?? []).map((d) => dayNames[d]).join(" ") || "daily"} ${hhmm(r.window.start_minute)} +${r.window.duration_minutes} min` : "any time") },
-      { id: "restart", header: "Restart", width: 190, value: (r) => restartLabel(r.restart) },
+      ...(context === "windows" ? [{ id: "restart", header: "Restart", width: 190, value: (r: UpdateRing) => restartLabel(r.restart) }] : []),
     ];
-  }, [groupList]);
+  }, [groupList, context]);
   return (
     <Card
       title="Rings"
-      description="Pilot first, then broader. A device belongs to the first ring (in order) that lists one of its groups. For Windows updates, devices in no ring are not updated automatically. Software policies that roll out in stages (Software policies) use the same rings, and give devices in no ring their update last."
+      description={
+        context === "software"
+          ? "Pilot first, then broader. A device belongs to the first ring (in order) that lists one of its groups. A software policy that rolls out in stages gives each ring the new version in turn, and gives devices in no ring their update last. Windows updates use the same rings."
+          : "Pilot first, then broader. A device belongs to the first ring (in order) that lists one of its groups. For Windows updates, devices in no ring are not updated automatically. Software policies that roll out in stages use the same rings, and give devices in no ring their update last."
+      }
       actions={
         canEdit && (
           <Button size="xs" onClick={() => setEdit("new")} leftSection={<Icons.Plus size={14} aria-hidden />}>
@@ -168,6 +142,7 @@ function RingsCard({ canEdit }: { canEdit: boolean }) {
         rowLabel={(r) => r.name}
         initialSort={{ id: "ordinal" }}
         searchPlaceholder="Search rings…"
+        simple
         exportName="update-rings"
         rowActions={(r) =>
           canEdit && r.id ? (
@@ -185,14 +160,24 @@ function RingsCard({ canEdit }: { canEdit: boolean }) {
             </>
           ) : null
         }
-        empty={<EmptyState icon={<Icons.Timeline size={26} />} title="No rings yet" description="Without rings, approved updates are never installed automatically. Add a pilot ring (a small group) and a broad ring (everyone else)." />}
+        empty={
+          <EmptyState
+            icon={<Icons.Timeline size={26} />}
+            title="No rings yet"
+            description={
+              context === "software"
+                ? "Without rings, a software policy updates every device in its groups at once. Add a pilot ring (a small group) and a broad ring (everyone else) to roll new versions out in stages."
+                : "Without rings, approved updates are never installed automatically. Add a pilot ring (a small group) and a broad ring (everyone else)."
+            }
+          />
+        }
       />
-      {edit && <RingModal ring={edit === "new" ? undefined : edit} nextOrdinal={Math.min(20, items.reduce((m, r) => Math.max(m, r.ordinal), 0) + 1)} groups={groups.data?.items ?? []} onClose={() => setEdit(null)} />}
+      {edit && <RingModal context={context} ring={edit === "new" ? undefined : edit} nextOrdinal={Math.min(20, items.reduce((m, r) => Math.max(m, r.ordinal), 0) + 1)} groups={groups.data?.items ?? []} onClose={() => setEdit(null)} />}
     </Card>
   );
 }
 
-function RingModal({ ring, nextOrdinal, groups, onClose }: { ring?: UpdateRing; nextOrdinal: number; groups: Grp[]; onClose: () => void }) {
+function RingModal({ ring, nextOrdinal, groups, context, onClose }: { ring?: UpdateRing; nextOrdinal: number; groups: Grp[]; context: "windows" | "software"; onClose: () => void }) {
   const qc = useQueryClient();
   // A new ring starts from the organization's update defaults (Settings > Update defaults); an existing one shows its own values.
   const eff = useEffective().data;
@@ -244,7 +229,7 @@ function RingModal({ ring, nextOrdinal, groups, onClose }: { ring?: UpdateRing; 
         </Group>
         <MultiSelect label="Groups" description="Devices in any of these groups belong to this ring" data={groups.map((g) => ({ value: g.id, label: g.name }))} value={groupIDs} onChange={setGroupIDs} searchable />
         <Group grow align="flex-start">
-          <NumberInput label="Delay (days)" description="After approval before this ring may install" min={0} max={365} value={delay} onChange={setDelay} />
+          <NumberInput label="Delay (days)" description={context === "software" ? "After the new version is available (and approved) before this ring may install" : "After approval before this ring may install"} min={0} max={365} value={delay} onChange={setDelay} />
           <NumberInput label="Soak (hours)" description="How long the next ring waits after this one started" min={0} max={2160} value={soak} onChange={setSoak} />
           <NumberInput label="Success needed (%)" description="Of reporting devices" min={1} max={100} value={threshold} onChange={setThreshold} />
         </Group>
@@ -256,24 +241,28 @@ function RingModal({ ring, nextOrdinal, groups, onClose }: { ring?: UpdateRing; 
             <NumberInput label="Minutes" min={1} max={1440} value={mins} onChange={setMins} w={110} />
           </Group>
         )}
-        <Select
-          label="Restart after installing"
-          data={[
-            { value: "never", label: "Never restart automatically" },
-            { value: "outside_active_hours", label: "Outside active hours, with a countdown users can see" },
-            { value: "deadline", label: "At the latest this long after the install, with a countdown" },
-          ]}
-          value={restart}
-          onChange={(v) => setRestart(v ?? "never")}
-          allowDeselect={false}
-        />
-        {restart !== "never" && (
-          <Group align="flex-end">
-            <TextInput label="Active hours from" value={activeStart} onChange={(e) => setActiveStart(e.currentTarget.value)} w={110} />
-            <TextInput label="to" value={activeEnd} onChange={(e) => setActiveEnd(e.currentTarget.value)} w={90} />
-            <NumberInput label="Countdown (minutes)" min={1} max={1440} value={notify} onChange={setNotify} w={150} />
-            {restart === "deadline" && <NumberInput label="Deadline (hours)" min={1} max={720} value={deadline} onChange={setDeadline} w={140} />}
-          </Group>
+        {context === "windows" && (
+          <>
+            <Select
+              label="Restart after installing"
+              data={[
+                { value: "never", label: "Never restart automatically" },
+                { value: "outside_active_hours", label: "Outside active hours, with a countdown users can see" },
+                { value: "deadline", label: "At the latest this long after the install, with a countdown" },
+              ]}
+              value={restart}
+              onChange={(v) => setRestart(v ?? "never")}
+              allowDeselect={false}
+            />
+            {restart !== "never" && (
+              <Group align="flex-end">
+                <TextInput label="Active hours from" value={activeStart} onChange={(e) => setActiveStart(e.currentTarget.value)} w={110} />
+                <TextInput label="to" value={activeEnd} onChange={(e) => setActiveEnd(e.currentTarget.value)} w={90} />
+                <NumberInput label="Countdown (minutes)" min={1} max={1440} value={notify} onChange={setNotify} w={150} />
+                {restart === "deadline" && <NumberInput label="Deadline (hours)" min={1} max={720} value={deadline} onChange={setDeadline} w={140} />}
+              </Group>
+            )}
+          </>
         )}
         <Checkbox label="Enabled" checked={enabled} onChange={(e) => setEnabled(e.currentTarget.checked)} />
         {error && <Alert color="red">{error}</Alert>}
@@ -292,7 +281,7 @@ function RingModal({ ring, nextOrdinal, groups, onClose }: { ring?: UpdateRing; 
 
 // ----- rules -----
 
-function RulesCard({ canEdit }: { canEdit: boolean }) {
+export function RulesCard({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const rules = useQuery({ queryKey: ["updates", "rules"], queryFn: () => api<{ items: UpdateRule[] }>("GET", "/update-rules") });
@@ -358,6 +347,7 @@ function RulesCard({ canEdit }: { canEdit: boolean }) {
         rowLabel={(r) => r.name}
         initialSort={{ id: "name" }}
         searchPlaceholder="Search rules…"
+        simple
         exportName="update-rules"
         rowActions={(r) =>
           canEdit && r.id ? (
@@ -449,7 +439,7 @@ function RuleModal({ rule, onClose }: { rule?: UpdateRule; onClose: () => void }
 
 type Conflict = { device_id: string; hostname: string; policy?: WuPolicy };
 
-function ConflictsCard() {
+export function ConflictsCard() {
   const q = useQuery({ queryKey: ["updates", "conflicts"], queryFn: () => api<{ items: Conflict[] }>("GET", "/update-conflicts") });
   const items = q.data?.items ?? [];
   const columns = useMemo<Column<Conflict>[]>(
@@ -473,6 +463,7 @@ function ConflictsCard() {
         rowLabel={(c) => c.hostname}
         initialSort={{ id: "device" }}
         searchPlaceholder="Search devices…"
+        simple
         exportName="update-policy-conflicts"
       />
     </Card>

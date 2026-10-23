@@ -5,7 +5,9 @@ import { Alert, Button, Modal, Stack, Table, Text } from "@mantine/core";
 import { api, errorMessage, type Vulnerability, type VulnerabilityDevice, type VulnerabilityOverview, type VulnerabilitySyncReport } from "../api/client";
 import { dateTime } from "../api/format";
 import { useSession } from "../api/session";
+import { ConfirmDeployUpdates, useDeployUpdates } from "../components/FleetDeploy";
 import { TrackedProductsCard } from "../components/TrackedProductsCard";
+import { fixLabel, fixPlan } from "../components/vulnFix";
 import { describeData, dueText, fixText, nvdLink, scoreText, SEVERITY_KIND, SEVERITY_LABEL } from "../components/vulnerabilities";
 import { Card, DataTable, EmptyState, Icons, Page, PageHeader, StatGrid, StatTile, StatusPill, TileSkeleton, toast, type Column } from "../ui";
 
@@ -120,7 +122,7 @@ export function VulnerabilitiesPage() {
         </Alert>
       )}
       {s && state.ok && (
-        <StatGrid label="Vulnerability summary">
+        <StatGrid compact label="Vulnerability summary">
           <StatTile label="Known exploited" value={s.exploited} kind={s.exploited > 0 ? "danger" : "success"} icon={<Icons.Flame size={16} aria-hidden />} hint="on the CISA list: fix these first" />
           <StatTile label="Critical" value={s.critical} kind={s.critical > 0 ? "danger" : "neutral"} icon={<Icons.Critical size={16} aria-hidden />} />
           <StatTile label="High" value={s.high} kind={s.high > 0 ? "warning" : "neutral"} icon={<Icons.Warning size={16} aria-hidden />} />
@@ -154,8 +156,13 @@ export function VulnerabilitiesPage() {
 }
 
 function VulnerabilityModal({ v, onClose }: { v: Vulnerability; onClose: () => void }) {
+  const { canOrg } = useSession();
   const q = useQuery({ queryKey: ["vulnerabilities", v.id, "devices"], queryFn: () => api<{ items: VulnerabilityDevice[] }>("GET", `/vulnerabilities/${encodeURIComponent(v.id)}/devices`) });
   const due = dueText(v.kev_due);
+  const deploy = useDeployUpdates();
+  const [confirming, setConfirming] = useState(false);
+  const plan = fixPlan(q.data?.items ?? []);
+  const names = plan.updates.map((u) => u.package_name).join(", ");
   return (
     <Modal opened onClose={onClose} title={v.id} size="xl">
       <Stack>
@@ -176,19 +183,45 @@ function VulnerabilityModal({ v, onClose }: { v: Vulnerability; onClose: () => v
         <Text size="sm">
           <strong>Fix:</strong> {fixText(v)}
         </Text>
+        {q.data && (
+          <Alert color={plan.devices > 0 ? "blue" : "gray"} icon={<Icons.Info size={18} aria-hidden />} title={plan.devices > 0 ? `An update can fix ${plan.devices} ${plan.devices === 1 ? "device" : "devices"}` : "No update to offer from here"} aria-label="How to fix">
+            <Stack gap="xs">
+              {plan.devices > 0 && (
+                <Text size="sm">
+                  Updating {names} to the newest version fixes it on {plan.devices} {plan.devices === 1 ? "device" : "devices"}. It is installed like any other update, so you can follow it under Deployments.
+                </Text>
+              )}
+              {plan.stillAffected > 0 && <Text size="sm">{plan.stillAffected} {plan.stillAffected === 1 ? "copy is" : "copies are"} still affected by the newest version available, so there is nothing to install yet.</Text>}
+              {plan.vendor > 0 && <Text size="sm">{plan.vendor} {plan.vendor === 1 ? "copy belongs to an app that updates" : "copies belong to apps that update"} itself; the vendor&apos;s updater has to do it.</Text>}
+              {plan.noUpdate > 0 && (
+                <Text size="sm">
+                  {plan.noUpdate} {plan.noUpdate === 1 ? "copy has" : "copies have"} no update to offer here (for Windows itself, see Windows updates; otherwise no newer version is known).
+                </Text>
+              )}
+              {plan.devices > 0 && canOrg("deployments:write") && (
+                <div>
+                  <Button onClick={() => setConfirming(true)} leftSection={<Icons.NavSoftwareUpdates size={16} aria-hidden />}>
+                    Update {plan.devices} {plan.devices === 1 ? "device" : "devices"}…
+                  </Button>
+                </div>
+              )}
+            </Stack>
+          </Alert>
+        )}
         <Table aria-label={`Devices affected by ${v.id}`} verticalSpacing={4} fz="sm">
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Device</Table.Th>
               <Table.Th>Affected</Table.Th>
               <Table.Th>Installed</Table.Th>
-              <Table.Th>Update to</Table.Th>
+              <Table.Th>Fixed in</Table.Th>
+              <Table.Th>What you can do</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {q.isLoading && (
               <Table.Tr>
-                <Table.Td colSpan={4}>Loading…</Table.Td>
+                <Table.Td colSpan={5}>Loading…</Table.Td>
               </Table.Tr>
             )}
             {(q.data?.items ?? []).map((h) => (
@@ -201,6 +234,11 @@ function VulnerabilityModal({ v, onClose }: { v: Vulnerability; onClose: () => v
                 <Table.Td>{h.product}</Table.Td>
                 <Table.Td className="lp-mono">{h.installed}</Table.Td>
                 <Table.Td className="lp-mono">{h.fixed_in || "—"}</Table.Td>
+                <Table.Td>
+                  <StatusPill kind={fixLabel(h).kind} size="sm">
+                    {fixLabel(h).text}
+                  </StatusPill>
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
@@ -211,6 +249,15 @@ function VulnerabilityModal({ v, onClose }: { v: Vulnerability; onClose: () => v
           </Alert>
         )}
       </Stack>
+      {confirming && (
+        <ConfirmDeployUpdates
+          items={plan.updates}
+          force={false}
+          busy={deploy.isPending}
+          onCancel={() => setConfirming(false)}
+          onConfirm={(c) => deploy.mutate({ items: plan.updates, confirm: c, force: false }, { onSettled: () => setConfirming(false) })}
+        />
+      )}
     </Modal>
   );
 }

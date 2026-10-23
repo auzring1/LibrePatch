@@ -19,6 +19,7 @@ interface TileProps {
 /** A number with a label: the at-a-glance unit of the dashboards. */
 export function StatTile({ label, value, kind, icon, hint, to, onClick, selected }: TileProps) {
   const cls = `lp-tile${kind ? ` lp-tile--${kind}` : ""}${selected ? " lp-tile--selected" : ""}`;
+  const tip = typeof hint === "string" ? hint : undefined; // a compact tile hides its hint; this keeps it one hover away
   const body = (
     <>
       <span className="lp-tile__label">
@@ -31,24 +32,32 @@ export function StatTile({ label, value, kind, icon, hint, to, onClick, selected
   );
   if (to) {
     return (
-      <Link to={to} className={cls}>
+      <Link to={to} className={cls} title={tip}>
         {body}
       </Link>
     );
   }
   if (onClick) {
     return (
-      <button type="button" className={cls} onClick={onClick} aria-pressed={selected ?? false}>
+      <button type="button" className={cls} onClick={onClick} aria-pressed={selected ?? false} title={tip}>
         {body}
       </button>
     );
   }
-  return <div className={cls}>{body}</div>;
+  return (
+    <div className={cls} title={tip}>
+      {body}
+    </div>
+  );
 }
 
-export function StatGrid({ children, label }: { children: ReactNode; label?: string }) {
+/**
+ * A row of tiles. `compact` is for pages whose main content is a table: each tile is one short line (label and number),
+ * so the table is not pushed below the fold. The hint stays for screen readers and as a tooltip.
+ */
+export function StatGrid({ children, label, compact }: { children: ReactNode; label?: string; compact?: boolean }) {
   return (
-    <div className="lp-tiles" role="group" aria-label={label}>
+    <div className={`lp-tiles${compact ? " lp-tiles--compact" : ""}`} role="group" aria-label={label}>
       {children}
     </div>
   );

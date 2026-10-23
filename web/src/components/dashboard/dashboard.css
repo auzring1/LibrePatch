@@ -19,6 +19,15 @@ a.lp-dash-row:hover { background: var(--lp-surface-sunken); }
 .lp-dash-empty { margin: 0; padding: var(--lp-space-4); color: var(--lp-text-muted); font-size: var(--lp-text-sm); }
 .lp-dash-foot { font-size: var(--lp-text-sm); color: var(--lp-accent-text); font-weight: var(--lp-weight-medium); }
 
+/* Getting started */
+.lp-dash-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--lp-space-3); }
+.lp-dash-steps > li { display: flex; align-items: center; gap: var(--lp-space-3); flex-wrap: wrap; }
+.lp-dash-steps__mark { display: inline-flex; color: var(--lp-text-muted); }
+.lp-dash-steps > li[data-done="true"] .lp-dash-steps__mark { color: var(--lp-success-solid); }
+.lp-dash-steps__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 18rem; }
+.lp-dash-steps__title { font-weight: var(--lp-weight-medium); }
+.lp-dash-steps > li[data-done="true"] .lp-dash-steps__title { color: var(--lp-text-muted); text-decoration: line-through; }
+
 /* Compliance chart */
 .lp-dash-chart { display: block; width: 100%; height: auto; }
 .lp-dash-chart__grid { stroke: var(--lp-border); stroke-width: 1; }

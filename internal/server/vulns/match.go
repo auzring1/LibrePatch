@@ -56,7 +56,8 @@ func hitsSQL() string {
 	// $6 narrows the hits to one device; NULL means every device.
 	dev := " AND ($6::uuid IS NULL OR d.id = $6::uuid)"
 	soft := `SELECT d.id AS device_id, cr.cve_id, st.display_name AS label, si.version AS installed,
-	        CASE WHEN cr.end_key IS NOT NULL AND NOT cr.end_incl THEN cr.end_text ELSE '' END AS fixed_in
+	        CASE WHEN cr.end_key IS NOT NULL AND NOT cr.end_incl THEN cr.end_text ELSE '' END AS fixed_in,
+	        st.normalized_name AS title
 	 FROM devices d
 	 JOIN software_installs si ON si.device_id = d.id
 	 JOIN software_titles st ON st.id = si.title_id
@@ -64,7 +65,8 @@ func hitsSQL() string {
 	 JOIN cve_ranges cr ON cr.vendor = m.vendor AND cr.product = m.product
 	 WHERE d.org_id = $1 AND d.status = 'active' AND si.version_key IS NOT NULL` + strings.ReplaceAll(rangeTest, "%[1]s", "si.version_key") + dev
 	os := `SELECT d.id, cr.cve_id, og.label, d.os_build, 
-	        CASE WHEN cr.end_key IS NOT NULL AND NOT cr.end_incl THEN cr.end_text ELSE '' END
+	        CASE WHEN cr.end_key IS NOT NULL AND NOT cr.end_incl THEN cr.end_text ELSE '' END,
+	        ''
 	 FROM devices d
 	 JOIN unnest($2::text[], $3::bool[], $4::text[], $5::text[]) AS og(os_build, server, product, label) ON og.os_build = d.os_build AND og.server = (lower(d.os_caption) LIKE '%server%')
 	 JOIN unnest($2::text[], $7::bytea[]) AS ok(os_build, key) ON ok.os_build = og.os_build
@@ -204,6 +206,8 @@ type DeviceHit struct {
 	Product   string    `json:"product"`
 	Installed string    `json:"installed"`
 	FixedIn   string    `json:"fixed_in"`
+	// Title is the inventory's name for the program (empty for a Windows build); it ties the hit to the program's updates.
+	Title string `json:"-"`
 }
 
 // DevicesFor lists the devices a CVE affects.
@@ -215,7 +219,7 @@ func (s *Store) DevicesFor(ctx context.Context, org uuid.UUID, cve string) ([]De
 	// hitsSQL() and the text added here are all fixed strings; every value goes in as a $n parameter.
 	// nosemgrep: no-sql-string-building
 	rows, err := s.Pool.Query(ctx, hitsSQL()+`
-		SELECT DISTINCT ON (h.device_id, h.label) h.device_id, d.hostname, h.label, h.installed, h.fixed_in
+		SELECT DISTINCT ON (h.device_id, h.label) h.device_id, d.hostname, h.label, h.installed, h.fixed_in, h.title
 		FROM hits h JOIN devices d ON d.id = h.device_id WHERE h.cve_id = $8
 		ORDER BY h.device_id, h.label, h.fixed_in DESC LIMIT 5000`, org, builds, servers, products, labels, nil, keys, cve)
 	if err != nil {
@@ -225,7 +229,7 @@ func (s *Store) DevicesFor(ctx context.Context, org uuid.UUID, cve string) ([]De
 	out := []DeviceHit{}
 	for rows.Next() {
 		var h DeviceHit
-		if err := rows.Scan(&h.DeviceID, &h.Hostname, &h.Product, &h.Installed, &h.FixedIn); err != nil {
+		if err := rows.Scan(&h.DeviceID, &h.Hostname, &h.Product, &h.Installed, &h.FixedIn, &h.Title); err != nil {
 			return nil, err
 		}
 		out = append(out, h)

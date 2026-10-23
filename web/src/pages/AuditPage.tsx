@@ -3,6 +3,7 @@ import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import { Alert, Button, Group, Select, TextInput } from "@mantine/core";
 import { api, errorMessage, type AuditEntry } from "../api/client";
 import { dateTime } from "../api/format";
+import { describeAudit } from "../components/auditText";
 import { Card, DataTable, EmptyState, Icons, Page, PageHeader, Status, StatusPill, type Column } from "../ui";
 
 interface Verify {
@@ -54,7 +55,8 @@ export function AuditPage() {
   const columns = useMemo<Column<AuditEntry>[]>(
     () => [
       { id: "time", header: "Time", value: (a) => new Date(a.ts).getTime(), sortable: true, width: 190, cell: (a) => <span style={{ whiteSpace: "nowrap" }}>{dateTime(a.ts)}</span>, csv: (a) => a.ts },
-      { id: "action", header: "Action", value: (a) => a.action, sortable: true, required: true, width: 200 },
+      { id: "what", header: "What happened", value: (a) => describeAudit(a), sortable: true, required: true, width: 340, wrap: true },
+      { id: "action", header: "Action code", value: (a) => a.action, sortable: true, width: 200 },
       { id: "outcome", header: "Outcome", value: (a) => a.outcome, sortable: true, width: 120, cell: (a) => <Outcome value={a.outcome} /> },
       {
         id: "actor",
@@ -67,6 +69,7 @@ export function AuditPage() {
       {
         id: "details",
         header: "Details",
+        defaultHidden: true,
         value: (a) => JSON.stringify(a.details),
         width: 380,
         wrap: true,

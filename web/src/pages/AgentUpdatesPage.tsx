@@ -106,7 +106,7 @@ export function AgentUpdatesPage() {
       )}
       {d && (
         <>
-          <StatGrid label="Rollout summary">
+          <StatGrid compact label="Rollout summary">
             <StatTile label="Updated" value={d.status.updated} kind="success" icon={<Icons.Success size={16} aria-hidden />} />
             <StatTile label="In progress" value={d.status.queued} kind={d.status.queued > 0 ? "info" : "neutral"} icon={<Icons.NavAgentUpdates size={16} aria-hidden />} />
             <StatTile label="Failed" value={d.status.failed} kind={d.status.failed > 0 ? "danger" : "neutral"} icon={<Icons.Danger size={16} aria-hidden />} />

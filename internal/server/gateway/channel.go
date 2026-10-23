@@ -104,7 +104,7 @@ func (g *Gateway) Connect(stream agentv1.AgentChannelService_ConnectServer) erro
 	if dev.UsersRev < 0 || hello.Revs["users"] != uint64(dev.UsersRev) { // #nosec G115 -- negative values handled first
 		ack.ResyncSections = append(ack.ResyncSections, agentv1.InventorySection_INVENTORY_SECTION_USERS)
 	}
-	if rev, ok := hello.Revs["wu"]; ok && (dev.WuRev < 0 || rev != uint64(dev.WuRev)) { // #nosec G115 -- negative values handled first
+	if rev, ok := hello.Revs["wu"]; ok && (g.updates == nil || g.updates.On(ctx, dev.OrgID)) && (dev.WuRev < 0 || rev != uint64(dev.WuRev)) { // #nosec G115 -- negative values handled first
 		ack.ResyncSections = append(ack.ResyncSections, agentv1.InventorySection_INVENTORY_SECTION_WU)
 	}
 	if err := c.send(&agentv1.ConnectResponse{Msg: &agentv1.ConnectResponse_HelloAck{HelloAck: ack}}); err != nil {

@@ -249,3 +249,152 @@ func TestOnlineWindowsUpdateCheck(t *testing.T) {
 		t.Fatalf("a pending restart must show: %v", b["reboot_required"])
 	}
 }
+
+// Settings > Update defaults > "Manage Windows updates" off: every Windows update feature answers 404 with a clear code,
+// the rings (which software policies use) and a restart keep working, and switching it on again restores everything.
+func TestWindowsUpdatesCanBeSwitchedOff(t *testing.T) {
+	h := newHarness(t)
+	h.setupAndLogin()
+	ta := h.startAgent(h.createToken("wu-off", 5, false), &fakeHW{host: "LAP-W2", serial: "SW2", uuid: "UW2"}, nil, withJobs)
+	waitFor(t, 15*time.Second, "agent connected", func() bool { return ta.state() == "connected" })
+	dev := h.devices()[0]["id"].(string)
+
+	windows := []string{
+		"GET /api/v1/updates", "GET /api/v1/update-settings", "GET /api/v1/update-rules", "GET /api/v1/update-holds",
+		"GET /api/v1/update-conflicts", "GET /api/v1/devices/" + dev + "/windows-updates", "GET /api/v1/reports/compliance",
+	}
+	status := func(call string) int {
+		var method, path string
+		for i := range call {
+			if call[i] == ' ' {
+				method, path = call[:i], call[i+1:]
+				break
+			}
+		}
+		st, _ := h.do(method, path, nil, nil)
+		return st
+	}
+	for _, c := range windows {
+		if st := status(c); st != 200 {
+			t.Fatalf("%s with Windows updates on: %d", c, st)
+		}
+	}
+
+	_, cur := h.do("GET", "/api/v1/settings/sections/updates", nil, nil)
+	if cur["values"].(map[string]any)["windows_updates_enabled"] != true {
+		t.Fatalf("Windows updates must be on by default: %v", cur["values"])
+	}
+	put := func(on bool) {
+		t.Helper()
+		_, d := h.do("GET", "/api/v1/settings/sections/updates", nil, nil)
+		st, b := h.do("PUT", "/api/v1/settings/sections/updates", map[string]any{"revision": d["revision"], "values": map[string]any{"windows_updates_enabled": on}}, nil)
+		if st != 200 {
+			t.Fatalf("save: %d %v", st, b)
+		}
+	}
+	put(false)
+	for _, c := range windows {
+		var method, path string
+		for i := range c {
+			if c[i] == ' ' {
+				method, path = c[:i], c[i+1:]
+				break
+			}
+		}
+		st, b := h.do(method, path, nil, nil)
+		if st != 404 || (b["error"] != nil && b["error"].(map[string]any)["code"] != "windows_updates_off") {
+			t.Fatalf("%s with Windows updates off: %d %v", c, st, b)
+		}
+	}
+	if st, _ := h.do("POST", "/api/v1/devices/"+dev+"/windows-updates/scan", nil, nil); st != 404 {
+		t.Fatalf("scan with Windows updates off: %d", st)
+	}
+	// The dashboard leaves out its Windows update numbers, and keeps the rest.
+	_, dash := h.do("GET", "/api/v1/dashboard", nil, nil)
+	for _, k := range []string{"compliance", "missing_critical_devices", "held_updates"} {
+		if dash[k] != nil {
+			t.Fatalf("the dashboard still shows %s with Windows updates off: %v", k, dash[k])
+		}
+	}
+	if len(dash["top_missing"].([]any)) != 0 || dash["devices"] == nil {
+		t.Fatalf("dashboard: %v", dash)
+	}
+	// What stays: the rings (software policies use them), software updates and restarts.
+	for _, c := range []string{"GET /api/v1/update-rings", "GET /api/v1/software/updates", "GET /api/v1/policies"} {
+		if st := status(c); st != 200 {
+			t.Fatalf("%s must keep working with Windows updates off: %d", c, st)
+		}
+	}
+	if st, b := h.do("POST", "/api/v1/devices/"+dev+"/reboot", map[string]any{"minutes": 5}, nil); st >= 400 && st != 409 {
+		t.Fatalf("restart with Windows updates off: %d %v", st, b)
+	}
+
+	put(true)
+	for _, c := range windows {
+		if st := status(c); st != 200 {
+			t.Fatalf("%s after switching back on: %d", c, st)
+		}
+	}
+}
+
+// An all-apps policy through the REST API: it is created without a package, listed with a status, previewed, and deleted;
+// a one-package policy cannot be turned into one (D132).
+func TestAllAppsPolicyOverTheAPI(t *testing.T) {
+	h := newHarness(t)
+	h.setupAndLogin()
+	st, g := h.do("POST", "/api/v1/groups", map[string]any{"kind": "static", "name": "Everyone"}, nil)
+	if st != 201 && st != 200 {
+		t.Fatalf("group: %d %v", st, g)
+	}
+	gid := g["id"].(string)
+
+	if st, b := h.do("POST", "/api/v1/policies", map[string]any{"name": "bad", "kind": "keep_all", "group_ids": []string{gid}, "filter": map[string]any{"verified_only": true, "include_unlisted": true}}, nil); st != 422 {
+		t.Fatalf("unlisted apps need verified-only off: %d %v", st, b)
+	}
+	st, b := h.do("POST", "/api/v1/policies", map[string]any{"name": "Keep everything current", "kind": "keep_all", "group_ids": []string{gid}, "enabled": true, "delay_days": 2}, nil)
+	if st != 201 {
+		t.Fatalf("create: %d %v", st, b)
+	}
+	id := b["id"].(string)
+
+	_, list := h.do("GET", "/api/v1/policies", nil, nil)
+	if len(items(list)) != 1 {
+		t.Fatalf("list: %v", list)
+	}
+	p := items(list)[0]
+	if p["kind"] != "keep_all" || p["auto"] != true || p["package_id"] != nil || p["state"] == "" || p["state_text"] == "" {
+		t.Fatalf("the all-apps policy in the list: %v", p)
+	}
+	if f, _ := p["filter"].(map[string]any); f == nil || f["verified_only"] != true {
+		t.Fatalf("the default filter is verified apps only: %v", p["filter"])
+	}
+
+	st, pv := h.do("POST", "/api/v1/policies/preview", map[string]any{"group_ids": []string{gid}, "filter": map[string]any{"verified_only": true}}, nil)
+	if st != 200 || pv["handled"] != float64(0) || pv["items"] == nil {
+		t.Fatalf("preview: %d %v", st, pv)
+	}
+	if st, _ := h.do("POST", "/api/v1/policies/preview", map[string]any{"group_ids": []string{}}, nil); st != 422 {
+		t.Fatalf("preview without groups: %d", st)
+	}
+	st, apps := h.do("GET", "/api/v1/policies/"+id+"/apps", nil, nil)
+	if st != 200 || len(items(apps)) != 0 {
+		t.Fatalf("apps: %d %v", st, apps)
+	}
+	if st, _ := h.do("GET", "/api/v1/policies/11111111-1111-1111-1111-111111111111/apps", nil, nil); st != 404 {
+		t.Fatalf("apps of an unknown policy: %d", st)
+	}
+
+	if st, b := h.do("PUT", "/api/v1/policies/"+id, map[string]any{"name": "Keep everything current", "kind": "keep_all", "group_ids": []string{gid}, "enabled": false}, nil); st != 204 {
+		t.Fatalf("update: %d %v", st, b)
+	}
+	_, list = h.do("GET", "/api/v1/policies", nil, nil)
+	if p = items(list)[0]; p["state"] != "off" {
+		t.Fatalf("a switched-off policy says so: %v", p)
+	}
+	if st, _ := h.do("DELETE", "/api/v1/policies/"+id, nil, nil); st != 204 {
+		t.Fatalf("delete: %d", st)
+	}
+	if st, _ := h.do("DELETE", "/api/v1/policies/"+id, nil, nil); st != 404 {
+		t.Fatalf("second delete: %d", st)
+	}
+}

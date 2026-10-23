@@ -146,6 +146,17 @@ func (q *Queries) CompleteDeploymentIfDone(ctx context.Context, id uuid.UUID) er
 	return err
 }
 
+const countDeployments = `-- name: CountDeployments :one
+SELECT count(*) FROM deployments WHERE org_id = $1
+`
+
+func (q *Queries) CountDeployments(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countDeployments, orgID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deploymentJobCounts = `-- name: DeploymentJobCounts :many
 SELECT status, count(*)::int AS n FROM jobs WHERE deployment_id = $1 GROUP BY status
 `

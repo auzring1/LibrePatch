@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALL_NAV_ITEMS, flatNav, locate, trail, visibleNav } from "./nav";
+import { ALL_NAV_ITEMS, flatNav, locate, sidebarNav, trail, visibleNav } from "./nav";
 
 const everything = { can: () => true, canOrg: () => true };
 const nothing = { can: () => false, canOrg: () => false };
@@ -28,7 +28,7 @@ describe("navigation tree", () => {
   it("filters by permission and drops empty groups", () => {
     const v = visibleNav(only("devices:read", "updates:read"));
     const ids = v.flatMap((g) => g.items.map((i) => i.id));
-    expect(ids).toEqual(["dashboard", "devices", "windows-updates", "update-rings", "held-updates", "inventory"]);
+    expect(ids).toEqual(["dashboard", "devices", "windows-updates", "automations", "held-updates", "inventory"]);
     expect(v.map((g) => g.id)).not.toContain("administration");
   });
 
@@ -38,6 +38,25 @@ describe("navigation tree", () => {
     expect(ids.slice(0, 2)).toEqual(["software-updates", "windows-updates"]);
     expect(visibleNav(only("updates:read")).flatMap((g) => g.items.map((i) => i.id))).not.toContain("software-updates");
     expect(locate("/software-updates")?.item.id).toBe("software-updates");
+  });
+
+  it("keeps Automations for anyone who can read policies or updates, and moved Software policies into it", () => {
+    const ids = (a: Parameters<typeof visibleNav>[0]) => visibleNav(a).flatMap((g) => g.items.map((i) => i.id));
+    expect(ids(only("policies:read"))).toContain("automations");
+    expect(ids(only("updates:read"))).toContain("automations");
+    expect(ids(only("devices:read"))).not.toContain("automations");
+    expect(ids(everything)).not.toContain("software-policies");
+    expect(locate("/automations")?.item.id).toBe("automations");
+  });
+
+  it("hides the Windows pages, and only those, when Windows updates are switched off", () => {
+    const off = { ...everything, features: { windowsUpdates: false } };
+    const ids = visibleNav(off).flatMap((g) => g.items.map((i) => i.id));
+    expect(ids).not.toContain("windows-updates");
+    expect(ids).not.toContain("held-updates");
+    expect(ids).toEqual(expect.arrayContaining(["software-updates", "automations", "agent-updates", "deployments", "vulnerabilities"]));
+    const on = { ...everything, features: { windowsUpdates: true } };
+    expect(visibleNav(on).flatMap((g) => g.items.map((i) => i.id))).toEqual(expect.arrayContaining(["windows-updates", "held-updates"]));
   });
 
   it("keeps the Settings sections for the Settings page and the command palette (the sidebar shows one Settings link)", () => {
@@ -67,5 +86,20 @@ describe("locate and trail", () => {
     expect(trail("/settings/branding").map((c) => c.label)).toEqual(["Administration", "Settings", "Branding"]);
     expect(trail("/").map((c) => c.label)).toEqual(["Dashboard"]);
     expect(trail("/account")).toEqual([]);
+  });
+});
+
+describe("the sidebar", () => {
+  const ids = (a: Parameters<typeof visibleNav>[0]) => sidebarNav(a).flatMap((g) => g.items.map((i) => i.id));
+  it("keeps Held updates out of the sidebar but in the palette's list", () => {
+    expect(ids(everything)).not.toContain("held-updates");
+    expect(visibleNav(everything).flatMap((g) => g.items.map((i) => i.id))).toContain("held-updates");
+    expect(locate("/updates/held")?.item.id).toBe("held-updates");
+  });
+  it("lists only what you patch with in the Updates group, and Agent updates under Administration", () => {
+    const groups = sidebarNav(everything);
+    expect(groups.find((g) => g.id === "updates")!.items.map((i) => i.id)).toEqual(["software-updates", "windows-updates", "automations"]);
+    expect(groups.find((g) => g.id === "administration")!.items.map((i) => i.id)).toContain("agent-updates");
+    expect(locate("/agent-updates")?.group.id).toBe("administration");
   });
 });

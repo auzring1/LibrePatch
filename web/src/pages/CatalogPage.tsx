@@ -152,7 +152,7 @@ export function CatalogPage() {
       {list.isLoading ? (
         <TileSkeleton count={4} />
       ) : items.length > 0 ? (
-        <StatGrid label="Catalog summary">
+        <StatGrid compact label="Catalog summary">
           <StatTile label="Packages" value={items.length} kind="accent" icon={<Icons.NavCatalog size={16} aria-hidden />} hint={q ? `matching “${q}”` : undefined} />
           <StatTile label="Unverified" value={unverified} kind={unverified > 0 ? "warning" : "success"} icon={<Icons.Warning size={16} aria-hidden />} hint="winget packages that need a confirmation to deploy" />
           <StatTile label="Self-updating" value={selfUpdating} kind="info" icon={<Icons.NavAgentUpdates size={16} aria-hidden />} hint="the vendor's updater takes over" />

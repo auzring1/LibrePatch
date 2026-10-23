@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -62,6 +63,9 @@ type Service struct {
 	OnHold func(ctx context.Context, org uuid.UUID, title, ring, reason string)
 	// OnApprovalNeeded is called when a version waits for an administrator's decision (a notification; it de-duplicates).
 	OnApprovalNeeded func(ctx context.Context, org uuid.UUID, pkg, version string)
+	// Import adds an app from the public winget index to the catalog and returns its package id (an all-apps policy
+	// that includes apps not in the catalog yet, D132). nil = no import.
+	Import func(ctx context.Context, org, user uuid.UUID, wingetID string) (uuid.UUID, error)
 
 	ringc ringCaches
 }
@@ -85,7 +89,7 @@ type Policy struct {
 	ID                  uuid.UUID      `json:"id"`
 	Name                string         `json:"name"`
 	Kind                string         `json:"kind"`
-	PackageID           uuid.UUID      `json:"package_id"`
+	PackageID           *uuid.UUID     `json:"package_id"` // null for an all-apps policy
 	PackageName         string         `json:"package_name"`
 	PackageIdentifier   string         `json:"package_identifier"`
 	GroupIDs            []uuid.UUID    `json:"group_ids"`
@@ -102,6 +106,36 @@ type Policy struct {
 	Devices   int64           `json:"devices_attempted"`
 	// Rollout is the state of the newest version for a policy that uses rings or approval; null otherwise.
 	Rollout *RolloutView `json:"rollout"`
+	// What the last check found (D132). State is one of the State* codes; StateText says it in words.
+	State            string     `json:"state"`
+	StateText        string     `json:"state_text"`
+	LastCheckAt      *time.Time `json:"last_check_at"`
+	NextCheckAt      *time.Time `json:"next_check_at"`
+	LastRunAt        *time.Time `json:"last_run_at"`
+	LastDeploymentID *uuid.UUID `json:"last_deployment_id"`
+	// Auto is true for an all-apps policy: it has no package of its own, Apps counts the apps it handles now and
+	// AppStates counts them by state. Filter says which apps it handles.
+	Auto      bool             `json:"auto"`
+	Filter    *AutoFilter      `json:"filter,omitempty"`
+	Apps      int64            `json:"apps"`
+	AppStates map[string]int64 `json:"app_states,omitempty"`
+}
+
+// statusFields fills in the status of a policy from what its last check recorded.
+func (p *Policy) statusFields(checked *time.Time, state, detail string, enabled bool) {
+	p.LastCheckAt = checked
+	if checked != nil {
+		n := checked.Add(CheckEvery)
+		p.NextCheckAt = &n
+	}
+	switch {
+	case !enabled:
+		p.State, p.StateText, p.NextCheckAt = StateOff, "The policy is switched off.", nil
+	case state == "":
+		p.State, p.StateText = StateNew, "Not checked yet. The server checks every policy every five minutes."
+	default:
+		p.State, p.StateText = state, detail
+	}
 }
 
 // Input is what an administrator submits.
@@ -118,6 +152,8 @@ type Input struct {
 	UseRings            bool            `json:"use_rings"`
 	RequireApproval     bool            `json:"require_approval"`
 	Prompts             *deploy.Prompts `json:"prompts"`
+	// Filter is for an all-apps policy (kind keep_all), which has no package of its own.
+	Filter *AutoFilter `json:"filter,omitempty"`
 }
 
 func (s *Service) validate(ctx context.Context, org uuid.UUID, in *Input) ([]byte, error) {
@@ -125,22 +161,29 @@ func (s *Service) validate(ctx context.Context, org uuid.UUID, in *Input) ([]byt
 	if n := utf8.RuneCountInString(in.Name); n < 1 || n > 200 {
 		return nil, invalid("the name must be 1 to 200 characters")
 	}
-	if in.Kind != "keep_updated" && in.Kind != "baseline" {
-		return nil, invalid("kind must be keep_updated or baseline")
+	if in.Kind != "keep_updated" && in.Kind != "baseline" && in.Kind != KindAll {
+		return nil, invalid("kind must be keep_updated, keep_all or baseline")
 	}
 	if len(in.GroupIDs) == 0 || len(in.GroupIDs) > 50 {
 		return nil, invalid("choose 1 to 50 groups")
 	}
-	if in.UseRings && in.Kind != "keep_updated" {
+	if in.UseRings && in.Kind == "baseline" {
 		return nil, invalid("rings apply to keep-updated policies; a baseline installs on new devices only")
 	}
 	if in.DelayDays < 0 || in.DelayDays > 365 {
 		return nil, invalid("the delay must be 0 to 365 days")
 	}
 	q := dbq.New(s.Pool)
-	pkg, err := q.GetCatalogPackage(ctx, dbq.GetCatalogPackageParams{ID: in.PackageID, OrgID: org})
-	if err != nil {
-		return nil, invalid("unknown package")
+	var pkg dbq.CatalogPackage
+	if in.Kind == KindAll {
+		if err := validateAuto(in); err != nil {
+			return nil, err
+		}
+	} else {
+		var err error
+		if pkg, err = q.GetCatalogPackage(ctx, dbq.GetCatalogPackageParams{ID: in.PackageID, OrgID: org}); err != nil {
+			return nil, invalid("unknown package")
+		}
 	}
 	if pkg.Source == "winget" && !pkg.Verified && !in.UnverifiedConfirmed {
 		return nil, invalid("this winget package has not been verified on test machines; confirm that you accept that before automating it")
@@ -150,8 +193,10 @@ func (s *Service) validate(ctx context.Context, org uuid.UUID, in *Input) ([]byt
 		return nil, invalid("%v", strings.TrimPrefix(err.Error(), deploy.ErrInvalid.Error()+": "))
 	}
 	in.Prompts = pr
-	if err := s.Deploy.CheckPrograms(ctx, org, pkg, pr); err != nil {
-		return nil, invalid("%v", strings.TrimPrefix(err.Error(), deploy.ErrInvalid.Error()+": "))
+	if in.Kind != KindAll { // an all-apps policy adapts the choice to each app it adds
+		if err := s.Deploy.CheckPrograms(ctx, org, pkg, pr); err != nil {
+			return nil, invalid("%v", strings.TrimPrefix(err.Error(), deploy.ErrInvalid.Error()+": "))
+		}
 	}
 	for _, g := range in.GroupIDs {
 		if _, err := q.GetGroup(ctx, dbq.GetGroupParams{ID: g, OrgID: org}); err != nil {
@@ -179,6 +224,9 @@ func (s *Service) Create(ctx context.Context, a Actor, in Input) (uuid.UUID, err
 	if err != nil {
 		return uuid.Nil, err
 	}
+	if in.Kind == KindAll {
+		return s.createAuto(ctx, a, in, win)
+	}
 	id := uuid.New()
 	err = store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
 		if err := q.InsertSoftwarePolicy(ctx, dbq.InsertSoftwarePolicyParams{ID: id, OrgID: a.Org, Name: in.Name, Kind: in.Kind, PackageID: in.PackageID, GroupIds: in.GroupIDs,
@@ -199,6 +247,9 @@ func (s *Service) Update(ctx context.Context, a Actor, id uuid.UUID, in Input) e
 	if err != nil {
 		return err
 	}
+	if in.Kind == KindAll {
+		return s.updateAuto(ctx, a, id, in, win)
+	}
 	err = store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
 		n, err := q.UpdateSoftwarePolicy(ctx, dbq.UpdateSoftwarePolicyParams{ID: id, OrgID: a.Org, Name: in.Name, Kind: in.Kind, PackageID: in.PackageID, GroupIds: in.GroupIDs,
 			DelayDays: in.DelayDays, OnlyNewDevices: in.OnlyNewDevices, UnverifiedConfirmed: in.UnverifiedConfirmed, MaintWindow: win, Enabled: in.Enabled, UseRings: in.UseRings, RequireApproval: in.RequireApproval, Prompts: deploy.MarshalPrompts(in.Prompts)})
@@ -218,7 +269,7 @@ func (s *Service) Update(ctx context.Context, a Actor, id uuid.UUID, in Input) e
 
 // Delete removes a policy (deployments it already created keep running).
 func (s *Service) Delete(ctx context.Context, a Actor, id uuid.UUID) error {
-	return store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
+	err := store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
 		n, err := q.DeleteSoftwarePolicy(ctx, dbq.DeleteSoftwarePolicyParams{ID: id, OrgID: a.Org})
 		if err != nil {
 			return err
@@ -228,6 +279,14 @@ func (s *Service) Delete(ctx context.Context, a Actor, id uuid.UUID) error {
 		}
 		return s.audit(ctx, tx, a, "policy.delete", id, nil)
 	})
+	if errors.Is(err, ErrNotFound) {
+		if found, aerr := s.deleteAuto(ctx, a, id); aerr != nil {
+			return aerr
+		} else if found {
+			return nil
+		}
+	}
+	return err
 }
 
 func (s *Service) audit(ctx context.Context, tx pgx.Tx, a Actor, action string, id uuid.UUID, details map[string]any) error {
@@ -245,8 +304,10 @@ func (s *Service) List(ctx context.Context, org uuid.UUID) ([]Policy, error) {
 	}
 	out := make([]Policy, 0, len(rows))
 	for _, r := range rows {
-		p := Policy{ID: r.ID, Name: r.Name, Kind: r.Kind, PackageID: r.PackageID, PackageName: r.PackageName, PackageIdentifier: r.PackageIdentifier, GroupIDs: r.GroupIds,
-			DelayDays: r.DelayDays, OnlyNewDevices: r.OnlyNewDevices, UnverifiedConfirmed: r.UnverifiedConfirmed, Enabled: r.Enabled, UseRings: r.UseRings, RequireApproval: r.RequireApproval, Prompts: deploy.ParsePrompts(r.Prompts), CreatedAt: r.CreatedAt}
+		p := Policy{ID: r.ID, Name: r.Name, Kind: r.Kind, PackageID: &r.PackageID, PackageName: r.PackageName, PackageIdentifier: r.PackageIdentifier, GroupIDs: r.GroupIds,
+			DelayDays: r.DelayDays, OnlyNewDevices: r.OnlyNewDevices, UnverifiedConfirmed: r.UnverifiedConfirmed, Enabled: r.Enabled, UseRings: r.UseRings, RequireApproval: r.RequireApproval, Prompts: deploy.ParsePrompts(r.Prompts), CreatedAt: r.CreatedAt,
+			LastRunAt: r.LastRunAt, LastDeploymentID: r.LastDeploymentID}
+		p.statusFields(r.LastCheckAt, r.LastState, r.LastDetail, r.Enabled)
 		if len(r.MaintWindow) > 0 {
 			var w deploy.Window
 			if json.Unmarshal(r.MaintWindow, &w) == nil {
@@ -263,11 +324,18 @@ func (s *Service) List(ctx context.Context, org uuid.UUID) ([]Policy, error) {
 		}
 		out = append(out, p)
 	}
+	autos, err := s.listAuto(ctx, org)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, autos...)
+	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
 	return out, nil
 }
 
-// Tick runs every enabled policy once.
+// Tick runs every enabled policy once. All-apps policies first add the apps that newly need handling.
 func (s *Service) Tick(ctx context.Context) {
+	s.syncAll(ctx)
 	ps, err := dbq.New(s.Pool).ListEnabledSoftwarePolicies(ctx)
 	if err != nil {
 		s.log().Error("software policies", "err", err)
@@ -283,11 +351,34 @@ func (s *Service) Tick(ctx context.Context) {
 	}
 }
 
+// runOutcome is what a check did, for the status the console shows.
+type runOutcome struct {
+	created int
+	dep     *uuid.UUID
+	wait    attemptStat
+}
+
+// run checks one policy: it works out what is needed, creates the deployments the rings and the approval allow, and
+// records what it found (D132) so the console can say so.
 func (s *Service) run(ctx context.Context, p dbq.SoftwarePolicy) error {
 	now := s.now()
 	ro, err := s.plan(ctx, p, now)
-	if err != nil || ro == nil || ro.ver == nil {
+	if err != nil {
 		return err
+	}
+	var out runOutcome
+	err = s.act(ctx, p, ro, now, &out)
+	state, detail := statusOf(ro, out.created, out.wait)
+	if err != nil {
+		state, detail = StateError, "The last check failed: "+err.Error()
+	}
+	s.setStatus(ctx, p.ID, now, state, detail, out.created, out.dep)
+	return err
+}
+
+func (s *Service) act(ctx context.Context, p dbq.SoftwarePolicy, ro *rollout, now time.Time, out *runOutcome) error {
+	if ro == nil || ro.ver == nil {
+		return nil
 	}
 	// A ring that missed its threshold holds the version back from the later rings.
 	for _, st := range ro.stages {
@@ -310,10 +401,11 @@ func (s *Service) run(ctx context.Context, p dbq.SoftwarePolicy) error {
 		if !st.eligible || len(st.cands) == 0 || budget <= 0 {
 			continue
 		}
-		eligible, fails, err := s.filterAttempts(ctx, p, ro.ver.Version, st.cands, now)
+		eligible, fails, wait, err := s.filterAttempts(ctx, p, ro.ver.Version, st.cands, now)
 		if err != nil {
 			return err
 		}
+		out.wait.add(wait)
 		if len(eligible) > budget {
 			eligible = eligible[:budget]
 		}
@@ -331,6 +423,9 @@ func (s *Service) run(ctx context.Context, p dbq.SoftwarePolicy) error {
 		if err != nil {
 			return err
 		}
+		out.created += len(eligible)
+		dep := plan.DeploymentID
+		out.dep = &dep
 		s.log().Debug("policy deployment created", "policy", p.Name, "stage", st.name, "devices", len(eligible), "jobs", plan.Jobs, "skipped", plan.Skipped)
 		for _, d := range eligible {
 			if err := q.UpsertPolicyAttempt(ctx, dbq.UpsertPolicyAttemptParams{PolicyID: p.ID, DeviceID: d, Version: ro.ver.Version, DeploymentID: &plan.DeploymentID, Failures: fails[d], CreatedAt: now}); err != nil {
@@ -344,11 +439,12 @@ func (s *Service) run(ctx context.Context, p dbq.SoftwarePolicy) error {
 // filterAttempts drops devices a policy already handled for this version: a job still running, one
 // that just finished (the inventory needs time), and devices that failed three times; failed ones
 // are retried no sooner than a day after the last try.
-func (s *Service) filterAttempts(ctx context.Context, p dbq.SoftwarePolicy, version string, cands []uuid.UUID, now time.Time) ([]uuid.UUID, map[uuid.UUID]int32, error) {
+func (s *Service) filterAttempts(ctx context.Context, p dbq.SoftwarePolicy, version string, cands []uuid.UUID, now time.Time) ([]uuid.UUID, map[uuid.UUID]int32, attemptStat, error) {
+	var wait attemptStat
 	q := dbq.New(s.Pool)
 	atts, err := q.ListPolicyAttempts(ctx, dbq.ListPolicyAttemptsParams{PolicyID: p.ID, Column2: cands})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, wait, err
 	}
 	by := map[uuid.UUID]dbq.PolicyAttempt{}
 	var deps []uuid.UUID
@@ -363,7 +459,7 @@ func (s *Service) filterAttempts(ctx context.Context, p dbq.SoftwarePolicy, vers
 	if len(deps) > 0 {
 		states, err := q.PolicyJobStates(ctx, deps)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, wait, err
 		}
 		for _, st := range states {
 			if st.DeploymentID != nil {
@@ -380,13 +476,19 @@ func (s *Service) filterAttempts(ctx context.Context, p dbq.SoftwarePolicy, vers
 			continue
 		}
 		if a.DeploymentID != nil && open[key{*a.DeploymentID, c}] {
+			wait.open++
 			continue
 		}
-		if now.Sub(a.CreatedAt) < inventoryLag || a.Failures >= maxFailures || now.Sub(a.CreatedAt) < retryAfter {
+		if a.Failures >= maxFailures {
+			wait.gaveUp++
+			continue
+		}
+		if now.Sub(a.CreatedAt) < inventoryLag || now.Sub(a.CreatedAt) < retryAfter {
+			wait.waiting++
 			continue
 		}
 		fails[c] = a.Failures + 1
 		out = append(out, c)
 	}
-	return out, fails, nil
+	return out, fails, wait, nil
 }

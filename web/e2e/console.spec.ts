@@ -137,8 +137,16 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   // The landing page is the dashboard; the device list is one click away.
   await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
   await expect(page.getByLabel("Key numbers")).toBeVisible();
+  // Apps that are out of date have a tile and a widget of their own, next to the Windows numbers.
+  await expect(page.getByLabel("Key numbers").getByText("Apps out of date")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Apps out of date" })).toBeVisible();
+  // A new installation starts with a short checklist; it can be put away.
+  await expect(page.getByRole("heading", { name: "Getting started" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Getting started steps" }).getByText("Add your first computer")).toBeVisible();
   await a11y(page, "dashboard");
   await shot(page, "01b-dashboard");
+  await page.getByRole("button", { name: "Hide this" }).click();
+  await expect(page.getByRole("heading", { name: "Getting started" })).toHaveCount(0);
   await mainNav(page).getByRole("link", { name: "Devices", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Devices", exact: true })).toBeVisible();
   await expect(page.getByText("No devices yet")).toBeVisible();
@@ -186,7 +194,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await shot(page, "05-device-hardware");
 
       // Software inventory: the dev agent on Linux reports dpkg packages.
-      await page.getByRole("tab", { name: /^Software(?! updates)/ }).click();
+      await page.getByRole("tab", { name: /^Installed software/ }).click();
       await expect(page.getByTestId("software-row").first()).toBeVisible({ timeout: 30_000 });
       await shot(page, "05-device-software");
       await page.getByLabel("Search Installed software").fill("zzz-no-such-package");
@@ -261,6 +269,13 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await shot(page, "09-custom-upload");
       await page.getByRole("button", { name: "Upload and add" }).click();
       await expect(page.getByRole("heading", { name: "Acme Tool", exact: true })).toBeVisible();
+      // The overrides read in plain words: a version choice instead of pin syntax, switches and detection rules kept behind "Advanced".
+      await expect(page.getByText("Which version to install")).toBeVisible();
+      await page.getByRole("combobox", { name: "Which version to install" }).click();
+      await page.getByRole("option", { name: "Stay on one version" }).click();
+      await expect(page.getByRole("combobox", { name: "Version to stay on" })).toBeVisible();
+      await page.getByRole("button", { name: /Advanced: install switches/ }).click();
+      await expect(page.getByLabel("Silent arguments")).toBeVisible();
       await shot(page, "10-package");
       await page.getByRole("link", { name: "Deploy", exact: true }).click();
       await page.getByRole("combobox", { name: "Devices" }).click();
@@ -283,7 +298,8 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       // Linux test agent cannot see people's programs, so it installs as before; the choice must still be kept and shown.
       await mainNav(page).getByRole("link", { name: "Catalog", exact: true }).click();
       await page.getByRole("link", { name: "Acme Tool" }).first().click();
-      await page.getByLabel("Programs this update replaces").fill("acme.exe");
+      await page.getByRole("combobox", { name: "Programs this update replaces" }).fill("acme.exe");
+      await page.keyboard.press("Enter");
       await page.getByRole("button", { name: "Save overrides" }).click();
       await expect(page.getByText("Overrides saved.")).toBeVisible();
       await page.getByRole("link", { name: "Deploy", exact: true }).click();
@@ -349,7 +365,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
           events: [{ time: Math.floor(Date.now() / 1000) - 600, level: 2, provider: "Acme-Disk", id: 7, message: "The device has a bad block." }],
         }),
       );
-      await page.getByRole("tab", { name: "Look at" }).click();
+      await page.getByRole("tab", { name: "Inspect" }).click();
       await page.getByRole("button", { name: "Show", exact: true }).click();
       await expect(page.getByRole("table", { name: "Running programs" }).getByRole("cell", { name: "acme-dev.exe", exact: true })).toBeVisible({ timeout: 30_000 });
       await page.getByText("Services", { exact: true }).click();
@@ -394,8 +410,10 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await shot(page, "16-updates-catalog");
 
       // Policy: a ring over the saved group, a rule, and the update source.
-      await mainNav(page).getByRole("link", { name: "Update rings and rules", exact: true }).click();
-      await expect(page.getByRole("heading", { name: "Update policy", exact: true })).toBeVisible();
+      await mainNav(page).getByRole("link", { name: "Automations", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Automations", exact: true })).toBeVisible();
+      await page.getByRole("tab", { name: "Windows", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Rings", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Add ring" }).click();
       await page.getByRole("dialog").getByLabel("Name").fill("Pilot");
       await page.getByRole("dialog").getByLabel("Groups").click();
@@ -446,7 +464,11 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await cveRow.click();
       const cd = page.getByRole("dialog");
       await expect(cd.getByText("GNU Bash e2e vulnerability")).toBeVisible();
-      await expect(cd.getByText(/fix due 2026-10-22|fix was due 2026-10-22/)).toBeVisible();
+      await expect(cd.getByText(/fix due 2026-10-22|fix is due today|fix was due 2026-10-22/)).toBeVisible();
+      // The window says what can be done about it: here the program is in no catalog, so there is nothing to install from this page.
+      await expect(cd.getByText("No update to offer from here")).toBeVisible();
+      await expect(cd.getByRole("columnheader", { name: "What you can do" })).toBeVisible();
+      await expect(cd.getByRole("button", { name: /^Update \d+ device/ })).toHaveCount(0);
       await cd.getByRole("link", { name: /^\S+$/ }).filter({ hasNotText: "NVD page" }).first().click();
       await expect(page).toHaveURL(/\?tab=vulnerabilities$/);
       await expect(page.getByRole("table", { name: "Known vulnerabilities on this device" }).getByText("CVE-2026-9001")).toBeVisible();
@@ -459,7 +481,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await expect(page.getByText("Device information refreshed.")).toBeVisible({ timeout: 30_000 });
       await page.getByRole("tab", { name: "Software updates" }).click();
       await expect(page.getByText(/No missing updates/)).toBeVisible();
-      await page.getByRole("tab", { name: /^Software(?! updates)/ }).click();
+      await page.getByRole("tab", { name: /^Installed software/ }).click();
       await expect(page.getByTestId("software-row").first()).toBeVisible();
       await expect(page.getByRole("button", { name: "Uninstall Software" })).toHaveCount(0); // the bulk bar appears with a selection
       await page.getByTestId("software-row").first().getByRole("checkbox").check();
@@ -509,6 +531,9 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   expect(temp.length).toBeGreaterThanOrEqual(16);
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("user-row").filter({ hasText: "tech@example.com" })).toContainText("site Branch office");
+  // The users table shares its frame between its columns instead of scrolling sideways.
+  const usersFrame = page.getByRole("region", { name: /Users table, scrollable/ });
+  expect(await usersFrame.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await shot(page, "19-users");
 
   // The technician: forced password change, authenticator enrollment, and a console limited to devices.
@@ -605,6 +630,9 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await savedOnTheAccount(page, false);
   await page.goto("/devices?state=offline");
   await expect(page.getByRole("heading", { name: "Devices", exact: true })).toBeVisible();
+  // Held updates is not in the sidebar (Windows updates, Automations and the dashboard lead to it); the page itself still works.
+  await expect(mainNav(page).getByRole("link", { name: "Held updates", exact: true })).toHaveCount(0);
+  await expect(mainNav(page).getByRole("link", { name: "Agent updates", exact: true })).toBeVisible();
   await page.goto("/updates/held");
   await expect(page.getByRole("heading", { name: "Held updates", exact: true })).toBeVisible();
   // Software updates: the page for programs that are out of date, between "Held updates"-style pages in the Updates group.
@@ -614,7 +642,13 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await mainNav(page).getByRole("link", { name: "Dashboard", exact: true }).click();
 
   // --- Automation: a software policy, the reports page, and the audit chain check ---
-  await mainNav(page).getByRole("link", { name: "Software policies", exact: true }).click();
+  // Software policies live on the Software tab of Automations (the first tab).
+  await mainNav(page).getByRole("link", { name: "Automations", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Software", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "Rings", exact: true })).toBeVisible(); // the same rings, shown on this tab too
+  // A short list (one ring) does not carry a toolbar of its own; the policies table above it does.
+  await expect(page.getByRole("toolbar", { name: "Update rings controls" })).toHaveCount(0);
+  await expect(page.getByRole("toolbar", { name: "Software policies controls" })).toBeVisible();
   await page.getByRole("button", { name: "Add policy" }).click();
   const pd = page.getByRole("dialog");
   await pd.getByLabel(/^Name/).fill("Keep Acme Tool current");
@@ -626,6 +660,14 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await pd.getByRole("button", { name: "Save policy" }).click();
   await expect(page.getByRole("table", { name: "Software policies" }).getByText("Keep Acme Tool current")).toBeVisible();
   await shot(page, "22-policies");
+  await a11y(page, "automations-software");
+  // The old addresses still lead to the right tab.
+  await page.goto("/update-policy");
+  await expect(page).toHaveURL(/\/automations\?tab=windows/);
+  await expect(page.getByRole("tab", { name: "Windows", exact: true })).toHaveAttribute("aria-selected", "true");
+  await a11y(page, "automations-windows");
+  await page.goto("/policies");
+  await expect(page).toHaveURL(/\/automations$/);
   // A policy that rolls out in stages through the update rings and waits for approval of each new version.
   await page.getByRole("button", { name: "Add policy" }).click();
   const sd = page.getByRole("dialog");
@@ -647,6 +689,35 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   const staged = pols.items.find((p: { name: string }) => p.name === "Staged Acme Tool");
   expect(staged.use_rings).toBe(true);
   expect(staged.require_approval).toBe(true);
+  // Every policy says what its last check found (D132); a policy that was just made has not been checked yet.
+  expect(staged.state).toBe("new");
+  await expect(page.getByRole("table", { name: "Software policies" }).getByText("Not checked yet").first()).toBeVisible();
+  // One policy for all apps: no package, a filter, and a preview of the apps it would handle.
+  await page.getByRole("button", { name: "Add policy" }).click();
+  const ad = page.getByRole("dialog");
+  await ad.getByLabel(/^Name/).fill("Keep every app current");
+  await ad.getByLabel(/^What it does/).click();
+  await page.getByRole("option", { name: /all apps/ }).click();
+  await expect(ad.getByLabel(/^Package/)).toHaveCount(0);
+  await ad.getByLabel(/^Groups/).click();
+  await page.getByRole("option").first().click();
+  await ad.getByText("Add policy").click(); // close the dropdown
+  await expect(ad.getByLabel(/Only apps that were verified on test machines/)).toBeChecked();
+  await expect(ad.getByLabel("Apps this policy would handle")).toBeVisible();
+  await shot(page, "22a-policy-all-apps");
+  await ad.getByRole("button", { name: "Save policy" }).click();
+  await expect(page.getByRole("table", { name: "Software policies" }).getByText("Keep every app current")).toBeVisible();
+  const pols2 = await (await page.request.get("/api/v1/policies")).json();
+  const everyApp = pols2.items.find((p: { name: string }) => p.name === "Keep every app current");
+  expect(everyApp.kind).toBe("keep_all");
+  expect(everyApp.package_id).toBeNull();
+  expect(everyApp.filter.verified_only).toBe(true);
+  // The Software updates page can start the same thing in a click.
+  await mainNav(page).getByRole("link", { name: "Software updates", exact: true }).click();
+  await page.getByRole("button", { name: "Automate all updates…" }).click();
+  await expect(page.getByRole("dialog").getByLabel(/^Name/)).toHaveValue("Keep all apps updated");
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+  await mainNav(page).getByRole("link", { name: "Automations", exact: true }).click();
 
   // --- A signed catalog overlay, made here with Node's Ed25519 and accepted by the server's Go verifier ---
   await mainNav(page).getByRole("link", { name: "Catalog", exact: true }).click();
@@ -676,6 +747,13 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await mainNav(page).getByRole("link", { name: "Reports", exact: true }).click();
   await expect(page.getByRole("heading", { name: /^(.* · )?Reports$/ })).toBeVisible();
   await expect(page.getByText("Patch compliant")).toBeVisible();
+  // With no scanned device the headline says so instead of claiming 0% compliance.
+  const cmp = (await (await page.request.get("/api/v1/reports/overview")).json()).compliance;
+  const tile = page.getByLabel("Fleet summary").locator(".lp-tile", { hasText: "Patch compliant" });
+  if ((cmp.compliant ?? 0) + (cmp.non_compliant ?? 0) === 0) {
+    await expect(tile).toContainText("—");
+    await expect(tile).not.toContainText("0%");
+  }
   // The operating-system support report: its summary and its table are there, and the API answers with the data date.
   await expect(page.getByRole("heading", { name: "Operating system support" })).toBeVisible();
   const lifecycle = await page.request.get("/api/v1/reports/lifecycle");
@@ -753,6 +831,26 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
     await a11y(page, `settings-${name.toLowerCase().replace(/ /g, "-")}`);
   }
+  // Windows updates can be switched off for the whole organization: their pages, the Windows tab and the device tab go away, software stays.
+  await setNav.getByRole("link", { name: "Update defaults", exact: true }).click();
+  await page.getByRole("switch", { name: /^Manage Windows updates/ }).uncheck({ force: true });
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Update defaults settings saved.")).toBeVisible();
+  await expect(mainNav(page).getByRole("link", { name: "Windows updates", exact: true })).toHaveCount(0);
+  await expect(mainNav(page).getByRole("link", { name: "Held updates", exact: true })).toHaveCount(0);
+  await expect(mainNav(page).getByRole("link", { name: "Software updates", exact: true })).toBeVisible();
+  await mainNav(page).getByRole("link", { name: "Automations", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Automations", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Windows", exact: true })).toHaveCount(0);
+  await page.goto("/automations?tab=windows"); // there is no Windows tab now: the Software tab shows instead
+  await expect(page.getByRole("table", { name: "Software policies" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Rings", exact: true })).toBeVisible();
+  await a11y(page, "automations-windows-off");
+  await page.goto("/settings/updates");
+  await page.getByRole("switch", { name: /^Manage Windows updates/ }).check({ force: true });
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Update defaults settings saved.")).toBeVisible();
+  await expect(mainNav(page).getByRole("link", { name: "Windows updates", exact: true })).toBeVisible();
   // A custom device field is defined here and then offered on the device page and in the device list.
   await setNav.getByRole("link", { name: "Device defaults", exact: true }).click();
   await page.getByRole("group", { name: "Custom device fields" }).getByRole("button", { name: "Add" }).click();

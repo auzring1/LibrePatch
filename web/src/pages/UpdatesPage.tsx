@@ -182,11 +182,16 @@ export function UpdatesPage() {
         title="Windows updates"
         description="Everything Windows Update has offered your devices. Approve an update and the rings install it, pilot first. Updates stay untouched until you approve them or a rule does."
         actions={
-          can("updates:policy") ? (
-            <Button component={Link} to="/update-policy" variant="default" leftSection={<Icons.NavPolicy size={16} aria-hidden />}>
-              Rings, rules and sources
+          <>
+            <Button component={Link} to="/updates/held" variant="default" leftSection={<Icons.NavHeld size={16} aria-hidden />}>
+              Held updates
             </Button>
-          ) : undefined
+            {can("updates:policy") && (
+              <Button component={Link} to="/automations?tab=windows" variant="default" leftSection={<Icons.NavPolicy size={16} aria-hidden />}>
+                Rings, rules and sources
+              </Button>
+            )}
+          </>
         }
       />
       {(urlSeverity || urlQuery) && (
@@ -204,7 +209,7 @@ export function UpdatesPage() {
         <TileSkeleton count={6} />
       ) : list.data ? (
         <>
-          <StatGrid label="Updates by severity">
+          <StatGrid compact label="Updates by severity">
             <StatTile label="Critical" value={sev[0]} kind="critical" icon={<Icons.Critical size={16} aria-hidden />} hint="Install first" />
             <StatTile label="Important" value={sev[1]} kind="important" icon={<Icons.Flame size={16} aria-hidden />} />
             <StatTile label="Moderate" value={sev[2]} kind="moderate" icon={<Icons.Caution size={16} aria-hidden />} />

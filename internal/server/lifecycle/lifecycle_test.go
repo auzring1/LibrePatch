@@ -22,6 +22,8 @@ func TestLookup(t *testing.T) {
 		{"Windows 11 24H2 Enterprise has a year", "Windows 11 Enterprise", "Enterprise", 26100, Supported, "Windows 11", "24H2", "2027-10-12", ""},
 		{"Windows 11 23H2 Enterprise ends in a month", "Windows 11 Enterprise", "Enterprise", 22631, EndingSoon, "Windows 11", "23H2", "2026-11-10", ""},
 		{"Windows 11 25H2 Home", "Windows 11 Home", "Core", 26200, Supported, "Windows 11", "25H2", "2027-10-12", ""},
+		{"Windows 11 26H2 Pro ends in 2028", "Windows 11 Pro", "Professional", 26300, Supported, "Windows 11", "26H2", "2028-10-10", ""},
+		{"Windows 11 26H2 Enterprise ends in 2029", "Windows 11 Enterprise", "Enterprise", 26300, Supported, "Windows 11", "26H2", "2029-10-09", ""},
 		{"Windows 10 22H2 is out of support", "Windows 10 Pro", "Professional", 19045, Unsupported, "Windows 10", "22H2", "2025-10-14", "Extended Security"},
 		{"An older Windows 10 build", "Windows 10 Pro", "Professional", 19043, Unsupported, "Windows", "build 19043", "", "Older than"},
 		{"Windows 8.1", "Windows 8.1 Pro", "Professional", 9600, Unsupported, "Windows", "build 9600", "", "Older than"},

@@ -665,6 +665,26 @@ type SoftwareApproval struct {
 	DecidedAt time.Time
 }
 
+type SoftwareAutoPolicy struct {
+	ID              uuid.UUID
+	OrgID           uuid.UUID
+	Name            string
+	GroupIds        []uuid.UUID
+	DelayDays       int32
+	MaintWindow     []byte
+	Enabled         bool
+	UseRings        bool
+	RequireApproval bool
+	Prompts         []byte
+	Filter          []byte
+	CreatedBy       *uuid.UUID
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	LastCheckAt     *time.Time
+	LastState       string
+	LastDetail      string
+}
+
 type SoftwareHistory struct {
 	ID         int64
 	DeviceID   uuid.UUID
@@ -729,6 +749,12 @@ type SoftwarePolicy struct {
 	UseRings            bool
 	RequireApproval     bool
 	Prompts             []byte
+	LastCheckAt         *time.Time
+	LastState           string
+	LastDetail          string
+	LastRunAt           *time.Time
+	LastDeploymentID    *uuid.UUID
+	AutoPolicyID        *uuid.UUID
 }
 
 type SoftwareTitle struct {

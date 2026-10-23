@@ -2077,7 +2077,7 @@ paths:
                   items: { type: array, items: { $ref: "#/components/schemas/SoftwarePolicy" } }
     post:
       tags: [policies]
-      summary: Create a software policy (requires policies:write; audited)
+      summary: Create a software policy (requires policies:write; audited). An all-apps policy that adds apps from winget also needs catalog:write
       requestBody:
         required: true
         content:
@@ -2095,6 +2095,45 @@ paths:
                   id: { type: string, format: uuid }
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+  /policies/preview:
+    post:
+      tags: [policies]
+      summary: The apps an all-apps policy with these groups and this filter would handle, and the ones it would skip and why (requires policies:read; changes nothing)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [group_ids]
+              properties:
+                id: { type: string, format: uuid, description: The all-apps policy being edited; leave out for a new one }
+                group_ids: { type: array, minItems: 1, maxItems: 50, items: { type: string, format: uuid } }
+                filter: { $ref: "#/components/schemas/SoftwareAutoFilter" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SoftwarePolicyPreview" }
+        "422": { $ref: "#/components/responses/Error" }
+  /policies/{id}/apps:
+    get:
+      tags: [policies]
+      summary: The apps an all-apps policy handles, with where each one stands (requires policies:read)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/SoftwarePolicyApp" } }
+        "404": { $ref: "#/components/responses/Error" }
   /policies/{id}:
     put:
       tags: [policies]
@@ -3466,6 +3505,36 @@ components:
         missing_critical_devices: { type: integer, nullable: true }
         failed_jobs_24h: { type: integer, nullable: true }
         held_updates: { type: integer, nullable: true }
+        setup:
+          nullable: true
+          description: What has been set up so far, for the getting-started checklist (needs deployments:read for the whole organization)
+          type: object
+          required: [policies, deployments]
+          properties:
+            policies: { type: integer, format: int64, description: Software policies made (one-app policies and all-apps policies) }
+            deployments: { type: integer, format: int64 }
+        software:
+          nullable: true
+          description: The apps that are out of date (organization-wide, like the Software updates page; needs deployments:read for the whole organization)
+          type: object
+          required: [apps, devices, vendor, automated, top, all_apps_policy]
+          properties:
+            apps: { type: integer, description: Apps with a newer version that LibrePatch can install }
+            devices: { type: integer, description: Devices that have at least one such app out of date }
+            vendor: { type: integer, description: Apps with an update that are left to their own updater }
+            automated: { type: integer, description: Of the apps, how many an enabled policy keeps updated }
+            all_apps_policy: { type: boolean, description: An all-apps policy is switched on }
+            top:
+              type: array
+              items:
+                type: object
+                required: [name, latest_version, devices, automated]
+                properties:
+                  package_id: { type: string, format: uuid, nullable: true }
+                  name: { type: string }
+                  latest_version: { type: string }
+                  devices: { type: integer }
+                  automated: { type: boolean }
         compliance:
           nullable: true
           type: object
@@ -3878,12 +3947,12 @@ components:
               source: { type: string, enum: [local, sso], description: "sso = follows the identity provider at every sign-in; local = set by hand" }
     SoftwarePolicy:
       type: object
-      required: [id, name, kind, package_id, package_name, group_ids, delay_days, only_new_devices, unverified_confirmed, enabled, created_at, devices_attempted]
+      required: [id, name, kind, package_id, package_name, group_ids, delay_days, only_new_devices, unverified_confirmed, enabled, created_at, devices_attempted, state, state_text, auto, apps]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
-        kind: { type: string, enum: [keep_updated, baseline] }
-        package_id: { type: string, format: uuid }
+        kind: { type: string, enum: [keep_updated, baseline, keep_all], description: "keep_all keeps every app with an update current (no package of its own)" }
+        package_id: { type: string, format: uuid, nullable: true }
         package_name: { type: string }
         package_identifier: { type: string }
         group_ids: { type: array, items: { type: string, format: uuid } }
@@ -3898,6 +3967,60 @@ components:
         created_at: { type: string, format: date-time }
         devices_attempted: { type: integer, format: int64 }
         rollout: { allOf: [{ $ref: "#/components/schemas/SoftwareRollout" }], nullable: true, description: The state of the newest version; set only for a policy that uses rings or approval }
+        state: { type: string, description: "What the last check found, as a code (up_to_date, updating, waiting_approval, waiting_delay, waiting_ring, held, retry, gave_up, declined, left_to_vendor, excluded, no_version, package_missing, error, new, off; for an all-apps policy no_apps, first_check_soon, apps_waiting, apps_updating, apps_all_current, apps_need_attention)" }
+        state_text: { type: string, description: The same in a sentence }
+        last_check_at: { type: string, format: date-time, nullable: true }
+        next_check_at: { type: string, format: date-time, nullable: true }
+        last_run_at: { type: string, format: date-time, nullable: true, description: When the policy last created a deployment }
+        last_deployment_id: { type: string, format: uuid, nullable: true }
+        auto: { type: boolean, description: True for an all-apps policy }
+        filter: { $ref: "#/components/schemas/SoftwareAutoFilter" }
+        apps: { type: integer, format: int64, description: The apps an all-apps policy handles now }
+        app_states: { type: object, additionalProperties: { type: integer, format: int64 }, description: The apps of an all-apps policy counted by state }
+    SoftwareAutoFilter:
+      type: object
+      additionalProperties: false
+      description: Which apps an all-apps policy handles
+      properties:
+        verified_only: { type: boolean, default: true, description: Handle only apps verified on test machines }
+        include_unlisted: { type: boolean, description: Also add apps that are not in the catalog yet from the winget index (needs verified_only off and catalog:write) }
+        exclude: { type: array, maxItems: 200, items: { type: string }, description: Package identifiers to leave alone }
+    SoftwarePolicyApp:
+      type: object
+      required: [policy_id, package_id, name, identifier, verified, state, state_text, added_at]
+      properties:
+        policy_id: { type: string, format: uuid }
+        package_id: { type: string, format: uuid }
+        name: { type: string }
+        identifier: { type: string }
+        verified: { type: boolean }
+        state: { type: string }
+        state_text: { type: string }
+        last_check_at: { type: string, format: date-time, nullable: true }
+        last_run_at: { type: string, format: date-time, nullable: true }
+        last_deployment_id: { type: string, format: uuid, nullable: true }
+        added_at: { type: string, format: date-time }
+    SoftwarePolicyPreview:
+      type: object
+      required: [items, handled, skipped, truncated]
+      properties:
+        handled: { type: integer }
+        skipped: { type: integer }
+        truncated: { type: boolean }
+        items:
+          type: array
+          items:
+            type: object
+            required: [package_id, name, identifier, latest_version, devices, handled]
+            properties:
+              package_id: { type: string, format: uuid, nullable: true }
+              name: { type: string }
+              identifier: { type: string }
+              latest_version: { type: string }
+              devices: { type: integer, description: Devices in the groups that have an older version }
+              handled: { type: boolean }
+              reason: { type: string, enum: [vendor, excluded, unverified, unlisted, other_policy, catalog_excluded, limit] }
+              reason_text: { type: string }
     SoftwareRollout:
       type: object
       required: [version, imported_at, approval, waiting, stages]
@@ -3960,11 +4083,12 @@ components:
     SoftwarePolicyInput:
       type: object
       additionalProperties: false
-      required: [name, kind, package_id, group_ids]
+      required: [name, kind, group_ids]
       properties:
         name: { type: string, minLength: 1, maxLength: 200 }
-        kind: { type: string, enum: [keep_updated, baseline] }
-        package_id: { type: string, format: uuid }
+        kind: { type: string, enum: [keep_updated, baseline, keep_all] }
+        package_id: { type: string, format: uuid, description: Required except for keep_all }
+        filter: { $ref: "#/components/schemas/SoftwareAutoFilter" }
         group_ids: { type: array, minItems: 1, maxItems: 50, items: { type: string, format: uuid } }
         delay_days: { type: integer, minimum: 0, maximum: 365 }
         only_new_devices: { type: boolean }
@@ -4064,6 +4188,22 @@ components:
         product: { type: string }
         installed: { type: string }
         fixed_in: { type: string, description: The version that fixes it; empty when none is known }
+        update:
+          nullable: true
+          description: The update of the same program on that device, when there is one (only for callers who may read deployments for the whole organization)
+          type: object
+          required: [package_name, in_catalog, latest_version, verified, self_updating, deployable, scope, fixes]
+          properties:
+            package_id: { type: string, format: uuid, nullable: true, description: Null while the program is not in the catalog yet }
+            package_name: { type: string }
+            winget_id: { type: string }
+            in_catalog: { type: boolean }
+            latest_version: { type: string }
+            verified: { type: boolean }
+            self_updating: { type: boolean }
+            deployable: { type: boolean, description: False when the program is left to its own updater }
+            scope: { type: string, enum: [machine, user] }
+            fixes: { type: string, enum: ["yes", "no", "unknown"], description: "Whether the newest version is at or past the fixed version (unknown when the advisory names none)" }
     DeviceVulnerability:
       allOf:
         - { $ref: "#/components/schemas/Vulnerability" }

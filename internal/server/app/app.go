@@ -153,6 +153,9 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 	a.Branding = &branding.Service{Pool: pool, Log: log.With("component", "branding")}
 	a.Dashboard = &dashboard.Service{Pool: pool, Log: log.With("component", "dashboard")}
 	a.Settings = &settings.Service{Pool: pool, Sealer: sealer, Log: log.With("component", "settings")}
+	a.Updates.Enabled = func(ctx context.Context, org uuid.UUID) bool {
+		return a.Settings.Peek(ctx, org, "updates").Bool("windows_updates_enabled")
+	}
 	a.Deploy.PeerCache = func(ctx context.Context, org uuid.UUID) bool {
 		return a.Settings.Peek(ctx, org, "downloads").Bool("peer_cache")
 	}
@@ -179,6 +182,13 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 			Data: map[string]any{"update": map[string]any{"title": title}, "ring": ring, "reason": reason}})
 	}
 	a.Policies.OnHold = a.Updates.OnHold
+	a.Policies.Import = func(ctx context.Context, org, user uuid.UUID, wingetID string) (uuid.UUID, error) {
+		res, err := a.Catalog.Import(ctx, org, user, wingetID, "")
+		if err != nil {
+			return uuid.Nil, err
+		}
+		return res.PackageID, nil
+	}
 	a.Policies.OnApprovalNeeded = func(ctx context.Context, org uuid.UUID, pkg, version string) {
 		a.Notify.Emit(ctx, org, notify.Event{Name: "software_approval_needed", Key: "approval:" + pkg + ":" + version, Subject: pkg + " " + version + " is waiting for approval",
 			Text: "A new version of " + pkg + " (" + version + ") is available and a software policy needs your approval before it is rolled out.",

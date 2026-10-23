@@ -119,10 +119,11 @@ Permission: `settings:security`. Let people sign in with your company account (M
 
 ## Update defaults
 
-Permission: `settings:updates`. Starting values for new update rings and auto-approval rules, so each one does not have to be filled in from scratch. Existing rings and rules are not changed. The update source and driver switch are on the Update rings and rules page.
+Permission: `settings:updates`. Switch Windows updates on or off, and set the starting values for new update rings and auto-approval rules, so each one does not have to be filled in from scratch. Existing rings and rules are not changed. The update source and driver switch are on Automations, on the Windows tab.
 
 | Setting | Type | Default | Limits | Effect | What it does |
 |---|---|---|---|---|---|
+| **Manage Windows updates** (`windows_updates_enabled`) | bool | `true` |  | in effect | Off turns every Windows update feature off for everyone: the Windows updates pages and the Windows tab under Automations disappear, devices stop scanning for Windows updates and nothing is approved or installed. Software updates, update rings for software and restarts keep working. Switch it off when another tool (WSUS, Intune, Windows Update for Business) manages Windows updates. |
 | **Restart policy for new rings** (`ring_restart`) | enum | `outside_active_hours` | never, outside_active_hours, deadline | starting value | What a new ring does about restarts after installing. |
 | **Active hours begin** (`active_start`) | time | `08:00` |  | starting value | Devices are not restarted between the start and the end of the active hours. |
 | **Active hours end** (`active_end`) | time | `17:00` |  | starting value | Local time on the device. |

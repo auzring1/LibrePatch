@@ -90,6 +90,9 @@ func (s *Service) ApplySnapshot(ctx context.Context, dev dbq.Device, rev uint64,
 	if snap == nil {
 		return invalid("empty snapshot")
 	}
+	if !s.On(ctx, dev.OrgID) {
+		return nil // Windows updates are switched off for this organization: the report is acknowledged and dropped
+	}
 	if len(snap.Updates) > maxUpdatesPerSnapshot {
 		return invalid("too many updates")
 	}

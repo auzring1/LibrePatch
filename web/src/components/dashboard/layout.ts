@@ -1,11 +1,13 @@
 // Dashboard layout: which widgets exist, in which order, and which the person has hidden. Pure functions, unit tested.
 
 /** Stable widget ids (kebab-case, saved in the person's preferences) in their default order. */
-export const WIDGET_IDS = ["tiles", "compliance", "top-missing", "attention", "activity", "agents"] as const;
+export const WIDGET_IDS = ["start", "tiles", "apps", "compliance", "top-missing", "attention", "activity", "agents"] as const;
 export type WidgetId = (typeof WIDGET_IDS)[number];
 
 export const WIDGET_TITLES: Record<WidgetId, string> = {
+  start: "Getting started",
   tiles: "Key numbers",
+  apps: "Apps out of date",
   compliance: "Patch compliance",
   "top-missing": "Top missing updates",
   attention: "Devices needing attention",

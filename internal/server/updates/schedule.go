@@ -30,6 +30,9 @@ func (s *Service) Tick(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		if !s.On(ctx, org) {
+			continue
+		}
 		s.ensureSettings(ctx, org)
 		if err := s.applyRules(ctx, org); err != nil {
 			s.log().Error("apply update rules", "org", org, "err", err)

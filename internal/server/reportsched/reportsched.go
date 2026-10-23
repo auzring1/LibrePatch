@@ -107,9 +107,13 @@ func (s *Service) Tick(ctx context.Context) {
 	}
 	q := dbq.New(s.Pool)
 	now := s.now()
+	windows := s.Settings.Peek(ctx, org, "updates").Bool("windows_updates_enabled")
 	for _, sc := range v.Items("schedules") {
 		if !sc.Bool("enabled") || ctx.Err() != nil {
 			continue
+		}
+		if k := sc.Str("report"); !windows && (k == "compliance" || k == "missing_updates") {
+			continue // these two report on Windows updates, which are switched off
 		}
 		id := sc.Str("id")
 		slot := LastSlot(now, loc, sc.Str("frequency"), sc.Str("weekday"), sc.Int("day_of_month"), sc.Str("time"))

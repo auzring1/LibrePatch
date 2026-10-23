@@ -1,107 +1,19 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Anchor, Button, Checkbox, Group, Menu, Modal, Stack, Table, Text, Tooltip } from "@mantine/core";
+import { Anchor, Button, Group, Menu, Modal, Table, Text, Tooltip } from "@mantine/core";
 import { Link } from "react-router-dom";
-import { api, errorMessage, type DeploymentPlan, type FleetUpdate, type WingetIndexStatus } from "../api/client";
+import { api, errorMessage, type FleetUpdate, type WingetIndexStatus } from "../api/client";
 import { useSession } from "../api/session";
-import { PRODUCT_NAME } from "../brand.generated";
-import { deployUpdate } from "../components/updateDeploy";
+import { ConfirmDeployUpdates, useDeployUpdates } from "../components/FleetDeploy";
+import { ensurePackage } from "../components/updateDeploy";
 import { dateTime } from "../api/format";
 import { DataTable, EmptyState, Icons, IconButton, Page, PageHeader, StatusPill, toast, type Column } from "../ui";
+import { NewPolicyModal, type PolicyPreset } from "./PoliciesPage";
 
 const KEY = ["software-updates"];
 
 /** How many devices have an older copy, and which versions they run. */
 const versions = (u: FleetUpdate) => [...new Set(u.devices.map((d) => d.installed_version))];
-
-/** Queues one "update" deployment per package and scope for the devices that have an older version. A package that comes from
- * the winget index is added to the catalog first. */
-function useDeploy() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ items, confirm, force }: { items: FleetUpdate[]; confirm: boolean; force: boolean }) => {
-      const results: { name: string; plan?: DeploymentPlan; error?: string }[] = [];
-      for (const u of items) {
-        for (const scope of ["machine", "user"] as const) {
-          const ids = [...new Set(u.devices.filter((d) => d.scope === scope).map((d) => d.device_id))];
-          if (ids.length === 0) continue;
-          try {
-            const plan = await deployUpdate({ update: u, name: `Update ${u.package_name} to ${u.latest_version}`, scope, deviceIds: ids, confirmUnverified: confirm, force });
-            results.push({ name: u.package_name, plan });
-          } catch (e) {
-            results.push({ name: u.package_name, error: errorMessage(e) });
-          }
-        }
-      }
-      return results;
-    },
-    onSuccess: (results) => {
-      for (const r of results) {
-        if (r.error) toast.error(r.error, r.name);
-        else toast.success(`${r.name}: update queued (${r.plan?.jobs ?? 0} job${r.plan?.jobs === 1 ? "" : "s"}). Follow it under Deployments.`);
-      }
-      void qc.invalidateQueries({ queryKey: ["deployments"] });
-      void qc.invalidateQueries({ queryKey: ["catalog"] });
-      void qc.invalidateQueries({ queryKey: KEY });
-    },
-  });
-}
-
-function Confirm({ items, force, busy, onCancel, onConfirm }: { items: FleetUpdate[]; force: boolean; busy: boolean; onCancel: () => void; onConfirm: (confirmed: boolean) => void }) {
-  const unverified = items.filter((u) => !u.verified);
-  const toAdd = items.filter((u) => !u.in_catalog);
-  const [ok, setOk] = useState(false);
-  const devices = new Set(items.flatMap((u) => u.devices.map((d) => d.device_id))).size;
-  return (
-    <Modal opened onClose={onCancel} title={`Deploy ${items.length} update${items.length === 1 ? "" : "s"}`}>
-      <Stack>
-        <Table verticalSpacing={2} fz="sm" aria-label="Updates to deploy">
-          <Table.Tbody>
-            {items.map((u) => (
-              <Table.Tr key={u.package_id}>
-                <Table.Td>{u.package_name}</Table.Td>
-                <Table.Td ff="monospace">→ {u.latest_version}</Table.Td>
-                <Table.Td>
-                  {u.devices.length} device{u.devices.length === 1 ? "" : "s"}
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-        <Text size="sm" c="dimmed">
-          Each update becomes a signed job on every device that has an older version ({devices} device{devices === 1 ? "" : "s"} in total). Older copies the new installer does not replace by itself are removed first.
-        </Text>
-        {toAdd.length > 0 && (
-          <Alert color="blue" icon={<Icons.Info size={18} aria-hidden />} title="Added to your catalog first">
-            {toAdd.map((u) => u.package_name).join(", ")} {toAdd.length === 1 ? "is" : "are"} not in your catalog yet. {PRODUCT_NAME} adds {toAdd.length === 1 ? "it" : "them"} from the winget repository now; each device downloads the installer from the vendor and checks it against the published SHA-256.
-          </Alert>
-        )}
-        {force && (
-          <Alert color="orange" icon={<Icons.Warning size={18} aria-hidden />} title="This app normally updates itself">
-            {PRODUCT_NAME} leaves updates to the vendor's own updater by default. Continuing sets the package to push updates anyway (you can change this on its catalog page).
-          </Alert>
-        )}
-        {unverified.length > 0 && (
-          <Alert color="yellow" icon={<Icons.Warning size={18} aria-hidden />} title="Unverified packages">
-            <Checkbox
-              label={`${unverified.map((u) => u.package_name).join(", ")} ${unverified.length === 1 ? "has" : "have"} not been marked as verified. I accept deploying ${unverified.length === 1 ? "it" : "them"}; this is recorded in the audit log.`}
-              checked={ok}
-              onChange={(e) => setOk(e.currentTarget.checked)}
-            />
-          </Alert>
-        )}
-        <Group justify="flex-end">
-          <Button variant="default" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button onClick={() => onConfirm(ok)} loading={busy} disabled={unverified.length > 0 && !ok}>
-            Deploy
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
-  );
-}
 
 function DevicesModal({ update, onClose }: { update: FleetUpdate; onClose: () => void }) {
   return (
@@ -143,16 +55,29 @@ export function SoftwareUpdatesPage() {
     onSuccess: () => (toast.success("The winget index is up to date."), void qc.invalidateQueries({ queryKey: ["catalog", "index"] }), void qc.invalidateQueries({ queryKey: KEY })),
     onError: (e) => toast.error(errorMessage(e)),
   });
-  const deploy = useDeploy();
+  const deploy = useDeployUpdates();
   const [confirm, setConfirm] = useState<{ items: FleetUpdate[]; force: boolean } | null>(null);
   const [clear, setClear] = useState<(() => void) | null>(null);
   const [showDevices, setShowDevices] = useState<FleetUpdate | null>(null);
+  const [automate, setAutomate] = useState<PolicyPreset | null>(null);
   const canAct = canOrg("deployments:write");
+  // "Keep updated automatically" makes a software policy (D132). An app that is not in the catalog yet is added first.
+  const canAutomate = canOrg("policies:write");
   // A package from the winget index is added to the catalog first (catalog:write); pushing the update of an app that updates
   // itself also needs catalog:override.
   const canAdd = canOrg("catalog:write");
   const canForce = canAdd && canOrg("catalog:override");
   const startable = (u: FleetUpdate) => u.deployable && (u.in_catalog || canAdd);
+  const automatable = (u: FleetUpdate) => u.deployable && (u.in_catalog || canAdd);
+  const automateOne = async (u: FleetUpdate) => {
+    try {
+      const packageId = await ensurePackage(u);
+      void qc.invalidateQueries({ queryKey: ["catalog"] });
+      setAutomate({ kind: "keep_updated", packageId, name: `Keep ${u.package_name} updated` });
+    } catch (e) {
+      toast.error(errorMessage(e), u.package_name);
+    }
+  };
 
   const columns = useMemo<Column<FleetUpdate>[]>(
     () => [
@@ -231,6 +156,13 @@ export function SoftwareUpdatesPage() {
       <PageHeader
         title="Software updates"
         description="Installed programs that have a newer version available, from your catalog and from the winget repository. Programs that are not in the catalog yet are recognised automatically and added when you deploy them. Apps that update themselves are left to their vendor unless you choose otherwise."
+        actions={
+          canAutomate ? (
+            <Button variant="default" leftSection={<Icons.NavSoftwarePolicy size={16} aria-hidden />} onClick={() => setAutomate({ kind: "keep_all", name: "Keep all apps updated" })}>
+              Automate all updates…
+            </Button>
+          ) : undefined
+        }
       />
       {index.data && (
         <Group gap="sm" role="status" aria-label="Winget index">
@@ -269,18 +201,25 @@ export function SoftwareUpdatesPage() {
           </Button>
         )}
         rowActions={
-          canAct
+          canAct || canAutomate
             ? (u) => (
                 <Menu position="bottom-end" withinPortal>
                   <Menu.Target>
                     <IconButton label={`Actions for ${u.package_name}`} icon={<Icons.More size={16} aria-hidden />} size="sm" />
                   </Menu.Target>
                   <Menu.Dropdown>
-                    <Menu.Item disabled={!startable(u)} onClick={() => setConfirm({ items: [u], force: false })}>
-                      Update {u.devices.length} device{u.devices.length === 1 ? "" : "s"} to {u.latest_version}
-                    </Menu.Item>
-                    {!u.deployable && canForce && (
+                    {canAct && (
+                      <Menu.Item disabled={!startable(u)} onClick={() => setConfirm({ items: [u], force: false })}>
+                        Update {u.devices.length} device{u.devices.length === 1 ? "" : "s"} to {u.latest_version}
+                      </Menu.Item>
+                    )}
+                    {canAct && !u.deployable && canForce && (
                       <Menu.Item onClick={() => setConfirm({ items: [u], force: true })}>Update anyway (the app updates itself)…</Menu.Item>
+                    )}
+                    {canAutomate && (
+                      <Menu.Item disabled={!automatable(u)} onClick={() => void automateOne(u)}>
+                        Keep {u.package_name} updated automatically…
+                      </Menu.Item>
                     )}
                     <Menu.Item onClick={() => setShowDevices(u)}>Show devices</Menu.Item>
                   </Menu.Dropdown>
@@ -290,8 +229,9 @@ export function SoftwareUpdatesPage() {
         }
       />
       {showDevices && <DevicesModal update={showDevices} onClose={() => setShowDevices(null)} />}
+      {automate && <NewPolicyModal preset={automate} onClose={() => setAutomate(null)} />}
       {confirm && (
-        <Confirm
+        <ConfirmDeployUpdates
           items={confirm.items}
           force={confirm.force}
           busy={deploy.isPending}

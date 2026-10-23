@@ -72,6 +72,7 @@ export function TrackedProductsCard() {
         rowLabel={(p) => p.name}
         initialSort={{ id: "devices", desc: true }}
         exportName="vulnerability-programs"
+        simple
         rowActions={
           canEdit
             ? (p) => (

@@ -12,6 +12,10 @@ export interface NavItem {
   perm: string;
   /** Visible with the permission for some sites only (the device pages). */
   any?: boolean;
+  /** Visible with any one of these permissions (organization-wide) instead of `perm`. */
+  anyOf?: string[];
+  /** Hidden while this part of the console is switched off for the organization (Settings > Update defaults). */
+  feature?: "windows-updates";
   icon: IconType;
   /** Match this path exactly (a sibling lives below it). */
   end?: boolean;
@@ -21,6 +25,8 @@ export interface NavItem {
   keywords?: string[];
   /** A submenu. */
   children?: NavItem[];
+  /** False: not in the sidebar (the page is reached from another page), but still found by the command palette. */
+  sidebar?: false;
 }
 export interface NavGroup {
   id: string;
@@ -66,10 +72,17 @@ export const NAV: NavGroup[] = [
     label: "Updates",
     items: [
       { id: "software-updates", to: "/software-updates", label: "Software updates", perm: "deployments:read", icon: I.NavSoftwareUpdates, keywords: ["program updates", "outdated", "apps", "newer version", "patch software"] },
-      { id: "windows-updates", to: "/updates", label: "Windows updates", perm: "updates:read", icon: I.NavUpdates, end: true, keywords: ["patches", "kb", "approve"] },
-      { id: "update-rings", to: "/update-policy", label: "Update rings and rules", perm: "updates:read", icon: I.NavPolicy, keywords: ["policy", "rings", "rules", "restart"] },
-      { id: "held-updates", to: "/updates/held", label: "Held updates", perm: "updates:read", icon: I.NavHeld, keywords: ["holds", "blocked"] },
-      { id: "agent-updates", to: "/agent-updates", label: "Agent updates", perm: "releases:read", icon: I.NavAgentUpdates, keywords: ["releases", "self-update"] },
+      { id: "windows-updates", to: "/updates", label: "Windows updates", perm: "updates:read", feature: "windows-updates", icon: I.NavUpdates, end: true, keywords: ["patches", "kb", "approve"] },
+      {
+        id: "automations",
+        to: "/automations",
+        label: "Automations",
+        perm: "",
+        anyOf: ["policies:read", "updates:read"],
+        icon: I.NavPolicy,
+        keywords: ["policy", "policies", "keep updated", "baseline", "rings", "rules", "rollout", "approval", "restart", "schedule", "update rings and rules", "software policies"],
+      },
+      { id: "held-updates", to: "/updates/held", label: "Held updates", perm: "updates:read", feature: "windows-updates", sidebar: false, icon: I.NavHeld, keywords: ["holds", "blocked"] },
     ],
   },
   {
@@ -80,7 +93,6 @@ export const NAV: NavGroup[] = [
       { id: "catalog", to: "/catalog", label: "Catalog", perm: "catalog:read", icon: I.NavCatalog, keywords: ["packages"] },
       { id: "deployments", to: "/deployments", label: "Deployments", perm: "deployments:read", icon: I.NavDeployments, keywords: ["install", "jobs"] },
       { id: "scripts", to: "/scripts", label: "Scripts", perm: "scripts:read", icon: I.NavScripts, keywords: ["powershell", "run script", "automation", "remote command"] },
-      { id: "software-policies", to: "/policies", label: "Software policies", perm: "policies:read", icon: I.NavSoftwarePolicy, keywords: ["keep updated", "baseline"] },
     ],
   },
   {
@@ -97,6 +109,7 @@ export const NAV: NavGroup[] = [
     items: [
       { id: "users", to: "/users", label: "Users and roles", perm: "users:read", icon: I.NavUsers, keywords: ["accounts", "rbac", "tokens"] },
       { id: "audit", to: "/audit", label: "Audit log", perm: "audit:read", icon: I.NavAudit, keywords: ["history", "events"] },
+      { id: "agent-updates", to: "/agent-updates", label: "Agent updates", perm: "releases:read", icon: I.NavAgentUpdates, keywords: ["releases", "self-update", "agent versions"] },
       { id: "settings", to: "/settings", label: "Settings", perm: "catalog:read", icon: I.NavSettings, children: SETTINGS_SECTIONS, keywords: ["configuration", "options"] },
       { id: "styleguide", to: "/styleguide", label: "Style guide", perm: "branding:write", icon: I.Palette },
     ],
@@ -106,10 +119,23 @@ export const NAV: NavGroup[] = [
 export interface Allow {
   can: (perm: string) => boolean;
   canOrg: (perm: string) => boolean;
+  /** Parts of the console the organization switched off; absent means everything is on. */
+  features?: { windowsUpdates: boolean };
 }
 
 /** Whether the person may see a link. */
-export const allowed = (n: NavItem, a: Allow) => n.perm === "" || (n.any ? a.can(n.perm) : a.canOrg(n.perm));
+export const allowed = (n: NavItem, a: Allow) => {
+  if (n.feature === "windows-updates" && a.features?.windowsUpdates === false) return false;
+  if (n.anyOf) return n.anyOf.some((p) => a.canOrg(p));
+  return n.perm === "" || (n.any ? a.can(n.perm) : a.canOrg(n.perm));
+};
+
+/** What the sidebar shows: the navigation without the pages that are reached from another page. */
+export function sidebarNav(a: Allow): NavGroup[] {
+  return visibleNav(a)
+    .map((g) => ({ ...g, items: g.items.filter((i) => i.sidebar !== false) }))
+    .filter((g) => g.items.length > 0);
+}
 
 /** The navigation filtered for a person: empty groups and unavailable links are dropped. */
 export function visibleNav(a: Allow): NavGroup[] {

@@ -224,8 +224,10 @@ var weekdays = []Option{{"monday", "Monday"}, {"tuesday", "Tuesday"}, {"wednesda
 
 var updates = Section{
 	ID: "updates", Label: "Update defaults", Perm: PermUpdates,
-	Description: "Starting values for new update rings and auto-approval rules, so each one does not have to be filled in from scratch. Existing rings and rules are not changed. The update source and driver switch are on the Update rings and rules page.",
+	Description: "Switch Windows updates on or off, and set the starting values for new update rings and auto-approval rules, so each one does not have to be filled in from scratch. Existing rings and rules are not changed. The update source and driver switch are on Automations, on the Windows tab.",
 	Fields: []Field{
+		{Key: "windows_updates_enabled", Label: "Manage Windows updates", Kind: Bool, Default: true, Effect: Live,
+			Help: "Off turns every Windows update feature off for everyone: the Windows updates pages and the Windows tab under Automations disappear, devices stop scanning for Windows updates and nothing is approved or installed. Software updates, update rings for software and restarts keep working. Switch it off when another tool (WSUS, Intune, Windows Update for Business) manages Windows updates."},
 		{Key: "ring_restart", Label: "Restart policy for new rings", Kind: Enum, Default: "outside_active_hours", Effect: Prefill,
 			Help:    "What a new ring does about restarts after installing.",
 			Options: []Option{{"never", "Never restart automatically"}, {"outside_active_hours", "Restart outside active hours"}, {"deadline", "Restart by a deadline"}}},
@@ -237,12 +239,12 @@ var updates = Section{
 		{Key: "window_days", Label: "Window days", Kind: Multi, Default: []any{"saturday", "sunday"}, Options: weekdays, ShowIf: "window_enabled", Effect: Prefill, Help: "Days the window is open."},
 		{Key: "window_start", Label: "Window opens", Kind: Time, Default: "22:00", ShowIf: "window_enabled", Effect: Prefill, Help: "Local time on the device."},
 		{Key: "window_end", Label: "Window closes", Kind: Time, Default: "05:00", ShowIf: "window_enabled", Effect: Prefill, Help: "May be earlier than the opening time (overnight)."},
-		{Key: "rule_include_drivers", Label: "New rules also approve drivers", Kind: Bool, Default: false, Effect: Prefill, Help: "Drivers are riskier to install unattended, so the default is off."},
-		{Key: "rule_delay_days", Label: "New rules wait after release", Kind: Int, Default: 7, Min: 0, Max: 365, Unit: "days", Effect: Prefill, Help: "Days an update must have been out before a rule approves it."},
+		{Key: "rule_include_drivers", Label: "New rules also approve drivers", Kind: Bool, Default: false, ShowIf: "windows_updates_enabled", Effect: Prefill, Help: "Drivers are riskier to install unattended, so the default is off."},
+		{Key: "rule_delay_days", Label: "New rules wait after release", Kind: Int, Default: 7, Min: 0, Max: 365, Unit: "days", ShowIf: "windows_updates_enabled", Effect: Prefill, Help: "Days an update must have been out before a rule approves it."},
 		{Key: "rule_templates", Label: "Auto-approval rule templates", Kind: List, Default: []any{
 			map[string]any{"id": "tpl-security", "name": "Security and critical, after a week", "classifications": []any{"Security Updates", "Critical Updates"}, "severities": []any{"Critical", "Important"}, "include_drivers": false, "delay_days": 7},
 			map[string]any{"id": "tpl-definitions", "name": "Definition updates, right away", "classifications": []any{"Definition Updates"}, "severities": []any{}, "include_drivers": false, "delay_days": 0},
-		}, Max: 20, Effect: Prefill, Help: "Named starting points offered when you add a rule. A template does nothing by itself.",
+		}, Max: 20, ShowIf: "windows_updates_enabled", Effect: Prefill, Help: "Named starting points offered when you add a rule. A template does nothing by itself.",
 			Fields: []Field{
 				{Key: "id", Label: "Id", Kind: String, Default: "", Max: 64, Effect: Prefill, Help: "Assigned automatically."},
 				{Key: "name", Label: "Name", Kind: String, Required: true, Default: "New template", Min: 1, Max: 100, Effect: Prefill, Help: "Shown when choosing a template."},

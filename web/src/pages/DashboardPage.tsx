@@ -6,7 +6,9 @@ import { api, errorMessage, type Dashboard } from "../api/client";
 import { usePreferences } from "../design/usePreferences";
 import { Card, EmptyState, Icons, Page, PageHeader, Skel, TileSkeleton } from "../ui";
 import { Customizer } from "../components/dashboard/Customizer";
-import { ActivityWidget, AgentsWidget, AttentionWidget, availableWidgets, ComplianceWidget, TilesWidget, TopMissingWidget } from "../components/dashboard/widgets";
+import { ActivityWidget, AgentsWidget, AppsWidget, AttentionWidget, availableWidgets, ComplianceWidget, StartWidget, TilesWidget, TopMissingWidget } from "../components/dashboard/widgets";
+import { readStartDismissed, writeStartDismissed } from "../components/dashboard/start";
+import { useSession } from "../api/session";
 import { moveWidget, resolveLayout, setWidgetHidden, WIDGET_IDS, type WidgetId } from "../components/dashboard/layout";
 import "../components/dashboard/dashboard.css";
 
@@ -23,10 +25,14 @@ function CardSkeleton() {
   );
 }
 
-function render(id: WidgetId, d: Dashboard) {
+function render(id: WidgetId, d: Dashboard, start: { canOrg: (perm: string) => boolean; onDismiss: () => void }) {
   switch (id) {
+    case "start":
+      return <StartWidget d={d} canOrg={start.canOrg} onDismiss={start.onDismiss} />;
     case "tiles":
       return <TilesWidget d={d} />;
+    case "apps":
+      return <AppsWidget d={d} />;
     case "compliance":
       return <ComplianceWidget d={d} />;
     case "top-missing":
@@ -45,10 +51,12 @@ export function DashboardPage() {
   const q = useQuery({ queryKey: ["dashboard", siteId], queryFn: () => api<Dashboard>("GET", `/dashboard${siteId ? `?site=${siteId}` : ""}`), refetchInterval: 60_000 });
   const { prefs, ready, update } = usePreferences();
   const [custom, setCustom] = useState(false);
+  const { canOrg } = useSession();
+  const [startDismissed, setStartDismissed] = useState(readStartDismissed);
 
   const d = q.data;
   const layout = resolveLayout(WIDGET_IDS, prefs?.dashboard);
-  const available = d ? availableWidgets(d) : [];
+  const available = d ? availableWidgets(d, { canOrg, dismissed: startDismissed }) : [];
   // The widgets this person can see, in their chosen order (what the customizer lists).
   const mine = layout.order.filter((id): id is WidgetId => available.includes(id as WidgetId));
   const shown = mine.filter((id) => layout.visible.includes(id));
@@ -96,8 +104,8 @@ export function DashboardPage() {
       {d && shown.length > 0 && (
         <div className="lp-dash">
           {shown.map((id) => (
-            <div key={id} className={id === "tiles" ? "lp-dash__full" : undefined}>
-              {render(id, d)}
+            <div key={id} className={id === "tiles" || id === "start" ? "lp-dash__full" : undefined}>
+              {render(id, d, { canOrg, onDismiss: () => (writeStartDismissed(true), setStartDismissed(true)) })}
             </div>
           ))}
         </div>

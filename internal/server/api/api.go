@@ -291,6 +291,8 @@ func (s *server) routes(r chi.Router) {
 	r.With(s.require(auth.PermScriptsWrite)).Delete("/scripts/{id}", s.deleteScript)
 	r.With(s.require(auth.PermPoliciesRead)).Get("/policies", s.listPolicies)
 	r.With(s.require(auth.PermPoliciesWrite)).Post("/policies", s.createPolicy)
+	r.With(s.require(auth.PermPoliciesRead)).Post("/policies/preview", s.previewPolicy)
+	r.With(s.require(auth.PermPoliciesRead)).Get("/policies/{id}/apps", s.policyApps)
 	r.With(s.require(auth.PermPoliciesWrite)).Put("/policies/{id}", s.updatePolicy)
 	r.With(s.require(auth.PermPoliciesWrite)).Delete("/policies/{id}", s.deletePolicy)
 	r.With(s.require(auth.PermDeploymentsRead)).Get("/software/approvals", s.softwareApprovals)

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Menu, Tooltip } from "@mantine/core";
 import { api, errorMessage, type Device } from "../api/client";
 import { useSession } from "../api/session";
+import { useFeatures } from "../settings/features";
 import { Icons, toast } from "../ui";
 import {
   fetchWindowsUpdates,
@@ -41,7 +42,10 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
   const { can } = useSession();
   const qc = useQueryClient();
   const canDevices = can("devices:write");
-  const canUpdates = can("updates:read") && can("updates:write") && d.status === "active";
+  const features = useFeatures();
+  // A restart is not a Windows update feature: it stays when Windows updates are switched off.
+  const canRestart = can("updates:read") && can("updates:write") && d.status === "active";
+  const canWindows = canRestart && features.windowsUpdates;
   const scan = useScanUpdates(d.id);
   const install = useInstallUpdates(d.id);
   const reboot = useRebootDevice(d.id);
@@ -62,8 +66,8 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
       const wu = await qc.fetchQuery({ queryKey: windowsUpdatesKey(d.id), queryFn: () => fetchWindowsUpdates(d.id), staleTime: 0 });
       const items = installable(wu.items);
       const online = fromOnlineCheck(wu);
-      if (items.length === 0) toast.info("Nothing to install: no missing Windows updates are known for this device. Scan for updates first.");
-      else if (online && !can("updates:policy")) toast.info("These updates come from an online check, which only people with the update-policy permission can install. Scan for updates to go back to the usual source.");
+      if (items.length === 0) toast.info("Nothing to install: no missing Windows updates are known for this device. Scan Windows updates first.");
+      else if (online && !can("updates:policy")) toast.info("These updates come from an online check, which only people with the update-policy permission can install. Scan Windows updates to go back to the usual source.");
       else setInstallFor({ items, online });
     } catch (e) {
       toast.error(errorMessage(e));
@@ -83,18 +87,20 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
           Approve
         </Button>
       )}
-      {canUpdates && (
+      {canWindows && (
         <>
           <Button variant="default" onClick={() => scan.mutate()} loading={scan.isPending} leftSection={<Icons.NavAgentUpdates size={16} aria-hidden />}>
-            Scan for updates
+            Scan Windows updates
           </Button>
           <Button variant="default" onClick={() => void openInstall()} loading={loadingInstall || install.isPending} leftSection={<Icons.Download size={16} aria-hidden />}>
-            Install updates
-          </Button>
-          <Button variant="default" onClick={() => setRestartOpen(true)} loading={reboot.isPending} leftSection={<Icons.Restart size={16} aria-hidden />}>
-            Restart
+            Install Windows updates
           </Button>
         </>
+      )}
+      {canRestart && (
+        <Button variant="default" onClick={() => setRestartOpen(true)} loading={reboot.isPending} leftSection={<Icons.Restart size={16} aria-hidden />}>
+          Restart
+        </Button>
       )}
       {canWake && (
         <Tooltip label="Another online computer on the same network sends a Wake-on-LAN packet">
@@ -106,7 +112,7 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
       {canDevices && d.status === "active" && (
         <Tooltip label={d.online ? "Ask the device to send its hardware, software and user information now" : "The device is offline"}>
           <Button variant="default" onClick={() => refreshDevice.mutate()} loading={refreshDevice.isPending} disabled={!d.online} leftSection={<Icons.NavAgentUpdates size={16} aria-hidden />}>
-            Refresh
+            Refresh inventory
           </Button>
         </Tooltip>
       )}

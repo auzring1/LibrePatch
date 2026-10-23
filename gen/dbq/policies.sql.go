@@ -12,6 +12,19 @@ import (
 	"github.com/google/uuid"
 )
 
+const autoPolicyAttemptStats = `-- name: AutoPolicyAttemptStats :one
+SELECT COALESCE(sum(c.devices), 0)::bigint AS devices FROM (
+    SELECT count(*) AS devices FROM policy_attempts a JOIN software_policies p ON p.id = a.policy_id WHERE p.auto_policy_id = $1 GROUP BY a.policy_id
+) c
+`
+
+func (q *Queries) AutoPolicyAttemptStats(ctx context.Context, autoPolicyID *uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, autoPolicyAttemptStats, autoPolicyID)
+	var devices int64
+	err := row.Scan(&devices)
+	return devices, err
+}
+
 const complianceReport = `-- name: ComplianceReport :many
 
 SELECT d.id, d.hostname, d.site_id, d.os_caption, d.os_build, d.online, d.last_seen_at, d.wu_scanned_at, d.agent_version,
@@ -85,6 +98,55 @@ func (q *Queries) ComplianceReport(ctx context.Context, orgID uuid.UUID) ([]Comp
 	return items, nil
 }
 
+const countAllAppsPolicies = `-- name: CountAllAppsPolicies :one
+SELECT count(*) FROM software_auto_policies a WHERE a.org_id = $1
+`
+
+func (q *Queries) CountAllAppsPolicies(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countAllAppsPolicies, orgID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countHandPolicies = `-- name: CountHandPolicies :one
+SELECT count(*) FROM software_policies p WHERE p.org_id = $1 AND p.auto_policy_id IS NULL
+`
+
+// One-app software policies somebody made (not the ones an all-apps policy added).
+func (q *Queries) CountHandPolicies(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countHandPolicies, orgID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const deleteAutoChild = `-- name: DeleteAutoChild :exec
+DELETE FROM software_policies WHERE id = $1 AND auto_policy_id IS NOT NULL
+`
+
+func (q *Queries) DeleteAutoChild(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteAutoChild, id)
+	return err
+}
+
+const deleteAutoPolicy = `-- name: DeleteAutoPolicy :execrows
+DELETE FROM software_auto_policies WHERE id = $1 AND org_id = $2
+`
+
+type DeleteAutoPolicyParams struct {
+	ID    uuid.UUID
+	OrgID uuid.UUID
+}
+
+func (q *Queries) DeleteAutoPolicy(ctx context.Context, arg DeleteAutoPolicyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAutoPolicy, arg.ID, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteSoftwareApproval = `-- name: DeleteSoftwareApproval :execrows
 DELETE FROM software_approvals WHERE org_id = $1 AND package_id = $2 AND version = $3
 `
@@ -104,7 +166,7 @@ func (q *Queries) DeleteSoftwareApproval(ctx context.Context, arg DeleteSoftware
 }
 
 const deleteSoftwarePolicy = `-- name: DeleteSoftwarePolicy :execrows
-DELETE FROM software_policies WHERE id = $1 AND org_id = $2
+DELETE FROM software_policies WHERE id = $1 AND org_id = $2 AND auto_policy_id IS NULL
 `
 
 type DeleteSoftwarePolicyParams struct {
@@ -118,6 +180,40 @@ func (q *Queries) DeleteSoftwarePolicy(ctx context.Context, arg DeleteSoftwarePo
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getAutoPolicy = `-- name: GetAutoPolicy :one
+SELECT id, org_id, name, group_ids, delay_days, maint_window, enabled, use_rings, require_approval, prompts, filter, created_by, created_at, updated_at, last_check_at, last_state, last_detail FROM software_auto_policies WHERE id = $1 AND org_id = $2
+`
+
+type GetAutoPolicyParams struct {
+	ID    uuid.UUID
+	OrgID uuid.UUID
+}
+
+func (q *Queries) GetAutoPolicy(ctx context.Context, arg GetAutoPolicyParams) (SoftwareAutoPolicy, error) {
+	row := q.db.QueryRow(ctx, getAutoPolicy, arg.ID, arg.OrgID)
+	var i SoftwareAutoPolicy
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.GroupIds,
+		&i.DelayDays,
+		&i.MaintWindow,
+		&i.Enabled,
+		&i.UseRings,
+		&i.RequireApproval,
+		&i.Prompts,
+		&i.Filter,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastCheckAt,
+		&i.LastState,
+		&i.LastDetail,
+	)
+	return i, err
 }
 
 const getSoftwareApproval = `-- name: GetSoftwareApproval :one
@@ -188,7 +284,7 @@ func (q *Queries) GetSoftwareHold(ctx context.Context, arg GetSoftwareHoldParams
 }
 
 const getSoftwarePolicy = `-- name: GetSoftwarePolicy :one
-SELECT id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, created_at, updated_at, use_rings, require_approval, prompts FROM software_policies WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, created_at, updated_at, use_rings, require_approval, prompts, last_check_at, last_state, last_detail, last_run_at, last_deployment_id, auto_policy_id FROM software_policies WHERE id = $1 AND org_id = $2
 `
 
 type GetSoftwarePolicyParams struct {
@@ -217,8 +313,108 @@ func (q *Queries) GetSoftwarePolicy(ctx context.Context, arg GetSoftwarePolicyPa
 		&i.UseRings,
 		&i.RequireApproval,
 		&i.Prompts,
+		&i.LastCheckAt,
+		&i.LastState,
+		&i.LastDetail,
+		&i.LastRunAt,
+		&i.LastDeploymentID,
+		&i.AutoPolicyID,
 	)
 	return i, err
+}
+
+const hasEnabledAllAppsPolicy = `-- name: HasEnabledAllAppsPolicy :one
+SELECT EXISTS (SELECT 1 FROM software_auto_policies WHERE org_id = $1 AND enabled) AS present
+`
+
+func (q *Queries) HasEnabledAllAppsPolicy(ctx context.Context, orgID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, hasEnabledAllAppsPolicy, orgID)
+	var present bool
+	err := row.Scan(&present)
+	return present, err
+}
+
+const insertAutoChild = `-- name: InsertAutoChild :exec
+INSERT INTO software_policies (id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled,
+    created_by, use_rings, require_approval, prompts, auto_policy_id)
+VALUES ($1, $2, $3, 'keep_updated', $4, $5, $6, false, $7, $8, $9, $10, $11, $12, $13, $14)
+`
+
+type InsertAutoChildParams struct {
+	ID                  uuid.UUID
+	OrgID               uuid.UUID
+	Name                string
+	PackageID           uuid.UUID
+	GroupIds            []uuid.UUID
+	DelayDays           int32
+	UnverifiedConfirmed bool
+	MaintWindow         []byte
+	Enabled             bool
+	CreatedBy           *uuid.UUID
+	UseRings            bool
+	RequireApproval     bool
+	Prompts             []byte
+	AutoPolicyID        *uuid.UUID
+}
+
+func (q *Queries) InsertAutoChild(ctx context.Context, arg InsertAutoChildParams) error {
+	_, err := q.db.Exec(ctx, insertAutoChild,
+		arg.ID,
+		arg.OrgID,
+		arg.Name,
+		arg.PackageID,
+		arg.GroupIds,
+		arg.DelayDays,
+		arg.UnverifiedConfirmed,
+		arg.MaintWindow,
+		arg.Enabled,
+		arg.CreatedBy,
+		arg.UseRings,
+		arg.RequireApproval,
+		arg.Prompts,
+		arg.AutoPolicyID,
+	)
+	return err
+}
+
+const insertAutoPolicy = `-- name: InsertAutoPolicy :exec
+
+INSERT INTO software_auto_policies (id, org_id, name, group_ids, delay_days, maint_window, enabled, use_rings, require_approval, prompts, filter, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+`
+
+type InsertAutoPolicyParams struct {
+	ID              uuid.UUID
+	OrgID           uuid.UUID
+	Name            string
+	GroupIds        []uuid.UUID
+	DelayDays       int32
+	MaintWindow     []byte
+	Enabled         bool
+	UseRings        bool
+	RequireApproval bool
+	Prompts         []byte
+	Filter          []byte
+	CreatedBy       *uuid.UUID
+}
+
+// ---- all-apps policies (D132) ----
+func (q *Queries) InsertAutoPolicy(ctx context.Context, arg InsertAutoPolicyParams) error {
+	_, err := q.db.Exec(ctx, insertAutoPolicy,
+		arg.ID,
+		arg.OrgID,
+		arg.Name,
+		arg.GroupIds,
+		arg.DelayDays,
+		arg.MaintWindow,
+		arg.Enabled,
+		arg.UseRings,
+		arg.RequireApproval,
+		arg.Prompts,
+		arg.Filter,
+		arg.CreatedBy,
+	)
+	return err
 }
 
 const insertSoftwareHold = `-- name: InsertSoftwareHold :execrows
@@ -293,6 +489,157 @@ func (q *Queries) InsertSoftwarePolicy(ctx context.Context, arg InsertSoftwarePo
 		arg.Prompts,
 	)
 	return err
+}
+
+const listAutoChildren = `-- name: ListAutoChildren :many
+SELECT p.id, p.org_id, p.name, p.kind, p.package_id, p.group_ids, p.delay_days, p.only_new_devices, p.unverified_confirmed, p.maint_window, p.enabled, p.created_by, p.created_at, p.updated_at, p.use_rings, p.require_approval, p.prompts, p.last_check_at, p.last_state, p.last_detail, p.last_run_at, p.last_deployment_id, p.auto_policy_id, k.name AS package_name, k.identifier AS package_identifier, k.verified AS package_verified, k.source AS package_source
+FROM software_policies p JOIN catalog_packages k ON k.id = p.package_id
+WHERE p.auto_policy_id = $1 ORDER BY lower(k.name)
+`
+
+type ListAutoChildrenRow struct {
+	ID                  uuid.UUID
+	OrgID               uuid.UUID
+	Name                string
+	Kind                string
+	PackageID           uuid.UUID
+	GroupIds            []uuid.UUID
+	DelayDays           int32
+	OnlyNewDevices      bool
+	UnverifiedConfirmed bool
+	MaintWindow         []byte
+	Enabled             bool
+	CreatedBy           *uuid.UUID
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	UseRings            bool
+	RequireApproval     bool
+	Prompts             []byte
+	LastCheckAt         *time.Time
+	LastState           string
+	LastDetail          string
+	LastRunAt           *time.Time
+	LastDeploymentID    *uuid.UUID
+	AutoPolicyID        *uuid.UUID
+	PackageName         string
+	PackageIdentifier   string
+	PackageVerified     bool
+	PackageSource       string
+}
+
+func (q *Queries) ListAutoChildren(ctx context.Context, autoPolicyID *uuid.UUID) ([]ListAutoChildrenRow, error) {
+	rows, err := q.db.Query(ctx, listAutoChildren, autoPolicyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAutoChildrenRow{}
+	for rows.Next() {
+		var i ListAutoChildrenRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.Kind,
+			&i.PackageID,
+			&i.GroupIds,
+			&i.DelayDays,
+			&i.OnlyNewDevices,
+			&i.UnverifiedConfirmed,
+			&i.MaintWindow,
+			&i.Enabled,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.UseRings,
+			&i.RequireApproval,
+			&i.Prompts,
+			&i.LastCheckAt,
+			&i.LastState,
+			&i.LastDetail,
+			&i.LastRunAt,
+			&i.LastDeploymentID,
+			&i.AutoPolicyID,
+			&i.PackageName,
+			&i.PackageIdentifier,
+			&i.PackageVerified,
+			&i.PackageSource,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAutoPolicies = `-- name: ListAutoPolicies :many
+SELECT id, org_id, name, group_ids, delay_days, maint_window, enabled, use_rings, require_approval, prompts, filter, created_by, created_at, updated_at, last_check_at, last_state, last_detail FROM software_auto_policies WHERE org_id = $1 ORDER BY lower(name)
+`
+
+func (q *Queries) ListAutoPolicies(ctx context.Context, orgID uuid.UUID) ([]SoftwareAutoPolicy, error) {
+	rows, err := q.db.Query(ctx, listAutoPolicies, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SoftwareAutoPolicy{}
+	for rows.Next() {
+		var i SoftwareAutoPolicy
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.GroupIds,
+			&i.DelayDays,
+			&i.MaintWindow,
+			&i.Enabled,
+			&i.UseRings,
+			&i.RequireApproval,
+			&i.Prompts,
+			&i.Filter,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastCheckAt,
+			&i.LastState,
+			&i.LastDetail,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAutomatedPackages = `-- name: ListAutomatedPackages :many
+SELECT DISTINCT package_id FROM software_policies WHERE org_id = $1 AND enabled AND kind = 'keep_updated'
+`
+
+// The packages an enabled policy keeps up to date (a policy made by hand, or an app of an all-apps policy).
+func (q *Queries) ListAutomatedPackages(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listAutomatedPackages, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var package_id uuid.UUID
+		if err := rows.Scan(&package_id); err != nil {
+			return nil, err
+		}
+		items = append(items, package_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listDeviceEnrollTimes = `-- name: ListDeviceEnrollTimes :many
@@ -388,8 +735,50 @@ func (q *Queries) ListDevicesWithPackage(ctx context.Context, arg ListDevicesWit
 	return items, nil
 }
 
+const listEnabledAutoPolicies = `-- name: ListEnabledAutoPolicies :many
+SELECT id, org_id, name, group_ids, delay_days, maint_window, enabled, use_rings, require_approval, prompts, filter, created_by, created_at, updated_at, last_check_at, last_state, last_detail FROM software_auto_policies WHERE enabled ORDER BY created_at, id
+`
+
+func (q *Queries) ListEnabledAutoPolicies(ctx context.Context) ([]SoftwareAutoPolicy, error) {
+	rows, err := q.db.Query(ctx, listEnabledAutoPolicies)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SoftwareAutoPolicy{}
+	for rows.Next() {
+		var i SoftwareAutoPolicy
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.GroupIds,
+			&i.DelayDays,
+			&i.MaintWindow,
+			&i.Enabled,
+			&i.UseRings,
+			&i.RequireApproval,
+			&i.Prompts,
+			&i.Filter,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastCheckAt,
+			&i.LastState,
+			&i.LastDetail,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEnabledSoftwarePolicies = `-- name: ListEnabledSoftwarePolicies :many
-SELECT id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, created_at, updated_at, use_rings, require_approval, prompts FROM software_policies WHERE enabled ORDER BY created_at, id
+SELECT id, org_id, name, kind, package_id, group_ids, delay_days, only_new_devices, unverified_confirmed, maint_window, enabled, created_by, created_at, updated_at, use_rings, require_approval, prompts, last_check_at, last_state, last_detail, last_run_at, last_deployment_id, auto_policy_id FROM software_policies WHERE enabled ORDER BY created_at, id
 `
 
 func (q *Queries) ListEnabledSoftwarePolicies(ctx context.Context) ([]SoftwarePolicy, error) {
@@ -419,6 +808,12 @@ func (q *Queries) ListEnabledSoftwarePolicies(ctx context.Context) ([]SoftwarePo
 			&i.UseRings,
 			&i.RequireApproval,
 			&i.Prompts,
+			&i.LastCheckAt,
+			&i.LastState,
+			&i.LastDetail,
+			&i.LastRunAt,
+			&i.LastDeploymentID,
+			&i.AutoPolicyID,
 		); err != nil {
 			return nil, err
 		}
@@ -681,9 +1076,9 @@ func (q *Queries) ListSoftwareHoldsForVersion(ctx context.Context, arg ListSoftw
 }
 
 const listSoftwarePolicies = `-- name: ListSoftwarePolicies :many
-SELECT p.id, p.org_id, p.name, p.kind, p.package_id, p.group_ids, p.delay_days, p.only_new_devices, p.unverified_confirmed, p.maint_window, p.enabled, p.created_by, p.created_at, p.updated_at, p.use_rings, p.require_approval, p.prompts, k.name AS package_name, k.identifier AS package_identifier
+SELECT p.id, p.org_id, p.name, p.kind, p.package_id, p.group_ids, p.delay_days, p.only_new_devices, p.unverified_confirmed, p.maint_window, p.enabled, p.created_by, p.created_at, p.updated_at, p.use_rings, p.require_approval, p.prompts, p.last_check_at, p.last_state, p.last_detail, p.last_run_at, p.last_deployment_id, p.auto_policy_id, k.name AS package_name, k.identifier AS package_identifier
 FROM software_policies p JOIN catalog_packages k ON k.id = p.package_id
-WHERE p.org_id = $1 ORDER BY lower(p.name)
+WHERE p.org_id = $1 AND p.auto_policy_id IS NULL ORDER BY lower(p.name)
 `
 
 type ListSoftwarePoliciesRow struct {
@@ -704,6 +1099,12 @@ type ListSoftwarePoliciesRow struct {
 	UseRings            bool
 	RequireApproval     bool
 	Prompts             []byte
+	LastCheckAt         *time.Time
+	LastState           string
+	LastDetail          string
+	LastRunAt           *time.Time
+	LastDeploymentID    *uuid.UUID
+	AutoPolicyID        *uuid.UUID
 	PackageName         string
 	PackageIdentifier   string
 }
@@ -735,6 +1136,12 @@ func (q *Queries) ListSoftwarePolicies(ctx context.Context, orgID uuid.UUID) ([]
 			&i.UseRings,
 			&i.RequireApproval,
 			&i.Prompts,
+			&i.LastCheckAt,
+			&i.LastState,
+			&i.LastDetail,
+			&i.LastRunAt,
+			&i.LastDeploymentID,
+			&i.AutoPolicyID,
 			&i.PackageName,
 			&i.PackageIdentifier,
 		); err != nil {
@@ -746,6 +1153,49 @@ func (q *Queries) ListSoftwarePolicies(ctx context.Context, orgID uuid.UUID) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const packageHasManualPolicy = `-- name: PackageHasManualPolicy :one
+SELECT EXISTS (
+    SELECT 1 FROM software_policies
+    WHERE org_id = $1 AND package_id = $2 AND enabled AND kind = 'keep_updated' AND auto_policy_id IS NULL
+) AS owned
+`
+
+type PackageHasManualPolicyParams struct {
+	OrgID     uuid.UUID
+	PackageID uuid.UUID
+}
+
+// A policy somebody made by hand for the package. When one appears, the all-apps policy gives the package up.
+func (q *Queries) PackageHasManualPolicy(ctx context.Context, arg PackageHasManualPolicyParams) (bool, error) {
+	row := q.db.QueryRow(ctx, packageHasManualPolicy, arg.OrgID, arg.PackageID)
+	var owned bool
+	err := row.Scan(&owned)
+	return owned, err
+}
+
+const packageHasOtherPolicy = `-- name: PackageHasOtherPolicy :one
+SELECT EXISTS (
+    SELECT 1 FROM software_policies
+    WHERE org_id = $1 AND package_id = $2 AND enabled AND kind = 'keep_updated'
+      AND (auto_policy_id IS NULL OR auto_policy_id IS DISTINCT FROM $3)
+) AS owned
+`
+
+type PackageHasOtherPolicyParams struct {
+	OrgID        uuid.UUID
+	PackageID    uuid.UUID
+	AutoPolicyID *uuid.UUID
+}
+
+// A package that another enabled policy already handles (a policy made by hand for that package, or a child of another
+// all-apps policy) is left to that policy, so one device is not deployed to twice.
+func (q *Queries) PackageHasOtherPolicy(ctx context.Context, arg PackageHasOtherPolicyParams) (bool, error) {
+	row := q.db.QueryRow(ctx, packageHasOtherPolicy, arg.OrgID, arg.PackageID, arg.AutoPolicyID)
+	var owned bool
+	err := row.Scan(&owned)
+	return owned, err
 }
 
 const policyAttemptStats = `-- name: PolicyAttemptStats :one
@@ -807,6 +1257,40 @@ func (q *Queries) PolicyJobStates(ctx context.Context, dollar_1 []uuid.UUID) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const propagateAutoPolicy = `-- name: PropagateAutoPolicy :exec
+UPDATE software_policies SET group_ids = $2, delay_days = $3, maint_window = $4, enabled = $5, use_rings = $6, require_approval = $7,
+    prompts = $8, unverified_confirmed = $9, updated_at = now()
+WHERE id = $1 AND auto_policy_id IS NOT NULL
+`
+
+type PropagateAutoPolicyParams struct {
+	ID                  uuid.UUID
+	GroupIds            []uuid.UUID
+	DelayDays           int32
+	MaintWindow         []byte
+	Enabled             bool
+	UseRings            bool
+	RequireApproval     bool
+	Prompts             []byte
+	UnverifiedConfirmed bool
+}
+
+// The all-apps policy's settings are the settings of each of its children (the prompts differ per app, so one at a time).
+func (q *Queries) PropagateAutoPolicy(ctx context.Context, arg PropagateAutoPolicyParams) error {
+	_, err := q.db.Exec(ctx, propagateAutoPolicy,
+		arg.ID,
+		arg.GroupIds,
+		arg.DelayDays,
+		arg.MaintWindow,
+		arg.Enabled,
+		arg.UseRings,
+		arg.RequireApproval,
+		arg.Prompts,
+		arg.UnverifiedConfirmed,
+	)
+	return err
 }
 
 const releaseSoftwareHold = `-- name: ReleaseSoftwareHold :execrows
@@ -897,10 +1381,102 @@ func (q *Queries) ReportJobCounts(ctx context.Context, arg ReportJobCountsParams
 	return items, nil
 }
 
+const setAutoPolicyStatus = `-- name: SetAutoPolicyStatus :exec
+UPDATE software_auto_policies SET last_check_at = $1, last_state = $2, last_detail = $3 WHERE id = $4
+`
+
+type SetAutoPolicyStatusParams struct {
+	CheckedAt *time.Time
+	State     string
+	Detail    string
+	ID        uuid.UUID
+}
+
+func (q *Queries) SetAutoPolicyStatus(ctx context.Context, arg SetAutoPolicyStatusParams) error {
+	_, err := q.db.Exec(ctx, setAutoPolicyStatus,
+		arg.CheckedAt,
+		arg.State,
+		arg.Detail,
+		arg.ID,
+	)
+	return err
+}
+
+const setPolicyStatus = `-- name: SetPolicyStatus :exec
+
+UPDATE software_policies SET last_check_at = $1,
+    last_state = $2, last_detail = $3,
+    last_run_at = COALESCE($4, last_run_at), last_deployment_id = COALESCE($5, last_deployment_id)
+WHERE id = $6
+`
+
+type SetPolicyStatusParams struct {
+	CheckedAt    *time.Time
+	State        string
+	Detail       string
+	RunAt        *time.Time
+	DeploymentID *uuid.UUID
+	ID           uuid.UUID
+}
+
+// ---- what the last check found (D132) ----
+// What the last check found. A deployment created by the check also sets the time and id of the last run.
+func (q *Queries) SetPolicyStatus(ctx context.Context, arg SetPolicyStatusParams) error {
+	_, err := q.db.Exec(ctx, setPolicyStatus,
+		arg.CheckedAt,
+		arg.State,
+		arg.Detail,
+		arg.RunAt,
+		arg.DeploymentID,
+		arg.ID,
+	)
+	return err
+}
+
+const updateAutoPolicy = `-- name: UpdateAutoPolicy :execrows
+UPDATE software_auto_policies SET name = $3, group_ids = $4, delay_days = $5, maint_window = $6, enabled = $7, use_rings = $8,
+    require_approval = $9, prompts = $10, filter = $11, updated_at = now()
+WHERE id = $1 AND org_id = $2
+`
+
+type UpdateAutoPolicyParams struct {
+	ID              uuid.UUID
+	OrgID           uuid.UUID
+	Name            string
+	GroupIds        []uuid.UUID
+	DelayDays       int32
+	MaintWindow     []byte
+	Enabled         bool
+	UseRings        bool
+	RequireApproval bool
+	Prompts         []byte
+	Filter          []byte
+}
+
+func (q *Queries) UpdateAutoPolicy(ctx context.Context, arg UpdateAutoPolicyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateAutoPolicy,
+		arg.ID,
+		arg.OrgID,
+		arg.Name,
+		arg.GroupIds,
+		arg.DelayDays,
+		arg.MaintWindow,
+		arg.Enabled,
+		arg.UseRings,
+		arg.RequireApproval,
+		arg.Prompts,
+		arg.Filter,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateSoftwarePolicy = `-- name: UpdateSoftwarePolicy :execrows
 UPDATE software_policies SET name = $3, kind = $4, package_id = $5, group_ids = $6, delay_days = $7, only_new_devices = $8,
     unverified_confirmed = $9, maint_window = $10, enabled = $11, use_rings = $12, require_approval = $13, prompts = $14, updated_at = now()
-WHERE id = $1 AND org_id = $2
+WHERE id = $1 AND org_id = $2 AND auto_policy_id IS NULL
 `
 
 type UpdateSoftwarePolicyParams struct {

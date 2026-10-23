@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { WIDGET_IDS } from "./layout";
 import { moveWidget, resolveLayout, setWidgetHidden } from "./layout";
 import { historySummary, humanAction, missingUpdateLink, niceMax, normaliseHistory } from "./format";
+import { startSteps, startVisible } from "./start";
+import { availableWidgets, tileList } from "./widgets";
 
 const ALL = ["a", "b", "c", "d"];
 
@@ -74,5 +76,58 @@ describe("format helpers", () => {
   });
   it("picks a nice axis maximum", () => {
     expect([0, 1, 3, 7, 12, 99, 101].map(niceMax)).toEqual([1, 1, 5, 10, 20, 100, 200]);
+  });
+});
+
+describe("apps out of date", () => {
+  const base = { software: { apps: 3, devices: 5, vendor: 1, automated: 1, all_apps_policy: false, top: [] } };
+  it("adds a tile and a widget when the server sends the numbers", () => {
+    const tiles = tileList(base as never);
+    expect(tiles.map((t) => t.key)).toContain("apps");
+    expect(tiles.find((t) => t.key === "apps")).toMatchObject({ value: 3, to: "/software-updates", hint: "on 5 devices", kind: "warning" });
+    expect(availableWidgets(base as never)).toContain("apps");
+  });
+  it("is quiet when every app is current, and absent when the caller may not see it", () => {
+    const none = tileList({ software: { apps: 0, devices: 0, vendor: 0, automated: 0, all_apps_policy: false, top: [] } } as never).find((t) => t.key === "apps");
+    expect(none).toMatchObject({ value: 0, hint: "every app is current" });
+    expect(none?.kind).toBeUndefined();
+    expect(tileList({} as never).some((t) => t.key === "apps")).toBe(false);
+    expect(availableWidgets({} as never)).not.toContain("apps");
+  });
+  it("sits right after the key numbers by default", () => {
+    expect(WIDGET_IDS.indexOf("apps")).toBe(WIDGET_IDS.indexOf("tiles") + 1);
+    expect(WIDGET_IDS[0]).toBe("start");
+  });
+});
+
+describe("getting started", () => {
+  const all = () => true;
+  const fresh = { devices: { total: 0, pending: 0, online: 0, offline: 0 }, setup: { policies: 0, deployments: 0 } };
+  it("lists the steps a person can take and which are done", () => {
+    const steps = startSteps(fresh as never, all);
+    expect(steps.map((s) => s.id)).toEqual(["device", "policy", "deploy"]);
+    expect(steps.every((s) => !s.done)).toBe(true);
+    const later = startSteps({ ...fresh, devices: { ...fresh.devices, total: 3 }, setup: { policies: 1, deployments: 0 } } as never, all);
+    expect(later.map((s) => s.done)).toEqual([true, true, false]);
+  });
+  it("counts a device waiting for approval as the first step done", () => {
+    expect(startSteps({ ...fresh, devices: { ...fresh.devices, pending: 1 } } as never, all)[0]!.done).toBe(true);
+  });
+  it("offers only what the person may do and the numbers can tell", () => {
+    expect(startSteps(fresh as never, (p) => p === "policies:write").map((s) => s.id)).toEqual(["policy"]);
+    expect(startSteps({ devices: fresh.devices } as never, all).map((s) => s.id)).toEqual(["device"]);
+    expect(startSteps({} as never, all)).toEqual([]);
+  });
+  it("is shown until every step is done or it is put away", () => {
+    const steps = startSteps(fresh as never, all);
+    expect(startVisible(steps, false)).toBe(true);
+    expect(startVisible(steps, true)).toBe(false);
+    expect(startVisible(steps.map((s) => ({ ...s, done: true })), false)).toBe(false);
+    expect(startVisible([], false)).toBe(false);
+  });
+  it("is an available dashboard widget only while it is visible", () => {
+    expect(availableWidgets(fresh as never, { canOrg: all, dismissed: false })).toContain("start");
+    expect(availableWidgets(fresh as never, { canOrg: all, dismissed: true })).not.toContain("start");
+    expect(availableWidgets(fresh as never)).not.toContain("start");
   });
 });

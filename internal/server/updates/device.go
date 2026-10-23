@@ -44,6 +44,9 @@ func (s *Service) enqueue(ctx context.Context, a Actor, d dbq.Device, spec deplo
 // enqueueOnce is enqueue; with once set, a request of the same kind that has not finished yet is returned instead of
 // a second one (a double click on Restart must restart the computer once). The click is still audited.
 func (s *Service) enqueueOnce(ctx context.Context, a Actor, d dbq.Device, spec deploy.JobSpec, action string, details map[string]any, attempts []uuid.UUID, once bool) (uuid.UUID, error) {
+	if strings.HasPrefix(spec.DBType, "wu_") && !s.On(ctx, a.Org) {
+		return uuid.Nil, ErrDisabled
+	}
 	job, err := s.Deploy.NewJob(a.Org, d.ID, spec)
 	if err != nil {
 		return uuid.Nil, err
@@ -244,6 +247,9 @@ func (s *Service) RebootDevice(ctx context.Context, a Actor, device uuid.UUID, m
 // InstallUpdate installs one update on the chosen devices (or on every active device that misses
 // it when deviceIDs is empty). An explicit administrator action; one install job per device.
 func (s *Service) InstallUpdate(ctx context.Context, a Actor, update uuid.UUID, deviceIDs []uuid.UUID, reboot RebootCfg) (int, error) {
+	if !s.On(ctx, a.Org) {
+		return 0, ErrDisabled
+	}
 	if err := reboot.normalize(); err != nil {
 		return 0, err
 	}

@@ -2,10 +2,14 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ago } from "../../api/format";
 import type { Dashboard } from "../../api/client";
+import { Button } from "@mantine/core";
 import { Card, Donut, Icons, SeverityBadge, StatGrid, StatTile, StatusPill, type PillKind } from "../../ui";
+import { describeAudit } from "../auditText";
+import { complianceSummary } from "../compliance";
 import { ComplianceChart } from "./ComplianceChart";
-import { REASON_TEXT, type Reason, historySummary, humanAction, kbLabel, missingUpdateLink, normaliseHistory, positiveKind } from "./format";
+import { REASON_TEXT, type Reason, historySummary, kbLabel, missingUpdateLink, normaliseHistory, positiveKind } from "./format";
 import type { WidgetId } from "./layout";
+import { startSteps, startVisible } from "./start";
 
 type Props = { d: Dashboard };
 
@@ -19,6 +23,18 @@ export function tileList(d: Dashboard) {
     tiles.push({ key: "online", label: "Online devices", value: dev.online ?? 0, kind: "success", hint: `of ${dev.total ?? 0} devices`, to: "/devices?state=online", icon: <Icons.Online size={ICON} aria-hidden="true" /> });
     tiles.push({ key: "offline", label: "Offline devices", value: dev.offline ?? 0, to: "/devices?state=offline", icon: <Icons.Offline size={ICON} aria-hidden="true" /> });
     if ((dev.pending ?? 0) > 0) tiles.push({ key: "pending", label: "Waiting for approval", value: dev.pending ?? 0, kind: "warning", hint: "New devices to review", to: "/devices?status=pending", icon: <Icons.Clock size={ICON} aria-hidden="true" /> });
+  }
+  if (d.software) {
+    const s = d.software;
+    tiles.push({
+      key: "apps",
+      label: "Apps out of date",
+      value: s.apps,
+      kind: positiveKind(s.apps, "warning"),
+      hint: s.apps === 0 ? "every app is current" : `on ${s.devices} ${s.devices === 1 ? "device" : "devices"}`,
+      to: "/software-updates",
+      icon: <Icons.NavSoftwareUpdates size={ICON} aria-hidden="true" />,
+    });
   }
   if (d.needs_restart != null) tiles.push({ key: "restart", label: "Devices needing restart", value: d.needs_restart, kind: positiveKind(d.needs_restart, "warning"), to: "/devices?restart=1", icon: <Icons.Restart size={ICON} aria-hidden="true" /> });
   if (d.missing_critical_devices != null) tiles.push({ key: "critical", label: "Devices missing critical updates", value: d.missing_critical_devices, kind: positiveKind(d.missing_critical_devices, "danger"), to: "/updates?severity=Critical&missing=1", icon: <Icons.Critical size={ICON} aria-hidden="true" /> });
@@ -37,6 +53,94 @@ export function TilesWidget({ d }: Props) {
   );
 }
 
+/** The first steps, as a checklist; each one links to where it is done. */
+export function StartWidget({ d, canOrg, onDismiss }: Props & { canOrg: (perm: string) => boolean; onDismiss: () => void }) {
+  const steps = startSteps(d, canOrg);
+  const left = steps.filter((s) => !s.done).length;
+  return (
+    <Card
+      title="Getting started"
+      description={left === 1 ? "One step left" : `${left} steps left`}
+      footer={
+        <Button variant="default" size="compact-sm" onClick={onDismiss}>
+          Hide this
+        </Button>
+      }
+    >
+      <ol className="lp-dash-steps" aria-label="Getting started steps">
+        {steps.map((s) => (
+          <li key={s.id} data-done={s.done ? "true" : "false"}>
+            <span className="lp-dash-steps__mark" aria-hidden="true">
+              {s.done ? <Icons.Success size={20} /> : <Icons.Unknown size={20} />}
+            </span>
+            <span className="lp-dash-steps__body">
+              <span className="lp-dash-steps__title">
+                {s.title}
+                {s.done && <span className="lp-visually-hidden"> (done)</span>}
+              </span>
+              <span className="lp-dash-row__meta">{s.text}</span>
+            </span>
+            {!s.done && (
+              <Button component={Link} to={s.to} variant="default" size="compact-md">
+                {s.cta}
+              </Button>
+            )}
+          </li>
+        ))}
+      </ol>
+    </Card>
+  );
+}
+
+export function AppsWidget({ d }: Props) {
+  const s = d.software;
+  if (!s) return null;
+  const rows = s.top ?? [];
+  const manual = s.apps - s.automated;
+  return (
+    <Card
+      title="Apps out of date"
+      description={s.apps === 0 ? "Installed apps with a newer version available" : `${s.apps} ${s.apps === 1 ? "app" : "apps"} on ${s.devices} ${s.devices === 1 ? "device" : "devices"}${s.vendor > 0 ? `; ${s.vendor} left to their own updater` : ""}`}
+      flush
+      footer={<Link to="/software-updates" className="lp-dash-foot">Open Software updates</Link>}
+    >
+      {rows.length === 0 ? (
+        <p className="lp-dash-empty">Every app is up to date{s.vendor > 0 ? `, apart from ${s.vendor} that update${s.vendor === 1 ? "s" : ""} itself` : ""}.</p>
+      ) : (
+        <>
+          <ul className="lp-dash-list">
+            {rows.map((a) => (
+              <li key={a.package_id ?? a.name}>
+                <Link className="lp-dash-row" to="/software-updates">
+                  <span className="lp-dash-row__main">
+                    <span className="lp-dash-row__title">{a.name}</span>
+                    <span className="lp-dash-row__meta">newest: {a.latest_version}</span>
+                  </span>
+                  <span className="lp-dash-row__side">
+                    {a.automated ? (
+                      <StatusPill kind="success" size="sm">
+                        Kept updated
+                      </StatusPill>
+                    ) : null}
+                    <span className="lp-dash-count">
+                      {a.devices} {a.devices === 1 ? "device" : "devices"}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {manual > 0 && (
+            <p className="lp-dash-empty">
+              {manual} {manual === 1 ? "app is" : "apps are"} not kept updated by a policy. <Link to="/software-updates">{s.all_apps_policy ? "See why" : "Automate them"}</Link>
+            </p>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 export function ComplianceWidget({ d }: Props) {
   const c = d.compliance;
   if (!c) return null;
@@ -47,6 +151,7 @@ export function ComplianceWidget({ d }: Props) {
     { label: "Not scanned", value: c.unknown ?? 0, token: "neutral", state: "unknown" },
   ];
   const total = slices.reduce((s, x) => s + x.value, 0);
+  const summary = complianceSummary(c);
   return (
     <Card title="Patch compliance over time" description="Devices per compliance state, one snapshot per day" footer={<Link to="/reports" className="lp-dash-foot">Open reports</Link>}>
       <div className="lp-dash-compliance">
@@ -63,7 +168,12 @@ export function ComplianceWidget({ d }: Props) {
           )}
         </div>
         <div>
-          <Donut label="Compliance now" center={total} sub="devices" size={120} slices={slices.map(({ label, value, token }) => ({ label, value, token }))} />
+          <Donut label="Compliance now" center={total} sub="devices" size={120} legend={false} slices={slices.map(({ label, value, token }) => ({ label, value, token }))} />
+          {total > 0 && summary.scanned === 0 && (
+            <p className="lp-dash-empty" style={{ padding: "var(--lp-space-2) 0 0", maxWidth: "18rem" }}>
+              No device has reported a Windows Update scan yet, so there is nothing to judge. Devices are scanned on a schedule; you can also scan one from its page.
+            </p>
+          )}
           <ul className="lp-dash-states" aria-label="Show devices by compliance">
             {slices.map((s) => (
               <li key={s.state}>
@@ -158,10 +268,8 @@ export function ActivityWidget({ d, now }: Props & { now?: number }) {
           <li key={a.id}>
             <div className="lp-dash-row">
               <span className="lp-dash-row__main">
-                <span className="lp-dash-row__title">{humanAction(a.action)}</span>
+                <span className="lp-dash-row__title">{describeAudit(a)}</span>
                 <span className="lp-dash-row__meta">
-                  {a.actor_name || a.actor_type}
-                  {" · "}
                   <time dateTime={a.ts}>{ago(a.ts, now)}</time>
                 </span>
               </span>
@@ -213,9 +321,11 @@ export function AgentsWidget({ d }: Props) {
 }
 
 /** Which widgets the data allows this person to see. A section the server left out (or an empty log) is not offered. */
-export function availableWidgets(d: Dashboard): WidgetId[] {
+export function availableWidgets(d: Dashboard, start?: { canOrg: (perm: string) => boolean; dismissed: boolean }): WidgetId[] {
   const out: WidgetId[] = [];
+  if (start && startVisible(startSteps(d, start.canOrg), start.dismissed)) out.push("start");
   if (tileList(d).length > 0) out.push("tiles");
+  if (d.software) out.push("apps");
   if (d.compliance) out.push("compliance", "top-missing");
   if (d.devices) out.push("attention", "agents");
   if ((d.activity ?? []).length > 0) out.push("activity");

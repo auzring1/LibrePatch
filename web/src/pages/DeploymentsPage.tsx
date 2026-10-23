@@ -156,7 +156,7 @@ export function DeploymentsPage() {
       {q.isLoading ? (
         <TileSkeleton count={4} />
       ) : items && items.length > 0 ? (
-        <StatGrid label="Deployment summary">
+        <StatGrid compact label="Deployment summary">
           <StatTile label="Running" value={active} kind="info" icon={<Icons.Play size={16} aria-hidden />} hint="Deployments in progress" />
           <StatTile label="Completed" value={completed} kind="neutral" icon={<Icons.Check size={16} aria-hidden />} hint="Deployments that finished" />
           <StatTile label="Jobs succeeded" value={succeeded} kind="success" icon={<Icons.Success size={16} aria-hidden />} hint="Across the deployments listed" />
