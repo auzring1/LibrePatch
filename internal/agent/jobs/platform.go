@@ -61,6 +61,9 @@ type RunSpec struct {
 	Args    []string
 	Dir     string
 	Timeout time.Duration
+	// OutDir is where the process output is captured while it runs; Dir when empty. A user-context run needs it: the user may
+	// read and execute in the staging directory but not write there (D145).
+	OutDir string
 	// LogPath, if set, is read after the run and its tail returned (e.g. msiexec /l*v).
 	LogPath string
 	// Helper carries what the user-context helper needs to re-verify the job

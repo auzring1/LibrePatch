@@ -278,3 +278,26 @@ func TestAppxNames(t *testing.T) {
 		}
 	}
 }
+
+// A profile whose folder was deleted is skipped without a warning, and nothing of it is kept; a profile that cannot be read
+// for another reason is still reported and keeps its old items.
+func TestScannerSkipsAProfileWhoseFolderIsGone(t *testing.T) {
+	p := newFakePlatform()
+	p.profiles = []Profile{{SID: sidAlice, Username: "alice", Path: `C:\Users\alice`}, {SID: sidBob, Username: "bob", Path: `C:\Users\bob`}}
+	p.hives[sidBob] = node()
+	p.hiveErr[sidAlice] = ErrProfileGone
+	scan, err := (&Scanner{P: p}).Collect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range scan.Failed {
+		if g.SID == sidAlice {
+			t.Fatalf("a deleted profile is not a failure: %+v", scan.Failed)
+		}
+	}
+	for _, w := range scan.Warnings {
+		if strings.Contains(w, sidAlice) {
+			t.Fatalf("and gives no warning: %v", scan.Warnings)
+		}
+	}
+}

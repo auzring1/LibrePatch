@@ -101,6 +101,9 @@ func (s *Scanner) Collect(ctx context.Context) (*Scan, error) {
 			return nil, ctx.Err()
 		}
 		hive, err := s.P.UserHive(p)
+		if errors.Is(err, ErrProfileGone) {
+			continue // the profile's folder was deleted: its software is gone too, and there is nothing to warn about
+		}
 		if err != nil {
 			// A profile that cannot be read this pass must keep its old items.
 			fail(Group{Scope: scopeUser, SID: p.SID}, err)

@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"crypto/x509"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -162,4 +163,37 @@ func TestHelperPathContainment(t *testing.T) {
 		}
 	}
 	_ = x509.Certificate{}
+}
+
+// The user may read and execute in the staging directory but not write there, so the helper captures the output and the
+// installer's log in a folder of its own and points the installer's log argument there (D145).
+func TestHelperKeepsTheOutputAndTheLogOutOfTheStagingDirectory(t *testing.T) {
+	r := newHelperRig(t, nil)
+	log := r.task.Dir + `\install.log`
+	r.task.LogPath = log
+	r.task.Args = []string{"/VERYSILENT", "/LOG=" + log, "/l*v", log}
+	if res := r.serve(t); res.Error != "" {
+		t.Fatalf("%+v", res)
+	}
+	got := r.ran[0]
+	if got.OutDir == "" || strings.Contains(got.OutDir, "ProgramData") {
+		t.Fatalf("output goes to the user's own folder: %q", got.OutDir)
+	}
+	if !strings.HasPrefix(got.LogPath, got.OutDir) || !strings.HasSuffix(got.LogPath, "install.log") {
+		t.Fatalf("the log moves with it: %q", got.LogPath)
+	}
+	for _, a := range got.Args {
+		if strings.Contains(a, "ProgramData") {
+			t.Fatalf("no argument still points into the staging directory: %q", got.Args)
+		}
+	}
+	if got.Args[1] != "/LOG="+got.LogPath || got.Args[3] != got.LogPath {
+		t.Fatalf("args: %q", got.Args)
+	}
+	if got.Dir != r.task.Dir {
+		t.Fatalf("the installer still starts from the staging directory: %q", got.Dir)
+	}
+	if _, err := os.Stat(got.OutDir); err == nil {
+		t.Fatal("the folder is removed afterwards")
+	}
 }
