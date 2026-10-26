@@ -58,18 +58,26 @@ type AutoFilter struct {
 	IncludeUnlisted bool `json:"include_unlisted"`
 	// Exclude lists apps to leave alone: package identifiers such as "Mozilla.Firefox" (not case-sensitive).
 	Exclude []string `json:"exclude"`
+	// IncludeSelfUpdating also keeps apps current that normally update themselves (Chrome, Edge, Zoom). When such an app is
+	// still out of date on a PC its own updater is not doing its job there (switched off, blocked, or never installed), so
+	// the policy installs the newest version itself (D148). On unless the policy says otherwise.
+	IncludeSelfUpdating bool `json:"include_self_updating"`
 }
 
 func parseFilter(raw []byte) AutoFilter {
-	f := AutoFilter{VerifiedOnly: true}
+	f := AutoFilter{VerifiedOnly: true, IncludeSelfUpdating: true}
 	var in struct {
-		VerifiedOnly    *bool    `json:"verified_only"`
-		IncludeUnlisted bool     `json:"include_unlisted"`
-		Exclude         []string `json:"exclude"`
+		VerifiedOnly        *bool    `json:"verified_only"`
+		IncludeUnlisted     bool     `json:"include_unlisted"`
+		Exclude             []string `json:"exclude"`
+		IncludeSelfUpdating *bool    `json:"include_self_updating"`
 	}
 	if len(raw) > 0 && json.Unmarshal(raw, &in) == nil {
 		if in.VerifiedOnly != nil {
 			f.VerifiedOnly = *in.VerifiedOnly
+		}
+		if in.IncludeSelfUpdating != nil {
+			f.IncludeSelfUpdating = *in.IncludeSelfUpdating
 		}
 		f.IncludeUnlisted, f.Exclude = in.IncludeUnlisted, in.Exclude
 	}
@@ -129,7 +137,7 @@ type AppMatch struct {
 }
 
 var reasonText = map[string]string{
-	reasonVendor:      "The app updates itself, so it is left to its vendor.",
+	reasonVendor:      "The app updates itself, so it is left to its vendor (switch on \"also update apps that update themselves\" to handle it).",
 	reasonExcluded:    "You excluded this app.",
 	reasonUnverified:  "Not verified on test machines yet (the policy handles verified apps only).",
 	reasonUnlisted:    "Not in your catalog yet (switch on \"add apps from winget\" to handle apps like this).",
@@ -189,7 +197,7 @@ func (s *Service) matchApps(ctx context.Context, org uuid.UUID, groupIDs []uuid.
 			m.Reason, m.ReasonText = code, reasonText[code]
 		}
 		switch {
-		case !u.Deployable || u.SelfUpdating:
+		case (!u.Deployable || u.SelfUpdating) && !f.IncludeSelfUpdating:
 			skip(reasonVendor)
 		case f.excludes(u.Identifier, u.WingetID):
 			skip(reasonExcluded)
@@ -315,12 +323,13 @@ func (s *Service) syncAll(ctx context.Context) {
 			}
 			updates[p.OrgID] = ups
 		}
-		if err := s.syncOne(ctx, p, ups, true); err != nil {
+		note, err := s.syncOne(ctx, p, ups, true)
+		if err != nil {
 			s.log().Error("all-apps policy", "policy", p.ID, "name", p.Name, "err", err)
 			s.setAutoStatus(ctx, p.ID, StateError, "The last check failed: "+err.Error())
 			continue
 		}
-		s.setAutoStatus(ctx, p.ID, "", "")
+		s.setAutoStatus(ctx, p.ID, "", note)
 	}
 }
 
@@ -336,12 +345,15 @@ func (s *Service) setAutoStatus(ctx context.Context, id uuid.UUID, state, detail
 
 // syncOne brings the children of one all-apps policy in step with what is out of date now. imports says whether it may
 // add apps from the winget index to the catalog (slow, so not while an administrator waits for a save).
-func (s *Service) syncOne(ctx context.Context, p dbq.SoftwareAutoPolicy, updates []deploy.FleetUpdate, imports bool) error {
+//
+// It returns a sentence about the apps that have an update but are left alone (and why), so the policy's status can say so
+// instead of claiming there is nothing to do.
+func (s *Service) syncOne(ctx context.Context, p dbq.SoftwareAutoPolicy, updates []deploy.FleetUpdate, imports bool) (string, error) {
 	f := parseFilter(p.Filter)
 	q := dbq.New(s.Pool)
 	kids, err := q.ListAutoChildren(ctx, &p.ID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	// Drop what the policy no longer handles: an app that is now excluded, unverified, or taken over by a policy someone
 	// made by hand. (An app that merely has no update right now stays: it will need one again.)
@@ -361,15 +373,15 @@ func (s *Service) syncOne(ctx context.Context, p dbq.SoftwareAutoPolicy, updates
 			continue
 		}
 		if err := s.dropChild(ctx, p, k.ID, k.PackageName, why); err != nil {
-			return err
+			return "", err
 		}
 	}
 	if p.CreatedBy == nil {
-		return nil // deployments need an owner on record; the person who made the policy was deleted
+		return "", nil // deployments need an owner on record; the person who made the policy was deleted
 	}
 	items, err := s.matchApps(ctx, p.OrgID, p.GroupIds, f, p.ID, updates)
 	if err != nil {
-		return err
+		return "", err
 	}
 	budget := importsPerSync
 	for _, m := range items {
@@ -396,7 +408,33 @@ func (s *Service) syncOne(ctx context.Context, p dbq.SoftwareAutoPolicy, updates
 			s.log().Warn("all-apps policy: adding an app", "policy", p.ID, "package", pkgID, "err", err)
 		}
 	}
-	return nil
+	return leftAloneNote(items), nil
+}
+
+// leftAloneNote names up to three apps that have an update the policy does not handle, with the reason. Apps the
+// administrator excluded are not mentioned: that was their choice.
+func leftAloneNote(items []AppMatch) string {
+	var parts []string
+	n := 0
+	for _, m := range items {
+		if m.Handled || m.Reason == "" || m.Reason == reasonExcluded || m.Reason == reasonCatalogOff {
+			continue
+		}
+		n++
+		if len(parts) < 3 {
+			why := map[string]string{reasonVendor: "updates itself", reasonUnverified: "not verified yet", reasonUnlisted: "not in the catalog",
+				reasonOtherPolicy: "has a policy of its own", reasonLimit: "over the limit"}[m.Reason]
+			parts = append(parts, m.Name+" ("+why+")")
+		}
+	}
+	if n == 0 {
+		return ""
+	}
+	s := "Has an update but is left alone: " + strings.Join(parts, ", ")
+	if n > len(parts) {
+		s += fmt.Sprintf(" and %d more", n-len(parts))
+	}
+	return s + ". Open the policy to see why."
 }
 
 func (s *Service) dropChild(ctx context.Context, p dbq.SoftwareAutoPolicy, child uuid.UUID, pkgName, why string) error {
@@ -529,7 +567,7 @@ func (s *Service) createAuto(ctx context.Context, a Actor, in Input, win []byte)
 			return err
 		}
 		return s.audit(ctx, tx, a, "policy.create", id, map[string]any{"name": in.Name, "kind": KindAll, "groups": len(in.GroupIDs), "rings": in.UseRings, "approval": in.RequireApproval,
-			"prompts": !in.Prompts.Silent(), "verified_only": in.Filter.VerifiedOnly, "include_unlisted": in.Filter.IncludeUnlisted, "excluded": len(in.Filter.Exclude)})
+			"prompts": !in.Prompts.Silent(), "verified_only": in.Filter.VerifiedOnly, "include_unlisted": in.Filter.IncludeUnlisted, "include_self_updating": in.Filter.IncludeSelfUpdating, "excluded": len(in.Filter.Exclude)})
 	})
 	if isUnique(err) {
 		return uuid.Nil, fmt.Errorf("%w: a policy with that name already exists", ErrConflict)
@@ -560,7 +598,7 @@ func (s *Service) updateAuto(ctx context.Context, a Actor, id uuid.UUID, in Inpu
 			return err
 		}
 		return s.audit(ctx, tx, a, "policy.update", id, map[string]any{"name": in.Name, "kind": KindAll, "enabled": in.Enabled, "rings": in.UseRings, "approval": in.RequireApproval,
-			"prompts": !in.Prompts.Silent(), "verified_only": in.Filter.VerifiedOnly, "include_unlisted": in.Filter.IncludeUnlisted, "excluded": len(in.Filter.Exclude)})
+			"prompts": !in.Prompts.Silent(), "verified_only": in.Filter.VerifiedOnly, "include_unlisted": in.Filter.IncludeUnlisted, "include_self_updating": in.Filter.IncludeSelfUpdating, "excluded": len(in.Filter.Exclude)})
 	})
 	if isUnique(err) {
 		return fmt.Errorf("%w: a policy with that name already exists", ErrConflict)
@@ -579,15 +617,16 @@ func (s *Service) syncNow(ctx context.Context, org, id uuid.UUID) {
 	if err != nil || !p.Enabled {
 		return
 	}
+	note := ""
 	ups, err := s.Deploy.FleetUpdates(ctx, org)
 	if err == nil {
-		err = s.syncOne(ctx, p, ups, false)
+		note, err = s.syncOne(ctx, p, ups, false)
 	}
 	if err != nil {
 		s.log().Warn("all-apps policy: first look", "policy", id, "err", err)
 		return
 	}
-	s.setAutoStatus(ctx, id, "", "")
+	s.setAutoStatus(ctx, id, "", note)
 }
 
 // deleteAuto removes an all-apps policy and, with it, its apps' policies. It reports whether id was one.
@@ -696,6 +735,8 @@ func (s *Service) listAuto(ctx context.Context, org uuid.UUID) ([]Policy, error)
 		state, detail := summarize(p.AppStates)
 		if r.LastState == StateError {
 			state, detail = StateError, r.LastDetail
+		} else if r.LastDetail != "" {
+			detail += " " + r.LastDetail
 		}
 		if r.LastCheckAt == nil && p.Apps == 0 {
 			state, detail = StateFirstCheckSoon, "Not checked yet. The server looks for apps to add every five minutes."

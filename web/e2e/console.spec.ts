@@ -686,9 +686,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   // Software policies live on the Software tab of Automations (the first tab).
   await mainNav(page).getByRole("link", { name: "Automations", exact: true }).click();
   await expect(page.getByRole("tab", { name: "Software", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("heading", { name: "Rings", exact: true })).toBeVisible(); // the same rings, shown on this tab too
-  // A short list (one ring) does not carry a toolbar of its own; the policies table above it does.
-  await expect(page.getByRole("toolbar", { name: "Update rings controls" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Rings", exact: true })).toHaveCount(0); // rings are for Windows updates only (D148)
   await expect(page.getByRole("toolbar", { name: "Software policies controls" })).toBeVisible();
   await page.getByRole("button", { name: "Add policy" }).click();
   const pd = page.getByRole("dialog");
@@ -709,7 +707,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await a11y(page, "automations-windows");
   await page.goto("/policies");
   await expect(page).toHaveURL(/\/automations$/);
-  // A policy that rolls out in stages through the update rings and waits for approval of each new version.
+  // A policy that waits for approval of each new version (it no longer offers staged rollout through rings).
   await page.getByRole("button", { name: "Add policy" }).click();
   const sd = page.getByRole("dialog");
   await sd.getByLabel(/^Name/).fill("Staged Acme Tool");
@@ -718,7 +716,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await sd.getByLabel(/^Groups/).click();
   await page.getByRole("option").first().click();
   await sd.getByText("Add policy").click(); // close the dropdown
-  await sd.getByLabel(/Roll new versions out in stages/).check();
+  await expect(sd.getByLabel(/Roll new versions out in stages/)).toHaveCount(0);
   await sd.getByLabel(/Wait for my approval of each new version/).check();
   await sd.getByRole("button", { name: "Save policy" }).click();
   await expect(page.getByRole("table", { name: "Software policies" }).getByText("Staged Acme Tool")).toBeVisible();
@@ -728,7 +726,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   expect(Object.keys(qj).sort()).toEqual(["holds", "pending", "recent"]);
   const pols = await (await page.request.get("/api/v1/policies")).json();
   const staged = pols.items.find((p: { name: string }) => p.name === "Staged Acme Tool");
-  expect(staged.use_rings).toBe(true);
+  expect(staged.use_rings).toBe(false);
   expect(staged.require_approval).toBe(true);
   // Every policy says what its last check found (D132); a policy that was just made has not been checked yet.
   expect(staged.state).toBe("new");
@@ -744,6 +742,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await page.getByRole("option").first().click();
   await ad.getByText("Add policy").click(); // close the dropdown
   await expect(ad.getByLabel(/Only apps that were verified on test machines/)).toBeChecked();
+  await expect(ad.getByLabel(/Also update apps that update themselves/)).toBeChecked();
   await expect(ad.getByLabel("Apps this policy would handle")).toBeVisible();
   await shot(page, "22a-policy-all-apps");
   await ad.getByRole("button", { name: "Save policy" }).click();
@@ -753,6 +752,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   expect(everyApp.kind).toBe("keep_all");
   expect(everyApp.package_id).toBeNull();
   expect(everyApp.filter.verified_only).toBe(true);
+  expect(everyApp.filter.include_self_updating).toBe(true);
   // The Software updates page can start the same thing in a click.
   await mainNav(page).getByRole("link", { name: "Software updates", exact: true }).click();
   await page.getByRole("button", { name: "Automate all updates…" }).click();
@@ -885,7 +885,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await expect(page.getByRole("tab", { name: "Windows", exact: true })).toHaveCount(0);
   await page.goto("/automations?tab=windows"); // there is no Windows tab now: the Software tab shows instead
   await expect(page.getByRole("table", { name: "Software policies" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Rings", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Rings", exact: true })).toHaveCount(0);
   await a11y(page, "automations-windows-off");
   await page.goto("/settings/updates");
   await page.getByRole("switch", { name: /^Manage Windows updates/ }).check({ force: true });

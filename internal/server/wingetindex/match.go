@@ -270,6 +270,44 @@ func (m *Matcher) preferOne(pool []int, prefer func(id string) bool) []int {
 	return pool
 }
 
+// baseOf narrows several candidates to the base package when the rest are only other installer flavours of it: the same
+// publisher, the same newest version and an identifier that extends the base one with a suffix (Google.Chrome and
+// Google.Chrome.EXE are the same browser, delivered as an MSI and as an executable). Winget lists such flavours as separate
+// packages, so without this a program that fits both is never recognised and an old Chrome shows no update. Packages that
+// differ in version (Firefox and Firefox ESR) are left alone: they are different programs.
+func (m *Matcher) baseOf(pool []int) []int {
+	if len(pool) < 2 {
+		return pool
+	}
+	for _, b := range pool {
+		base := m.pkgs[b]
+		all := true
+		for _, i := range pool {
+			if i == b {
+				continue
+			}
+			o := m.pkgs[i]
+			if !strings.HasPrefix(strings.ToLower(o.ID), strings.ToLower(base.ID)+".") || o.LatestVersion != base.LatestVersion || !samePublishers(base.NormPublishers, o.NormPublishers) {
+				all = false
+				break
+			}
+		}
+		if all {
+			return []int{b}
+		}
+	}
+	return pool
+}
+
+func samePublishers(a, b []string) bool {
+	for _, x := range a {
+		if contains(b, x) {
+			return true
+		}
+	}
+	return false
+}
+
 // Find recognises an installed program. It is deliberately cautious: a program that matches several packages equally
 // well, or only by name without a matching publisher, is not matched (a wrong match could install the wrong software).
 func (m *Matcher) Find(in Installed) (Match, bool) {
@@ -332,7 +370,7 @@ func (m *Matcher) Recognise(in Installed, prefer func(id string) bool) (Match, *
 				}
 			}
 		}
-		if pool = m.preferOne(pool, prefer); len(pool) == 1 {
+		if pool = m.baseOf(m.preferOne(pool, prefer)); len(pool) == 1 {
 			return m.result(pool[0], "product_code"), nil
 		}
 		return Match{}, &Reason{Code: "ambiguous", IDs: m.ids(byCode)}
@@ -365,7 +403,7 @@ func (m *Matcher) Recognise(in Installed, prefer func(id string) bool) (Match, *
 		if len(exact) == 1 {
 			cand = exact
 		}
-		cand = m.preferOne(cand, prefer)
+		cand = m.baseOf(m.preferOne(cand, prefer))
 	}
 	switch {
 	case len(cand) == 1:

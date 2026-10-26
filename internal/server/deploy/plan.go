@@ -52,6 +52,9 @@ type Request struct {
 	Policy string
 	// Prompts are the optional messages to the signed-in user (D124); nil = silent.
 	Prompts *Prompts
+	// AllowSelfUpdating lets an update deployment target an app that normally updates itself. Only a policy the administrator
+	// set up to do so sets it (D148); it is not part of the API.
+	AllowSelfUpdating bool
 }
 
 // Skip explains why a device got no job.
@@ -213,7 +216,7 @@ func (s *Service) Create(ctx context.Context, org uuid.UUID, r Request) (*Plan, 
 	}
 	// A self-updating app (Chrome, Edge, Zoom, ...) is left to its vendor's updater unless an
 	// administrator chose to enforce versions (docs/ARCHITECTURE.md §7.7).
-	selfManaged := pkg.SelfUpdating && (ov == nil || ov.SelfUpdatePolicy != "enforce")
+	selfManaged := pkg.SelfUpdating && !r.AllowSelfUpdating && (ov == nil || ov.SelfUpdatePolicy != "enforce")
 	if r.Action == "update" && selfManaged {
 		return nil, ErrSelfUpdating
 	}

@@ -467,7 +467,7 @@ func (s *Service) act(ctx context.Context, p dbq.SoftwarePolicy, ro *rollout, no
 		for _, g := range scopeGroups(eligible, ro.scopes) {
 			plan, err := s.Deploy.Create(ctx, p.OrgID, deploy.Request{Name: name, Action: ro.action, PackageID: ro.pkg.ID,
 				Version: ro.ver.Version, Scope: g.scope, DeviceIDs: g.ids, ExpiresIn: deployLifetime, Window: windowOf(p, st), UnverifiedConfirmed: p.UnverifiedConfirmed,
-				Policy: p.ID.String(), UserID: *p.CreatedBy, Prompts: deploy.ParsePrompts(p.Prompts)})
+				AllowSelfUpdating: ro.allowSelf, Policy: p.ID.String(), UserID: *p.CreatedBy, Prompts: deploy.ParsePrompts(p.Prompts)})
 			if err != nil {
 				if g.scope == "machine" {
 					return err

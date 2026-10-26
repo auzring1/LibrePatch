@@ -29,8 +29,9 @@ describe("until", () => {
 
 describe("describeFilter", () => {
   it("says which apps an all-apps policy handles", () => {
-    expect(describeFilter({ verified_only: true, exclude: [] })).toBe("verified apps only");
-    expect(describeFilter({ verified_only: false, include_unlisted: true, exclude: ["A.B", "C.D"] })).toBe("verified and unverified apps; adds apps from winget; 2 left alone");
+    expect(describeFilter({ verified_only: true, include_self_updating: true, exclude: [] })).toBe("verified apps only");
+    expect(describeFilter({ verified_only: false, include_unlisted: true, include_self_updating: true, exclude: ["A.B", "C.D"] })).toBe("verified and unverified apps; adds apps from winget; 2 left alone");
+    expect(describeFilter({ verified_only: true, include_self_updating: false, exclude: [] })).toBe("verified apps only; leaves self-updating apps to their vendor");
     expect(describeFilter(null)).toBe("");
   });
 });

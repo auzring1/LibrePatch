@@ -4007,6 +4007,7 @@ components:
       properties:
         verified_only: { type: boolean, default: true, description: Handle only apps verified on test machines }
         include_unlisted: { type: boolean, description: Also add apps that are not in the catalog yet from the winget index (needs verified_only off and catalog:write) }
+        include_self_updating: { type: boolean, default: true, description: Also keep apps current that normally update themselves (Chrome, Edge, Zoom) when they are still out of date on a device }
         exclude: { type: array, maxItems: 200, items: { type: string }, description: Package identifiers to leave alone }
     SoftwarePolicyApp:
       type: object
