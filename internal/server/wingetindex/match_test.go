@@ -162,3 +162,28 @@ func TestRecognisePrefersThePackageAlreadyInTheCatalog(t *testing.T) {
 		t.Fatalf("name path: %+v %+v", mt, why)
 	}
 }
+
+// Winget lists Chrome twice, as an MSI package and as an executable package, with the same name, publisher and version.
+// Neither is "the" Chrome, so an old Chrome used to be unrecognised until someone imported it by hand.
+func TestRecogniseTreatsInstallerFlavoursOfOneAppAsOne(t *testing.T) {
+	pub := []string{"google"}
+	m := NewMatcher(&Snapshot{Packages: []Package{
+		{ID: "Google.Chrome.EXE", Name: "Google Chrome", LatestVersion: "156.0.8078.48", ProductCodes: []string{"google chrome"}, NormNames: []string{"googlechrome"}, NormPublishers: pub},
+		{ID: "Google.Chrome", Name: "Google Chrome", LatestVersion: "156.0.8078.48", ProductCodes: []string{"google chrome"}, NormNames: []string{"googlechrome"}, NormPublishers: pub},
+		{ID: "Mozilla.Firefox", Name: "Mozilla Firefox", LatestVersion: "150.0", ProductCodes: []string{"mozilla firefox"}, NormNames: []string{"mozillafirefox"}, NormPublishers: []string{"mozilla"}},
+		{ID: "Mozilla.Firefox.ESR", Name: "Mozilla Firefox ESR", LatestVersion: "140.5", ProductCodes: []string{"mozilla firefox"}, NormNames: []string{"mozillafirefox"}, NormPublishers: []string{"mozilla"}},
+	}})
+	// Found by its uninstall key, and by name and publisher alone.
+	for _, in := range []Installed{
+		{Name: "Google Chrome", Publisher: "Google LLC", ItemKey: "Google Chrome", Source: "reg64"},
+		{Name: "Google Chrome", Publisher: "Google LLC", Source: "reg64"},
+	} {
+		if mt, why := m.Recognise(in, nil); why != nil || mt.ID != "Google.Chrome" {
+			t.Errorf("%+v: want Google.Chrome, got %+v %+v", in, mt, why)
+		}
+	}
+	// Different newest versions mean different programs: still not guessed.
+	if _, why := m.Recognise(Installed{Name: "Mozilla Firefox", Publisher: "Mozilla", ItemKey: "Mozilla Firefox", Source: "reg64"}, nil); why == nil || why.Code != "ambiguous" {
+		t.Fatalf("Firefox and Firefox ESR stay ambiguous, got %+v", why)
+	}
+}

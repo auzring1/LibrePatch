@@ -12,10 +12,10 @@ import { ConflictsCard, RingsCard, RulesCard, SourceCard } from "./UpdatePolicyP
 const stack = { display: "flex", flexDirection: "column", gap: "var(--lp-space-4)", paddingTop: "var(--lp-space-4)" } as const;
 
 /**
- * Automations: what keeps software and Windows up to date on its own. The Software tab holds the policies (one package
- * each), what waits for approval and the rings; the Windows tab holds the update source, the auto-approval rules, held
- * updates and policy conflicts. Rings are one list shared by both, so each tab shows it with its own wording. The Windows
- * tab is not there when an administrator switched Windows updates off (Settings > Update defaults).
+ * Automations: what keeps software and Windows up to date on its own. The Software tab holds the policies and what waits
+ * for approval; the Windows tab holds the update source, the rings, the auto-approval rules, held updates and policy
+ * conflicts. Rings are for Windows updates only (D148). The Windows tab is not there when an administrator switched
+ * Windows updates off (Settings > Update defaults).
  */
 export function AutomationsPage() {
   const { loading, can, canOrg } = useSession();
@@ -49,7 +49,7 @@ export function AutomationsPage() {
         title="Automations"
         description={
           <>
-            Keep software and Windows up to date without doing it by hand. Policies decide <i>what</i> is installed, rings decide <i>who</i> gets it first, and a ring that fails its success threshold stops the rollout.
+            Keep software and Windows up to date without doing it by hand. Software policies decide <i>which apps</i> are kept current and on which devices; for Windows updates, rings decide <i>who</i> gets them first.
             {!canEdit && " You can look at this page; only administrators can change rings and Windows rules."}
           </>
         }
@@ -67,13 +67,12 @@ export function AutomationsPage() {
         <Tabs.Panel value="software">
           <div style={stack}>
             <SoftwarePoliciesPanel />
-            <RingsCard canEdit={canEdit} context="software" />
           </div>
         </Tabs.Panel>
         <Tabs.Panel value="windows">
           <div style={stack}>
             <SourceCard canEdit={canEdit} />
-            <RingsCard canEdit={canEdit} context="windows" />
+            <RingsCard canEdit={canEdit} />
             <RulesCard canEdit={canEdit} />
             <HoldsCard canEdit={canEdit} />
             <ConflictsCard />

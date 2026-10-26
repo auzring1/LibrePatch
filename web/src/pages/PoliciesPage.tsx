@@ -378,19 +378,19 @@ function PolicyModal({ policy, preset, groups, onClose }: { policy?: SoftwarePol
   const [onlyNew, setOnlyNew] = useState(policy?.only_new_devices ?? true);
   const [unverified, setUnverified] = useState(policy?.unverified_confirmed ?? false);
   const [enabled, setEnabled] = useState(policy?.enabled ?? true);
-  const [useRings, setUseRings] = useState(policy?.use_rings ?? false);
   const [approval, setApproval] = useState(policy?.require_approval ?? false);
   const [prompts, setPrompts] = useState<PromptsForm>(fromPrompts(policy?.prompts));
   const [verifiedOnly, setVerifiedOnly] = useState(policy?.filter?.verified_only ?? true);
   const [unlisted, setUnlisted] = useState(policy?.filter?.include_unlisted ?? false);
   const [exclude, setExclude] = useState<string[]>(policy?.filter?.exclude ?? []);
+  const [selfUpdating, setSelfUpdating] = useState(policy?.filter?.include_self_updating ?? true);
   const [error, setError] = useState("");
   const all = kind === "keep_all";
   const chosen = pkgs.data?.items.find((p) => p.id === pkg);
   const detail = useQuery({ queryKey: ["catalog", "package", pkg], queryFn: () => api<PackageDetail>("GET", `/catalog/packages/${pkg}`), enabled: !!pkg && !all });
   const own = detail.data?.override.processes ?? [];
   const programs = own.length > 0 ? own : (detail.data?.overlay?.processes ?? []);
-  const filter = useMemo<SoftwareAutoFilter>(() => ({ verified_only: verifiedOnly, include_unlisted: unlisted && !verifiedOnly, exclude }), [verifiedOnly, unlisted, exclude]);
+  const filter = useMemo<SoftwareAutoFilter>(() => ({ verified_only: verifiedOnly, include_unlisted: unlisted && !verifiedOnly, include_self_updating: selfUpdating, exclude }), [verifiedOnly, unlisted, selfUpdating, exclude]);
   const kinds = policy
     ? policy.kind === "keep_all"
       ? [{ value: "keep_all", label: "Keep every app that has an update at its newest version" }]
@@ -407,8 +407,8 @@ function PolicyModal({ policy, preset, groups, onClose }: { policy?: SoftwarePol
     mutationFn: () => {
       const common = { name: name.trim(), kind, group_ids: gs, delay_days: Number(delay) || 0, enabled, require_approval: approval, prompts: toPrompts(prompts) };
       const body = all
-        ? { ...common, use_rings: useRings, filter }
-        : { ...common, package_id: pkg, only_new_devices: onlyNew, unverified_confirmed: unverified, use_rings: kind === "keep_updated" && useRings };
+        ? { ...common, filter }
+        : { ...common, package_id: pkg, only_new_devices: onlyNew, unverified_confirmed: unverified };
       return policy ? api("PUT", `/policies/${policy.id}`, body) : api("POST", "/policies", body);
     },
     onSuccess: () => (toast.success("Policy saved."), void qc.invalidateQueries({ queryKey: ["policies"] }), onClose()),
@@ -442,23 +442,21 @@ function PolicyModal({ policy, preset, groups, onClose }: { policy?: SoftwarePol
                   onChange={(e) => setUnlisted(e.currentTarget.checked)}
                 />
               )}
+              <Checkbox
+                label="Also update apps that update themselves (Chrome, Edge, Zoom, …)"
+                description="Such an app is normally left to its own updater. If it is still out of date on a PC, that updater is not doing its job there, so the policy installs the newest version itself."
+                checked={selfUpdating}
+                onChange={(e) => setSelfUpdating(e.currentTarget.checked)}
+              />
               <TagsInput label="Leave these apps alone" description="Package identifiers such as Mozilla.Firefox. Press Enter after each one." value={exclude} onChange={setExclude} placeholder="Publisher.App" />
               <AppsPreview policyId={policy?.id} groups={gs} filter={filter} onLeaveAlone={(id) => setExclude((x) => (x.some((e) => e.toLowerCase() === id.toLowerCase()) ? x : [...x, id]))} />
               <Text size="sm" c="dimmed">
-                Apps that update themselves are always left to their vendor. An app that already has a policy of its own is left to that policy.
+                An app that already has a policy of its own is left to that policy.
               </Text>
             </Stack>
           )}
           <NumberInput label="Wait after a new version appears (days)" min={0} max={365} value={delay} onChange={setDelay} />
           {kind === "baseline" && <Checkbox label="Only devices enrolled after this policy was created" checked={onlyNew} onChange={(e) => setOnlyNew(e.currentTarget.checked)} />}
-          {(kind === "keep_updated" || all) && (
-            <Checkbox
-              label="Roll new versions out in stages, through the update rings"
-              description="The first ring gets the version first; the next ring follows when the first has done well (see Rings, below). Devices that are in no ring get it last."
-              checked={useRings}
-              onChange={(e) => setUseRings(e.currentTarget.checked)}
-            />
-          )}
           <Checkbox
             label="Wait for my approval of each new version"
             description="A new version is not rolled out until an administrator or operator approves it under Waiting for your approval. Leave this off to keep updates fully automatic."

@@ -8680,6 +8680,11 @@ export interface components {
             verified_only: boolean;
             /** @description Also add apps that are not in the catalog yet from the winget index (needs verified_only off and catalog:write) */
             include_unlisted?: boolean;
+            /**
+             * @description Also keep apps current that normally update themselves (Chrome
+             * @default true
+             */
+            include_self_updating: boolean;
             /** @description Package identifiers to leave alone */
             exclude?: string[];
         };

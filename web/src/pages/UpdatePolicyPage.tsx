@@ -87,7 +87,7 @@ export function SourceCard({ canEdit }: { canEdit: boolean }) {
 
 // ----- rings -----
 
-export function RingsCard({ canEdit, context = "windows" }: { canEdit: boolean; context?: "windows" | "software" }) {
+export function RingsCard({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const rings = useQuery({ queryKey: ["updates", "rings"], queryFn: () => api<{ items: UpdateRing[] }>("GET", "/update-rings") });
@@ -112,17 +112,13 @@ export function RingsCard({ canEdit, context = "windows" }: { canEdit: boolean; 
       { id: "soak", header: "Soak", align: "right", width: 90, value: (r) => r.soak_hours ?? 0, cell: (r) => <span className="lp-num">{r.soak_hours ?? 0} h</span> },
       { id: "threshold", header: "Success needed", align: "right", width: 140, value: (r) => r.success_threshold, cell: (r) => <span className="lp-num">{r.success_threshold}%</span> },
       { id: "window", header: "Window", width: 210, value: (r) => (r.window ? `${(r.window.days ?? []).map((d) => dayNames[d]).join(" ") || "daily"} ${hhmm(r.window.start_minute)} +${r.window.duration_minutes} min` : "any time") },
-      ...(context === "windows" ? [{ id: "restart", header: "Restart", width: 190, value: (r: UpdateRing) => restartLabel(r.restart) }] : []),
+      { id: "restart", header: "Restart", width: 190, value: (r: UpdateRing) => restartLabel(r.restart) },
     ];
-  }, [groupList, context]);
+  }, [groupList]);
   return (
     <Card
       title="Rings"
-      description={
-        context === "software"
-          ? "Pilot first, then broader. A device belongs to the first ring (in order) that lists one of its groups. A software policy that rolls out in stages gives each ring the new version in turn, and gives devices in no ring their update last. Windows updates use the same rings."
-          : "Pilot first, then broader. A device belongs to the first ring (in order) that lists one of its groups. For Windows updates, devices in no ring are not updated automatically. Software policies that roll out in stages use the same rings, and give devices in no ring their update last."
-      }
+      description="Pilot first, then broader. A device belongs to the first ring (in order) that lists one of its groups. Devices in no ring are not updated automatically. Rings apply to Windows updates; software policies update every device in their groups."
       actions={
         canEdit && (
           <Button size="xs" onClick={() => setEdit("new")} leftSection={<Icons.Plus size={14} aria-hidden />}>
@@ -164,20 +160,16 @@ export function RingsCard({ canEdit, context = "windows" }: { canEdit: boolean; 
           <EmptyState
             icon={<Icons.Timeline size={26} />}
             title="No rings yet"
-            description={
-              context === "software"
-                ? "Without rings, a software policy updates every device in its groups at once. Add a pilot ring (a small group) and a broad ring (everyone else) to roll new versions out in stages."
-                : "Without rings, approved updates are never installed automatically. Add a pilot ring (a small group) and a broad ring (everyone else)."
-            }
+            description="Without rings, approved updates are never installed automatically. Add a pilot ring (a small group) and a broad ring (everyone else)."
           />
         }
       />
-      {edit && <RingModal context={context} ring={edit === "new" ? undefined : edit} nextOrdinal={Math.min(20, items.reduce((m, r) => Math.max(m, r.ordinal), 0) + 1)} groups={groups.data?.items ?? []} onClose={() => setEdit(null)} />}
+      {edit && <RingModal ring={edit === "new" ? undefined : edit} nextOrdinal={Math.min(20, items.reduce((m, r) => Math.max(m, r.ordinal), 0) + 1)} groups={groups.data?.items ?? []} onClose={() => setEdit(null)} />}
     </Card>
   );
 }
 
-function RingModal({ ring, nextOrdinal, groups, context, onClose }: { ring?: UpdateRing; nextOrdinal: number; groups: Grp[]; context: "windows" | "software"; onClose: () => void }) {
+function RingModal({ ring, nextOrdinal, groups, onClose }: { ring?: UpdateRing; nextOrdinal: number; groups: Grp[]; onClose: () => void }) {
   const qc = useQueryClient();
   // A new ring starts from the organization's update defaults (Settings > Update defaults); an existing one shows its own values.
   const eff = useEffective().data;
@@ -229,7 +221,7 @@ function RingModal({ ring, nextOrdinal, groups, context, onClose }: { ring?: Upd
         </Group>
         <MultiSelect label="Groups" description="Devices in any of these groups belong to this ring" data={groups.map((g) => ({ value: g.id, label: g.name }))} value={groupIDs} onChange={setGroupIDs} searchable />
         <Group grow align="flex-start">
-          <NumberInput label="Delay (days)" description={context === "software" ? "After the new version is available (and approved) before this ring may install" : "After approval before this ring may install"} min={0} max={365} value={delay} onChange={setDelay} />
+          <NumberInput label="Delay (days)" description="After approval before this ring may install" min={0} max={365} value={delay} onChange={setDelay} />
           <NumberInput label="Soak (hours)" description="How long the next ring waits after this one started" min={0} max={2160} value={soak} onChange={setSoak} />
           <NumberInput label="Success needed (%)" description="Of reporting devices" min={1} max={100} value={threshold} onChange={setThreshold} />
         </Group>
@@ -241,7 +233,7 @@ function RingModal({ ring, nextOrdinal, groups, context, onClose }: { ring?: Upd
             <NumberInput label="Minutes" min={1} max={1440} value={mins} onChange={setMins} w={110} />
           </Group>
         )}
-        {context === "windows" && (
+        {(
           <>
             <Select
               label="Restart after installing"

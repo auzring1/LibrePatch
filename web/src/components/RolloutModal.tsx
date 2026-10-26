@@ -60,9 +60,6 @@ export function RolloutModal({ policy, onClose }: { policy: SoftwarePolicy; onCl
                 ))}
               </Table.Tbody>
             </Table>
-            <Text size="xs" c="dimmed">
-              Rings are set under Automations and are shared by software policies and Windows updates. A device belongs to the first ring that lists it; devices in no ring get the version last.
-            </Text>
           </>
         )}
       </Stack>

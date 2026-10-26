@@ -82,6 +82,9 @@ type rollout struct {
 	// scopes says, per candidate device, which kinds of copy are out of date there: "machine" (installed for the whole PC)
 	// and/or "user" (installed for one person). A baseline has none: it installs machine-wide.
 	scopes map[uuid.UUID]map[string]bool
+	// allowSelf is true when the package updates itself but the all-apps policy that owns this one was set to update such
+	// apps anyway (D148).
+	allowSelf bool
 }
 
 func (s *Service) ringMembers(ctx context.Context, org uuid.UUID, r dbq.WuRing) (map[uuid.UUID]bool, error) {
@@ -129,8 +132,11 @@ func (s *Service) plan(ctx context.Context, p dbq.SoftwarePolicy, now time.Time)
 		pin, enforce = ov.Pin, ov.SelfUpdatePolicy == "enforce"
 	}
 	if p.Kind == "keep_updated" && pkg.SelfUpdating && !enforce {
-		ro.blocked = blockSelfUpdate // left to the vendor's updater (D50)
-		return ro, nil
+		if !s.parentUpdatesSelfUpdating(ctx, p) {
+			ro.blocked = blockSelfUpdate // left to the vendor's updater (D50)
+			return ro, nil
+		}
+		ro.allowSelf = true
 	}
 	vs, err := q.ListPackageVersions(ctx, pkg.ID)
 	if err != nil {
@@ -191,6 +197,15 @@ func (s *Service) plan(ctx context.Context, p dbq.SoftwarePolicy, now time.Time)
 		return nil, err
 	}
 	return ro, nil
+}
+
+// parentUpdatesSelfUpdating is true for an app policy made by an all-apps policy that also keeps self-updating apps current.
+func (s *Service) parentUpdatesSelfUpdating(ctx context.Context, p dbq.SoftwarePolicy) bool {
+	if p.AutoPolicyID == nil {
+		return false
+	}
+	parent, err := dbq.New(s.Pool).GetAutoPolicy(ctx, dbq.GetAutoPolicyParams{ID: *p.AutoPolicyID, OrgID: p.OrgID})
+	return err == nil && parseFilter(parent.Filter).IncludeSelfUpdating
 }
 
 // candidates are the targeted devices that need the version: outdated copies for a keep-updated policy, devices without

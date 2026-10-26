@@ -50,6 +50,7 @@ export function describeFilter(f: SoftwareAutoFilter | undefined | null): string
   if (!f) return "";
   const parts = [f.verified_only === false ? "verified and unverified apps" : "verified apps only"];
   if (f.include_unlisted) parts.push("adds apps from winget");
+  if (f.include_self_updating === false) parts.push("leaves self-updating apps to their vendor");
   if (f.exclude && f.exclude.length > 0) parts.push(`${f.exclude.length} left alone`);
   return parts.join("; ");
 }

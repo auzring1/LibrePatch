@@ -3,6 +3,7 @@ package policies
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -362,5 +363,51 @@ func TestAllAppsPolicyAdaptsPromptsPerApp(t *testing.T) {
 	r.Close()
 	if got["Acme Tool"] != "ask/ask" || got["No Programs"] != "/ask" {
 		t.Fatalf("prompts per app: %+v", got)
+	}
+}
+
+// An app that updates itself but is still old on a PC (Chrome with its updater switched off) is updated by the all-apps
+// policy unless the policy says to leave such apps to their vendor (D148).
+func TestAllAppsPolicyUpdatesSelfUpdatingAppsThatAreStillOld(t *testing.T) {
+	f := newFx(t)
+	ctx := context.Background()
+	d := f.device("d", time.Now())
+	f.install(d, "1.0")
+	chrome := f.otherApp("custom", "Self Updater", "Custom.SelfUpdater", true, d, "1.0", "2.0")
+	f.exec("UPDATE catalog_packages SET self_updating=true WHERE id=$1", chrome)
+	g := f.group(d)
+
+	// Left to the vendor: no child for the app, and the status says why instead of "nothing to do".
+	off := f.allApps([]uuid.UUID{g}, func(in *Input) {
+		in.Name = "vendor"
+		in.Filter = &AutoFilter{VerifiedOnly: true, Exclude: []string{"Custom.AcmeTool"}}
+	})
+	f.svc.Tick(ctx)
+	if n := f.count("SELECT count(*) FROM software_policies WHERE auto_policy_id=$1", off); n != 0 {
+		t.Fatalf("%d children although self-updating apps are left to the vendor", n)
+	}
+	if p := f.listOne(off); p.State != StateNoApps || !strings.Contains(p.StateText, "Self Updater (updates itself)") {
+		t.Fatalf("status should name the app that is left alone: %+v", p)
+	}
+	if ok, err := f.svc.deleteAuto(ctx, f.actor(), off); err != nil || !ok {
+		t.Fatalf("delete: %v %v", ok, err)
+	}
+
+	// Switched on (the default): the app gets a child and a deployment although its package says it updates itself.
+	before := f.jobsFor(d)
+	on := f.allApps([]uuid.UUID{g}, func(in *Input) {
+		in.Name = "all"
+		in.Filter = &AutoFilter{VerifiedOnly: true, IncludeSelfUpdating: true, Exclude: []string{"Custom.AcmeTool"}}
+	})
+	f.svc.Tick(ctx)
+	if n := f.count("SELECT count(*) FROM software_policies WHERE auto_policy_id=$1 AND package_id=$2", on, chrome); n != 1 {
+		t.Fatalf("%d children for the self-updating app", n)
+	}
+	if got := f.jobsFor(d); got != before+1 {
+		t.Fatalf("the old self-updating app should be updated: jobs %d -> %d", before, got)
+	}
+	// A policy stored before the option existed has no such key and counts as on.
+	if !parseFilter([]byte(`{"verified_only":true}`)).IncludeSelfUpdating {
+		t.Fatal("an older stored filter means the option is on")
 	}
 }
