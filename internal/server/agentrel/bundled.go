@@ -74,6 +74,7 @@ func (s *Service) loadBundled() *bundled {
 			s.log().Warn("bundled agent release: not used, because the server does not trust its signing key. Set LIBREPATCH_RELEASE_PUBLIC_KEYS in deploy/.env to your update public key", "file", path, "err", err)
 			return
 		}
+		s.log().Info("agent release found in the server image", "file", path, "version", m.Version)
 		s.bd.b = &bundled{bundle: raw, exe: filepath.Join(filepath.Dir(path), filepath.Base(path[:len(path)-len(".lprel")])+".exe"), m: m}
 	})
 	return s.bd.b

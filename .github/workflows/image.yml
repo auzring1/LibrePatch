@@ -134,6 +134,9 @@ jobs:
           exe="$RUNNER_TEMP/librepatch-agent_${VERSION}_windows_amd64.exe"
           if [ -f "$curr" ]; then
             cp "$exe" "$curr" deploy/agent-release/
+            # The signing step runs with umask 077, so the .lprel is mode 600; the server in the image must be able to read both.
+            chmod 0644 deploy/agent-release/*.exe deploy/agent-release/*.lprel
+            ls -l deploy/agent-release/
             echo "::notice::the server image carries the signed agent $VERSION (the server adds it under Agent updates by itself)"
           fi
       - name: Build and push
