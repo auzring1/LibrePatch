@@ -68,39 +68,6 @@ jobs:
           else
             { echo "main=edge"; echo "extra=edge-$short"; echo "version=0.0.0-edge.$short"; } >> "$GITHUB_OUTPUT"
           fi
-      - name: Build and push
-        env:
-          MAIN_TAG: ${{ steps.tags.outputs.main }}
-          EXTRA_TAG: ${{ steps.tags.outputs.extra }}
-          VERSION: ${{ steps.tags.outputs.version }}
-        run: |
-          set -euo pipefail
-          image="ghcr.io/${GITHUB_REPOSITORY,,}-server"
-          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
-          scripts/build-image.sh --version "$VERSION" --commit "$(git rev-parse --short=12 HEAD)" \
-            --source-date-epoch "$(git log -1 --format=%ct)" \
-            --push "$image:$MAIN_TAG" --digest-file "$RUNNER_TEMP/digest.txt"
-          digest=$(cat "$RUNNER_TEMP/digest.txt")
-          # The second tag points at the very same image (same digest), nothing is built twice.
-          docker buildx imagetools create --tag "$image:$EXTRA_TAG" "$image@$digest"
-          {
-            echo "### Published"
-            echo "- \`$image:$MAIN_TAG\`"
-            echo "- \`$image:$EXTRA_TAG\`"
-            echo "- digest \`$digest\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: Build and push the web proxy and database images
-        env:
-          MAIN_TAG: ${{ steps.tags.outputs.main }}
-          EXTRA_TAG: ${{ steps.tags.outputs.extra }}
-        run: |
-          set -euo pipefail
-          # Plain builds: both are a pinned base image plus a few small files, so there is nothing to reproduce.
-          for part in caddy postgres; do
-            image="ghcr.io/${GITHUB_REPOSITORY,,}-$part"
-            docker buildx build --push --provenance=false --tag "$image:$MAIN_TAG" --tag "$image:$EXTRA_TAG" "deploy/$part"
-            { echo "- \`$image:$MAIN_TAG\`"; echo "- \`$image:$EXTRA_TAG\`"; } >> "$GITHUB_STEP_SUMMARY"
-          done
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with: { go-version-file: go.mod }
       - name: Build the Windows agent and the release tool
@@ -157,6 +124,51 @@ jobs:
           done
           [ "$ok" = 1 ] || { rm -f "$curr"; echo "::error::the signing key does not match LIBREPATCH_RELEASE_PUBLIC_KEY: agents would refuse this update"; exit 1; }
           echo "signed=true" >> "$GITHUB_OUTPUT"
+      - name: Put the agent release into the server image (release runs, when it was signed)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ steps.tags.outputs.version }}
+        run: |
+          set -euo pipefail
+          curr="$RUNNER_TEMP/librepatch-agent_${VERSION}_windows_amd64.lprel"
+          exe="$RUNNER_TEMP/librepatch-agent_${VERSION}_windows_amd64.exe"
+          if [ -f "$curr" ]; then
+            cp "$exe" "$curr" deploy/agent-release/
+            echo "::notice::the server image carries the signed agent $VERSION (the server adds it under Agent updates by itself)"
+          fi
+      - name: Build and push
+        env:
+          MAIN_TAG: ${{ steps.tags.outputs.main }}
+          EXTRA_TAG: ${{ steps.tags.outputs.extra }}
+          VERSION: ${{ steps.tags.outputs.version }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}-server"
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+          scripts/build-image.sh --version "$VERSION" --commit "$(git rev-parse --short=12 HEAD)" \
+            --source-date-epoch "$(git log -1 --format=%ct)" \
+            --push "$image:$MAIN_TAG" --digest-file "$RUNNER_TEMP/digest.txt"
+          digest=$(cat "$RUNNER_TEMP/digest.txt")
+          # The second tag points at the very same image (same digest), nothing is built twice.
+          docker buildx imagetools create --tag "$image:$EXTRA_TAG" "$image@$digest"
+          {
+            echo "### Published"
+            echo "- \`$image:$MAIN_TAG\`"
+            echo "- \`$image:$EXTRA_TAG\`"
+            echo "- digest \`$digest\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Build and push the web proxy and database images
+        env:
+          MAIN_TAG: ${{ steps.tags.outputs.main }}
+          EXTRA_TAG: ${{ steps.tags.outputs.extra }}
+        run: |
+          set -euo pipefail
+          # Plain builds: both are a pinned base image plus a few small files, so there is nothing to reproduce.
+          for part in caddy postgres; do
+            image="ghcr.io/${GITHUB_REPOSITORY,,}-$part"
+            docker buildx build --push --provenance=false --tag "$image:$MAIN_TAG" --tag "$image:$EXTRA_TAG" "deploy/$part"
+            { echo "- \`$image:$MAIN_TAG\`"; echo "- \`$image:$EXTRA_TAG\`"; } >> "$GITHUB_STEP_SUMMARY"
+          done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: github.event_name == 'workflow_dispatch'
         with:

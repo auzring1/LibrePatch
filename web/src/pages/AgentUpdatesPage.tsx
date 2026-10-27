@@ -94,7 +94,7 @@ export function AgentUpdatesPage() {
         title="Agent updates"
         description={
           <>
-            Agents update themselves to a release published by the vendor. Upload a release (the binary and its signed <code>.lprel</code> bundle), choose it as the target, and the agents move over in batches: a pilot group first, then everyone. An agent verifies the vendor signature itself, switches to the new copy and goes back to the old one automatically if the new one does not connect within ten minutes.
+            Agents update themselves to a release signed with your update key. A release that came with your server image appears here by itself; you can also upload one (the binary and its signed <code>.lprel</code> bundle). Choose it as the target (or switch on automatic rollout), and the agents move over in batches: a pilot group first, then everyone. An agent verifies the vendor signature itself, switches to the new copy and goes back to the old one automatically if the new one does not connect within ten minutes.
           </>
         }
       />
@@ -227,6 +227,7 @@ function RolloutCard({ rollout, status, releases, groups, canWrite, onSaved }: {
   const [thr, setThr] = useState<number | string>(rollout.success_threshold);
   const [batch, setBatch] = useState<number | string>(rollout.batch_per_tick);
   const [paused, setPaused] = useState(rollout.paused);
+  const [auto, setAuto] = useState(rollout.auto_new_release);
   const [error, setError] = useState("");
   useEffect(() => {
     setTarget(rollout.release_id ?? null);
@@ -235,9 +236,10 @@ function RolloutCard({ rollout, status, releases, groups, canWrite, onSaved }: {
     setThr(rollout.success_threshold);
     setBatch(rollout.batch_per_tick);
     setPaused(rollout.paused);
+    setAuto(rollout.auto_new_release);
   }, [rollout]);
   const save = useMutation({
-    mutationFn: () => api("PUT", "/agent-rollout", { release_id: target, pilot_group_ids: pilots, soak_hours: Number(soak) || 0, success_threshold: Number(thr) || 90, batch_per_tick: Number(batch) || 100, paused }),
+    mutationFn: () => api("PUT", "/agent-rollout", { release_id: target, pilot_group_ids: pilots, soak_hours: Number(soak) || 0, success_threshold: Number(thr) || 90, batch_per_tick: Number(batch) || 100, paused, auto_new_release: auto }),
     onSuccess: () => (setError(""), toast.success("Rollout saved."), onSaved()),
     onError: (e) => setError(errorMessage(e)),
   });
@@ -298,6 +300,13 @@ function RolloutCard({ rollout, status, releases, groups, canWrite, onSaved }: {
           <NumberInput label="Pilot success needed (%)" min={1} max={100} value={thr} onChange={setThr} disabled={!canWrite} />
           <NumberInput label="Devices per minute" min={1} max={1000} value={batch} onChange={setBatch} disabled={!canWrite} />
         </Group>
+        <Switch
+          label="Roll out new versions automatically"
+          description="Each server image carries the agent it was built with. When you update the server and that agent is newer than the target, it becomes the target by itself and moves through the pilot group, soak time and success rate above. Off: you choose each target."
+          checked={auto}
+          onChange={(e) => setAuto(e.currentTarget.checked)}
+          disabled={!canWrite}
+        />
         <Switch label="Pause the rollout" checked={paused} onChange={(e) => setPaused(e.currentTarget.checked)} disabled={!canWrite} />
         {error && (
           <Alert color="red" icon={<Icons.Danger size={18} aria-hidden />}>

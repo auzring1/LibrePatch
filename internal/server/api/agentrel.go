@@ -140,6 +140,7 @@ type rolloutBody struct {
 	BatchPerTick     int32          `json:"batch_per_tick"`
 	Window           *deploy.Window `json:"window"`
 	Paused           bool           `json:"paused"`
+	AutoNewRelease   bool           `json:"auto_new_release"`
 }
 
 func (s *server) putAgentRollout(w http.ResponseWriter, r *http.Request) {
@@ -151,7 +152,7 @@ func (s *server) putAgentRollout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := s.Releases.SetRollout(r.Context(), s.relActor(r), agentrel.Rollout{ReleaseID: in.ReleaseID, PilotGroupIDs: in.PilotGroupIDs, SoakHours: in.SoakHours,
-		SuccessThreshold: in.SuccessThreshold, BatchPerTick: in.BatchPerTick, Window: in.Window, Paused: in.Paused})
+		SuccessThreshold: in.SuccessThreshold, BatchPerTick: in.BatchPerTick, Window: in.Window, Paused: in.Paused, AutoNewRelease: in.AutoNewRelease})
 	if err != nil {
 		s.relError(w, err)
 		return

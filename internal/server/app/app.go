@@ -146,7 +146,7 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 	if err := a.Catalog.LoadOverlays(ctx); err != nil {
 		log.Error("catalog overlays could not be loaded", "err", err)
 	}
-	a.Releases = &agentrel.Service{Pool: pool, Deploy: a.Deploy, Content: a.Catalog.Content, Events: a.Events, Log: log.With("component", "agentrel")}
+	a.Releases = &agentrel.Service{Pool: pool, Deploy: a.Deploy, Content: a.Catalog.Content, Events: a.Events, Log: log.With("component", "agentrel"), BundledDir: cfg.AgentReleaseDir}
 	if extra, err := release.ParseKeys(cfg.ReleasePublicKeys); err == nil && len(extra) > 0 {
 		a.Releases.Keys = append(release.TrustedKeys(), extra...)
 	}
@@ -426,6 +426,7 @@ func (a *App) housekeeping(ctx context.Context) {
 		case <-t.C:
 			a.Deploy.Sweep(ctx)
 			a.Updates.Tick(ctx)
+			a.Releases.SyncBundled(ctx) // the agent release that came with the image (D149); cheap once every organization has it
 			a.Releases.Tick(ctx)
 			a.Notify.Tick(ctx)
 			a.Sched.Tick(ctx)

@@ -132,7 +132,7 @@ Container Manager's own "Build"/"Update" buttons re-pull a changed `LIBREPATCH_V
    as private (for example in a fork), open GitHub, **Packages, <the package>, Package settings, Change visibility, Public**. Until
    all three are public an install must `docker login ghcr.io` with a token that may read packages, and a paste-only install on a
    NAS fails to pull.
-3. The images carry no agent signing key. Upload your own signed agent releases in the console as usual (section 5c).
+3. The images never carry your private signing key. A release image (made with your update key, section 5c) does carry the signed agent it was built with, and the server adds it under Agent updates by itself; images without a signing key carry none, and you upload your own signed releases in the console as usual (section 5c).
 
 This workflow is separate from the signed release pipeline in section 9 (`release.yml`, tags `v*`). Nothing in it was run before
 this was written; the first run is the test.
@@ -381,8 +381,9 @@ with the public key that signs the updates, so agents installed earlier need one
    the MSI, and a deploy zip whose `deploy/.env.example` already has `LIBREPATCH_RELEASE_PUBLIC_KEYS=` filled in. Signing happens only for runs from `main`
    and the workflow checks that your private key matches the public key before it publishes.
 5. On the server, keep that `LIBREPATCH_RELEASE_PUBLIC_KEYS=<your public key>` line in `deploy/.env` and run `up -d`: the server then accepts your signed update files.
-6. Install the PCs from this release (exe or MSI). Later releases: download the new `.lprel` and the matching `librepatch-agent_<version>_windows_amd64.exe`, then
-   **Agent updates, Upload a release** (both files) and start a rollout.
+6. Install the PCs from this release (exe or MSI). Later releases: update the server image (pull the new tag and `up -d`). The new agent appears under **Agent updates**
+   by itself (within a minute of the server starting); switch on **Roll out new versions automatically** there and it also becomes the target, so the agents follow
+   through your pilot group and soak time. Uploading the `.lprel` and the `.exe` by hand still works (for example for a release from another source).
 
 Without the secret and the variable the workflow still works; it just builds agents that cannot update themselves and makes no `.lprel` file.
 
@@ -390,6 +391,7 @@ Without the secret and the variable the workflow still works; it just builds age
 |---|---|
 | One-time: get the agents to trust a release key | See the one-time setup above (your own key, built into the agents by the image workflow). Agents only accept releases signed by a key compiled into them. For throw-away test builds: `scripts/release-demo.sh` builds a throw-away key and agents that trust it, and the server needs `LIBREPATCH_RELEASE_PUBLIC_KEYS=<hex>` (in `deploy/.env`) to accept uploads signed with it. |
 | Publish a release | **Agent updates → Upload a release**: the agent binary and its signed `.lprel` bundle (made with `librepatch-release sign`, or `manifest` + your KMS + `attach`). The server verifies both. |
+| Update the agents when you update the server | Run the image workflow for a release (section 2.2) with your update key set up, then update the stack. The server finds the signed agent inside its image and adds it as a release. With **Agent updates → Rollout → Roll out new versions automatically** switched on (it is off until you do), a release that is newer than the current target becomes the target by itself, and the rollout below runs. The first time, choose the target yourself (the switch only reacts to releases that arrive after it is on). The server must trust your key (`LIBREPATCH_RELEASE_PUBLIC_KEYS` in `deploy/.env`); without it the log says so and nothing is added. A paused rollout stays paused. |
 | Roll it out | **Agent updates → Rollout**: pick the target release, optional **pilot groups** (they update first), a **soak** time and the success percentage the pilot must reach, and how many devices per minute. Everyone else follows when the pilot has proven itself. |
 | Watch it | The page shows versions in use, how many updated/failed, why devices outside the pilot are waiting, and a banner if the rollout was put on hold. A failing pilot pauses the rollout by itself; look at the failed jobs (device → Jobs), fix or withdraw the release, then un-pause. |
 | Stop or withdraw | Untick/clear the target, tick **Pause the rollout**, or **Withdraw** a release (never offered again; pauses the rollout if it was the target). |

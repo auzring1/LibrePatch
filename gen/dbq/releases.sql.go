@@ -226,7 +226,7 @@ func (q *Queries) GetAgentRelease(ctx context.Context, arg GetAgentReleaseParams
 }
 
 const getAgentRollout = `-- name: GetAgentRollout :one
-SELECT org_id, release_id, pilot_group_ids, soak_hours, success_threshold, batch_per_tick, maint_window, paused, paused_reason, started_at, updated_by, updated_at FROM agent_rollout WHERE org_id = $1
+SELECT org_id, release_id, pilot_group_ids, soak_hours, success_threshold, batch_per_tick, maint_window, paused, paused_reason, started_at, updated_by, updated_at, auto_new_release FROM agent_rollout WHERE org_id = $1
 `
 
 func (q *Queries) GetAgentRollout(ctx context.Context, orgID uuid.UUID) (AgentRollout, error) {
@@ -245,6 +245,7 @@ func (q *Queries) GetAgentRollout(ctx context.Context, orgID uuid.UUID) (AgentRo
 		&i.StartedAt,
 		&i.UpdatedBy,
 		&i.UpdatedAt,
+		&i.AutoNewRelease,
 	)
 	return i, err
 }
@@ -290,7 +291,7 @@ func (q *Queries) InsertAgentRelease(ctx context.Context, arg InsertAgentRelease
 }
 
 const listActiveRollouts = `-- name: ListActiveRollouts :many
-SELECT org_id, release_id, pilot_group_ids, soak_hours, success_threshold, batch_per_tick, maint_window, paused, paused_reason, started_at, updated_by, updated_at FROM agent_rollout WHERE release_id IS NOT NULL AND NOT paused
+SELECT org_id, release_id, pilot_group_ids, soak_hours, success_threshold, batch_per_tick, maint_window, paused, paused_reason, started_at, updated_by, updated_at, auto_new_release FROM agent_rollout WHERE release_id IS NOT NULL AND NOT paused
 `
 
 func (q *Queries) ListActiveRollouts(ctx context.Context) ([]AgentRollout, error) {
@@ -315,6 +316,7 @@ func (q *Queries) ListActiveRollouts(ctx context.Context) ([]AgentRollout, error
 			&i.StartedAt,
 			&i.UpdatedBy,
 			&i.UpdatedAt,
+			&i.AutoNewRelease,
 		); err != nil {
 			return nil, err
 		}
@@ -470,6 +472,24 @@ func (q *Queries) SetAgentReleaseStatus(ctx context.Context, arg SetAgentRelease
 	return result.RowsAffected(), nil
 }
 
+const setAgentRolloutTarget = `-- name: SetAgentRolloutTarget :execrows
+UPDATE agent_rollout SET release_id = $2, started_at = $3, updated_at = now() WHERE org_id = $1
+`
+
+type SetAgentRolloutTargetParams struct {
+	OrgID     uuid.UUID
+	ReleaseID *uuid.UUID
+	StartedAt *time.Time
+}
+
+func (q *Queries) SetAgentRolloutTarget(ctx context.Context, arg SetAgentRolloutTargetParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setAgentRolloutTarget, arg.OrgID, arg.ReleaseID, arg.StartedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const upsertAgentAttemptQueued = `-- name: UpsertAgentAttemptQueued :exec
 INSERT INTO agent_attempts (device_id, release_id, org_id, job_id, pilot, state, created_at)
 VALUES ($1, $2, $3, $4, $5, 'queued', $6)
@@ -498,11 +518,12 @@ func (q *Queries) UpsertAgentAttemptQueued(ctx context.Context, arg UpsertAgentA
 }
 
 const upsertAgentRollout = `-- name: UpsertAgentRollout :exec
-INSERT INTO agent_rollout (org_id, release_id, pilot_group_ids, soak_hours, success_threshold, batch_per_tick, maint_window, paused, paused_reason, started_at, updated_by, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+INSERT INTO agent_rollout (org_id, release_id, pilot_group_ids, soak_hours, success_threshold, batch_per_tick, maint_window, paused, paused_reason, started_at, updated_by, auto_new_release, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
 ON CONFLICT (org_id) DO UPDATE SET release_id = EXCLUDED.release_id, pilot_group_ids = EXCLUDED.pilot_group_ids, soak_hours = EXCLUDED.soak_hours,
     success_threshold = EXCLUDED.success_threshold, batch_per_tick = EXCLUDED.batch_per_tick, maint_window = EXCLUDED.maint_window,
-    paused = EXCLUDED.paused, paused_reason = EXCLUDED.paused_reason, started_at = EXCLUDED.started_at, updated_by = EXCLUDED.updated_by, updated_at = now()
+    paused = EXCLUDED.paused, paused_reason = EXCLUDED.paused_reason, started_at = EXCLUDED.started_at, updated_by = EXCLUDED.updated_by,
+    auto_new_release = EXCLUDED.auto_new_release, updated_at = now()
 `
 
 type UpsertAgentRolloutParams struct {
@@ -517,6 +538,7 @@ type UpsertAgentRolloutParams struct {
 	PausedReason     string
 	StartedAt        *time.Time
 	UpdatedBy        *uuid.UUID
+	AutoNewRelease   bool
 }
 
 func (q *Queries) UpsertAgentRollout(ctx context.Context, arg UpsertAgentRolloutParams) error {
@@ -532,6 +554,7 @@ func (q *Queries) UpsertAgentRollout(ctx context.Context, arg UpsertAgentRollout
 		arg.PausedReason,
 		arg.StartedAt,
 		arg.UpdatedBy,
+		arg.AutoNewRelease,
 	)
 	return err
 }

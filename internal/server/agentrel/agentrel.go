@@ -77,6 +77,9 @@ type Service struct {
 	// Keys are the vendor release public keys the server accepts for uploads
 	// (default: the keys compiled into this build).
 	Keys []ed25519.PublicKey
+	// BundledDir holds the agent release that came with the server image (D149); empty turns that off.
+	BundledDir string
+	bd         bundledState
 }
 
 func (s *Service) now() time.Time {
@@ -166,14 +169,20 @@ func (s *Service) AddRelease(ctx context.Context, a Actor, bundleJSON []byte, bi
 	now := s.now()
 	err = store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
 		// The same binary may already be stored (another release, or a custom package): the insert then only refreshes the row.
-		if err := q.InsertContentBlob(ctx, dbq.InsertContentBlobParams{OrgID: a.Org, Sha256: sha, Size: size, FileName: name, UploadedBy: &a.User}); err != nil {
+		// The release shipped inside the server image has no person behind it (a.User is the zero value): it is recorded as the system.
+		var by *uuid.UUID
+		actorType, actorID := audit.ActorSystem, bundledActorID
+		if a.User != uuid.Nil {
+			by, actorType, actorID = &a.User, audit.ActorUser, a.User.String()
+		}
+		if err := q.InsertContentBlob(ctx, dbq.InsertContentBlobParams{OrgID: a.Org, Sha256: sha, Size: size, FileName: name, UploadedBy: by}); err != nil {
 			return err
 		}
 		if err := q.InsertAgentRelease(ctx, dbq.InsertAgentReleaseParams{ID: id, OrgID: a.Org, Version: m.Version, Os: m.OS, Arch: m.Arch, Sha256: sha, Size: size,
-			Manifest: b.Manifest, Signature: b.Signature, KeyID: b.KeyID, Notes: m.Notes, UploadedBy: &a.User}); err != nil {
+			Manifest: b.Manifest, Signature: b.Signature, KeyID: b.KeyID, Notes: m.Notes, UploadedBy: by}); err != nil {
 			return err
 		}
-		_, err := audit.Write(ctx, tx, audit.Entry{OrgID: &a.Org, ActorType: audit.ActorUser, ActorID: a.User.String(), ActorIP: a.IP, Action: "agent.release_add",
+		_, err := audit.Write(ctx, tx, audit.Entry{OrgID: &a.Org, ActorType: actorType, ActorID: actorID, ActorIP: a.IP, Action: "agent.release_add",
 			TargetType: "agent_release", TargetIDs: []string{id.String()}, Outcome: audit.Success,
 			Details: map[string]any{"version": m.Version, "os": m.OS, "arch": m.Arch, "sha256": m.SHA256, "key_id": b.KeyID}}, now)
 		return err
@@ -217,6 +226,8 @@ type Rollout struct {
 	PausedReason     string         `json:"paused_reason"`
 	StartedAt        *time.Time     `json:"started_at"`
 	UpdatedAt        *time.Time     `json:"updated_at"`
+	// AutoNewRelease makes a newer release that came with the server image the target by itself (D149).
+	AutoNewRelease bool `json:"auto_new_release"`
 }
 
 func defaultRollout() Rollout {
@@ -225,7 +236,7 @@ func defaultRollout() Rollout {
 
 func rolloutView(r dbq.AgentRollout) Rollout {
 	v := Rollout{ReleaseID: r.ReleaseID, PilotGroupIDs: r.PilotGroupIds, SoakHours: r.SoakHours, SuccessThreshold: r.SuccessThreshold,
-		BatchPerTick: r.BatchPerTick, Paused: r.Paused, PausedReason: r.PausedReason, StartedAt: r.StartedAt, UpdatedAt: &r.UpdatedAt}
+		BatchPerTick: r.BatchPerTick, Paused: r.Paused, PausedReason: r.PausedReason, StartedAt: r.StartedAt, UpdatedAt: &r.UpdatedAt, AutoNewRelease: r.AutoNewRelease}
 	if v.PilotGroupIDs == nil {
 		v.PilotGroupIDs = []uuid.UUID{}
 	}
@@ -364,10 +375,10 @@ func (s *Service) SetRollout(ctx context.Context, a Actor, in Rollout) error {
 			pilots = []uuid.UUID{}
 		}
 		if err := q.UpsertAgentRollout(ctx, dbq.UpsertAgentRolloutParams{OrgID: a.Org, ReleaseID: in.ReleaseID, PilotGroupIds: pilots, SoakHours: in.SoakHours,
-			SuccessThreshold: in.SuccessThreshold, BatchPerTick: in.BatchPerTick, MaintWindow: winJSON, Paused: in.Paused, PausedReason: reason, StartedAt: started, UpdatedBy: &a.User}); err != nil {
+			SuccessThreshold: in.SuccessThreshold, BatchPerTick: in.BatchPerTick, MaintWindow: winJSON, Paused: in.Paused, PausedReason: reason, StartedAt: started, UpdatedBy: &a.User, AutoNewRelease: in.AutoNewRelease}); err != nil {
 			return err
 		}
-		det := map[string]any{"paused": in.Paused, "pilot_groups": len(pilots), "soak_hours": in.SoakHours, "threshold": in.SuccessThreshold}
+		det := map[string]any{"paused": in.Paused, "pilot_groups": len(pilots), "soak_hours": in.SoakHours, "threshold": in.SuccessThreshold, "auto_new_release": in.AutoNewRelease}
 		if in.ReleaseID != nil {
 			det["release"] = in.ReleaseID.String()
 		}

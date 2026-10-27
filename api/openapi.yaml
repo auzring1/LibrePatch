@@ -3837,9 +3837,10 @@ components:
         is_target: { type: boolean }
     AgentRollout:
       type: object
-      required: [release_id, pilot_group_ids, soak_hours, success_threshold, batch_per_tick, paused]
+      required: [release_id, pilot_group_ids, soak_hours, success_threshold, batch_per_tick, paused, auto_new_release]
       properties:
         release_id: { type: string, format: uuid, nullable: true }
+        auto_new_release: { type: boolean, description: A newer release that came with the server image becomes the target by itself }
         pilot_group_ids: { type: array, items: { type: string, format: uuid } }
         soak_hours: { type: integer }
         success_threshold: { type: integer }
@@ -3861,6 +3862,7 @@ components:
         batch_per_tick: { type: integer, minimum: 1, maximum: 1000 }
         window: { $ref: "#/components/schemas/MaintenanceWindow" }
         paused: { type: boolean }
+        auto_new_release: { type: boolean, description: Make a newer release that came with the server image the target by itself }
     AgentRolloutStatus:
       type: object
       required: [versions, updated, failed, queued, pilot_devices, pilot_updated, pilot_failed, waiting]
