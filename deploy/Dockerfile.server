@@ -55,8 +55,9 @@ COPY --from=build /out/librepatch-server /librepatch-server
 COPY --from=build --chown=65532:65532 /out/content /var/lib/librepatch/content
 COPY --from=build --chown=65532:65532 /out/key /run/librepatch/key
 # The signed agent release this server was built with (empty unless the image workflow made one): the server adds it
-# under "Agent updates" by itself (D149). Read-only, owned by root.
-COPY deploy/agent-release/ /opt/librepatch/agent-release/
+# under "Agent updates" by itself (D149). Owned by the server's user, because the signing step leaves the .lprel readable by
+# its owner only (mode 600) and the server does not run as root.
+COPY --chown=65532:65532 deploy/agent-release/ /opt/librepatch/agent-release/
 USER 65532:65532
 EXPOSE 8080 8443
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 CMD ["/librepatch-server", "healthcheck"]
