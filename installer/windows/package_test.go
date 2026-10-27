@@ -708,7 +708,7 @@ func TestWorkflowJobMSI(t *testing.T) {
 	}
 }
 
-// ALLOWSCRIPTS=1 switches on running scripts (D127). Only its exact value "1" is looked at: it is never put into a command line.
+// ALLOWSCRIPTS=0 switches off running scripts (D150). Only its exact value "0" is looked at: it is never put into a command line.
 func TestAllowScriptsIsOnlyComparedNeverPassedOn(t *testing.T) {
 	root := pkg(t)
 	for _, sp := range root.find("SetProperty") {
@@ -720,8 +720,8 @@ func TestAllowScriptsIsOnlyComparedNeverPassedOn(t *testing.T) {
 	for _, sp := range root.find("SetProperty") {
 		if sp.attr("Id") == "AgentArgsScripts" {
 			found = true
-			if sp.attr("Value") != " --allow-scripts" || !strings.Contains(sp.attr("Condition"), `ALLOWSCRIPTS="1"`) {
-				t.Errorf("AgentArgsScripts must add a fixed flag only for ALLOWSCRIPTS=\"1\": %q if %q", sp.attr("Value"), sp.attr("Condition"))
+			if sp.attr("Value") != " --no-scripts" || !strings.Contains(sp.attr("Condition"), `ALLOWSCRIPTS="0"`) {
+				t.Errorf("AgentArgsScripts must add a fixed flag only for ALLOWSCRIPTS=\"0\": %q if %q", sp.attr("Value"), sp.attr("Condition"))
 			}
 		}
 	}

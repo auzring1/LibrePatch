@@ -418,7 +418,7 @@ func (a *Agent) session(ctx context.Context, id *store.Identity) (time.Duration,
 	}
 	if a.Jobs != nil {
 		caps = append(caps, "jobs/v1")
-		if a.Cfg.AllowScripts {
+		if !a.Cfg.NoScripts {
 			caps = append(caps, "scripts/v1")
 		}
 	}
@@ -908,7 +908,7 @@ func (a *Agent) startJobs(ctx context.Context) {
 			a.Jobs.Allowed[n] = true
 		}
 	}
-	a.Jobs.ScriptsEnabled = a.Cfg.AllowScripts
+	a.Jobs.ScriptsEnabled = !a.Cfg.NoScripts
 	if a.Jobs.Fetch == nil {
 		a.Jobs.Fetch = &jobs.MultiFetcher{Server: a.fetchFromServer, Peer: a.fetchFromPeer}
 	}

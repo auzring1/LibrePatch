@@ -57,7 +57,7 @@ type Engine struct {
 	// LocalNets and SendUDP are the network of this computer and how a packet leaves it (Wake-on-LAN; tests replace both).
 	LocalNets func() []LocalNet
 	SendUDP   func(local net.IP, dest string, pkt []byte) error
-	// ScriptsEnabled: this computer's owner switched on running scripts (Config.AllowScripts). Without it every script job is
+	// ScriptsEnabled: running scripts is not switched off on this computer (Config.NoScripts). Without it every script job is
 	// refused, whatever the ceiling says.
 	ScriptsEnabled bool
 	// CacheFile, if set, is told about every installer that passed the hash check, so it can be kept for other computers.
@@ -168,7 +168,7 @@ func (e *Engine) allowed(t agentv1.JobType) bool {
 		return false
 	}
 	if t == agentv1.JobType_JOB_TYPE_RUN_SCRIPT {
-		// Scripts are never part of "everything": the owner of the computer switched them on, and a ceiling that is set names them.
+		// Scripts are on unless the computer's owner switched them off, but a ceiling that is set must name them.
 		return e.ScriptsEnabled && (len(e.Allowed) == 0 || e.Allowed[name])
 	}
 	if len(e.Allowed) == 0 {
@@ -234,7 +234,7 @@ func (e *Engine) Accept(se *agentv1.SignedEnvelope, env *agentv1.JobEnvelope) {
 	if !e.allowed(env.Type) {
 		why := "job type not allowed by the local policy ceiling"
 		if env.Type == agentv1.JobType_JOB_TYPE_RUN_SCRIPT && !e.ScriptsEnabled {
-			why = "scripts are not switched on on this computer (the agent was installed without --allow-scripts)"
+			why = "scripts are switched off on this computer (the agent was installed with --no-scripts)"
 		}
 		reject(why, agentv1.SecurityEventKind_SECURITY_EVENT_KIND_POLICY_CEILING)
 		return

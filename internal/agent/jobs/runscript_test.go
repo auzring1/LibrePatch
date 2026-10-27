@@ -23,12 +23,12 @@ func scriptEnv(r *rig, id string, b *agentv1.RunScriptBody) (*agentv1.SignedEnve
 	return r.sign(env), env
 }
 
-func TestScriptsAreRefusedUnlessTheOwnerSwitchedThemOn(t *testing.T) {
-	r := newRig(t) // ScriptsEnabled is false
+func TestScriptsAreRefusedWhenTheOwnerSwitchedThemOff(t *testing.T) {
+	r := newRig(t) // ScriptsEnabled is false: the computer's owner switched scripts off (--no-scripts)
 	se, env := scriptEnv(r, "s1", scriptBody("Write-Output hi"))
 	r.e.Accept(se, env)
 	u := r.rec.last("s1")
-	if u.State != agentv1.JobState_JOB_STATE_REJECTED || !strings.Contains(u.Reason, "not switched on") || len(r.p.runs) != 0 {
+	if u.State != agentv1.JobState_JOB_STATE_REJECTED || !strings.Contains(u.Reason, "switched off") || len(r.p.runs) != 0 {
 		t.Fatalf("%v %q runs=%d", u.State, u.Reason, len(r.p.runs))
 	}
 	if len(r.rec.sec) == 0 || r.rec.sec[0] != agentv1.SecurityEventKind_SECURITY_EVENT_KIND_POLICY_CEILING {

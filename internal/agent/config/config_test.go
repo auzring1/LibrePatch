@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -50,5 +51,34 @@ func TestParseAllowedJobs(t *testing.T) {
 	}
 	if _, err := ParseAllowedJobs("format_disk"); err == nil {
 		t.Fatal("unknown job type accepted")
+	}
+}
+
+// Scripts are on unless the computer was installed with --no-scripts (D150). A file written before that, with or without the
+// old opt-in, therefore has scripts on after the agent is updated.
+func TestAnOlderConfigFileHasScriptsOnAndOnlyNoScriptsTurnsThemOff(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	for name, raw := range map[string]string{
+		"installed without the opt-in": `{"server":"a.example.com:8443","root_pin":"sha256/x","org_id":"o"}`,
+		"installed with the opt-in":    `{"server":"a.example.com:8443","root_pin":"sha256/x","org_id":"o","allow_scripts":true}`,
+	} {
+		if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		c, err := Load(path)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if c.NoScripts {
+			t.Errorf("%s: scripts must be on", name)
+		}
+	}
+	off := &Config{Server: "a.example.com:8443", RootPin: "sha256/x", OrgID: "o", NoScripts: true}
+	if err := Save(path, off); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil || !c.NoScripts {
+		t.Fatalf("--no-scripts must survive a save and load: %v %+v", err, c)
 	}
 }

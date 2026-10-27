@@ -29,9 +29,12 @@ type Config struct {
 	// cannot raise it. Empty means the default set for this agent version.
 	AllowedJobs []string `json:"allowed_jobs,omitempty"`
 	LogLevel    string   `json:"log_level,omitempty"`
-	// AllowScripts switches on running administrators' scripts as SYSTEM (D127). Off unless the person installing the agent
-	// asked for it (--allow-scripts, MSI property ALLOWSCRIPTS=1); the server cannot raise it, and an allowed-jobs ceiling that
-	// is set must name run_script as well.
+	// NoScripts turns off running administrators' scripts as SYSTEM on this computer. Scripts are on unless the person
+	// installing the agent asked otherwise (--no-scripts, MSI property ALLOWSCRIPTS=0; D150, which replaced the opt-in of
+	// D127); the server cannot raise it, and an allowed-jobs ceiling that is set must name run_script as well.
+	NoScripts bool `json:"no_scripts,omitempty"`
+	// AllowScripts is what the opt-in of D127 wrote. It is still read so older files load, and no longer changes anything:
+	// a computer installed that way keeps running scripts, and one installed without it now runs them too.
 	AllowScripts bool `json:"allow_scripts,omitempty"`
 	// UpdateRollbackMinutes is how long a freshly updated agent has to reach the server before the
 	// safety net restores the previous version (default 10, allowed 1 to 60). Meant for tests and

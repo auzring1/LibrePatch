@@ -76,6 +76,14 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
+// Enabled: the organization allows running scripts at all (Settings > Scripts, on by default, D150).
+func (s *Service) Enabled(ctx context.Context, org uuid.UUID) bool {
+	return s.Settings == nil || s.Settings.Peek(ctx, org, "scripts").Bool("enabled")
+}
+
+// ErrDisabled is returned when an administrator switched running scripts off in Settings.
+var ErrDisabled = errors.New("scripts: running scripts is switched off")
+
 // RequireApproval: the organization wants a second person to approve every run.
 func (s *Service) RequireApproval(ctx context.Context, org uuid.UUID) bool {
 	return s.Settings != nil && s.Settings.Peek(ctx, org, "scripts").Bool("require_approval")
@@ -337,6 +345,9 @@ func (s *Service) RequestRun(ctx context.Context, a Actor, r RunRequest) (*RunVi
 	if len(r.GroupIDs)+len(r.DeviceIDs) == 0 {
 		return nil, invalid("choose at least one group or device")
 	}
+	if !s.Enabled(ctx, a.Org) {
+		return nil, ErrDisabled
+	}
 	q := dbq.New(s.Pool)
 	sc, err := q.GetScript(ctx, dbq.GetScriptParams{ID: r.ScriptID, OrgID: a.Org})
 	if err != nil {
@@ -424,6 +435,9 @@ func (s *Service) dispatch(ctx context.Context, devs []dbq.ListActiveDevicesByID
 
 // Approve lets a second person start a run that waits for approval.
 func (s *Service) Approve(ctx context.Context, a Actor, id uuid.UUID, note string) (*RunView, error) {
+	if !s.Enabled(ctx, a.Org) {
+		return nil, ErrDisabled
+	}
 	var devs []dbq.ListActiveDevicesByIDsRow
 	err := store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
 		run, err := q.GetScriptRun(ctx, dbq.GetScriptRunParams{ID: id, OrgID: a.Org})

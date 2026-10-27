@@ -44,5 +44,8 @@ export const shortSha = (sha: string) => sha.slice(0, 12);
 
 /** Why a "Rejected" job is most likely rejected, when the reason says so. */
 export function refusedHint(reason: string): string {
-  return /not switched on/.test(reason) ? "Scripts are not switched on for this computer's agent (install it with --allow-scripts or ALLOWSCRIPTS=1)." : "";
+  if (/switched off on this computer/.test(reason)) return "Scripts were switched off on this computer when its agent was installed (--no-scripts or ALLOWSCRIPTS=0). Reinstall the agent without that option to allow them.";
+  // An agent from before scripts were on by default says this; it switches them on when it is updated.
+  if (/not switched on/.test(reason)) return "This computer's agent is older and still has scripts off. Update the agent (Agent updates) to switch them on.";
+  return "";
 }

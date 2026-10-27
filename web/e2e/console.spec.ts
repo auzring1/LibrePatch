@@ -177,7 +177,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   if (agentBin) {
     const dir = mkdtempSync(join(tmpdir(), "lp-agent-"));
     agentDirs.push(dir);
-    agent = spawn(agentBin, ["run", "--data-dir", dir, "--server", gateway, "--token", enrollment, "--allow-scripts"], { stdio: "ignore" });
+    agent = spawn(agentBin, ["run", "--data-dir", dir, "--server", gateway, "--token", enrollment], { stdio: "ignore" });
   }
   try {
     await mainNav(page).getByRole("link", { name: "Devices", exact: true }).click();
@@ -376,7 +376,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await expect(page.getByRole("table", { name: "Event log" }).getByText("The device has a bad block.")).toBeVisible({ timeout: 30_000 });
       await shot(page, "15b-device-inspect");
 
-      // Scripts (D127): the test agent was started with --allow-scripts and runs the text with /bin/sh.
+      // Scripts (D127): scripts are on by default, and the test agent runs the text with /bin/sh.
       await mainNav(page).getByRole("link", { name: "Scripts", exact: true }).click();
       await page.getByRole("button", { name: "Add script" }).click();
       await page.getByRole("textbox", { name: "Name", exact: true }).fill("Say hello");
