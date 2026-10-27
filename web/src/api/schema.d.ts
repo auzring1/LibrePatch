@@ -8471,6 +8471,8 @@ export interface components {
         AgentRollout: {
             /** Format: uuid */
             release_id: string | null;
+            /** @description A newer release that came with the server image becomes the target by itself */
+            auto_new_release: boolean;
             pilot_group_ids: string[];
             soak_hours: number;
             success_threshold: number;
@@ -8492,6 +8494,8 @@ export interface components {
             batch_per_tick: number;
             window?: components["schemas"]["MaintenanceWindow"];
             paused?: boolean;
+            /** @description Make a newer release that came with the server image the target by itself */
+            auto_new_release?: boolean;
         };
         AgentRolloutStatus: {
             versions: {

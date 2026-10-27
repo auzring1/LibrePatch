@@ -83,6 +83,8 @@ type Config struct {
 	GitHubToken string
 	// WingetSource is "github" (default) or "off". "off" also turns off the winget index download.
 	WingetSource string
+	// AgentReleaseDir is where the server image keeps the agent release it was built with (D149).
+	AgentReleaseDir string
 	// AgentDownloads is "github" (default: the server fetches the agent installers from the release that matches its
 	// version and offers them in the console) or "off".
 	AgentDownloads string
@@ -148,6 +150,7 @@ func LoadFrom(lookup func(string) (string, bool)) (*Config, error) {
 			errs = append(errs, errors.New("LIBREPATCH_WINGET_INDEX_URL must be an https URL"))
 		}
 	}
+	c.AgentReleaseDir = get("LIBREPATCH_AGENT_RELEASE_DIR", "/opt/librepatch/agent-release")
 	c.AgentDownloads = get("LIBREPATCH_AGENT_DOWNLOADS", "github")
 	if c.AgentDownloads != "github" && c.AgentDownloads != "off" {
 		errs = append(errs, errors.New("LIBREPATCH_AGENT_DOWNLOADS must be github or off"))

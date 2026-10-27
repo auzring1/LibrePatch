@@ -80,3 +80,7 @@ dist-demo/
 dist-release/
 # Load test output (identity cache holds device private keys)
 /loadtest-results/
+
+# The agent release the image workflow copies in before it builds the server image
+deploy/agent-release/*.exe
+deploy/agent-release/*.lprel

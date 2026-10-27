@@ -54,6 +54,7 @@ type AgentRollout struct {
 	StartedAt        *time.Time
 	UpdatedBy        *uuid.UUID
 	UpdatedAt        time.Time
+	AutoNewRelease   bool
 }
 
 type ApiToken struct {

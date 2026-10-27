@@ -22,11 +22,15 @@ DELETE FROM agent_releases AS r WHERE r.org_id = $1 AND r.id = $2
 SELECT * FROM agent_rollout WHERE org_id = $1;
 
 -- name: UpsertAgentRollout :exec
-INSERT INTO agent_rollout (org_id, release_id, pilot_group_ids, soak_hours, success_threshold, batch_per_tick, maint_window, paused, paused_reason, started_at, updated_by, updated_at)
-VALUES (@org_id, @release_id, @pilot_group_ids, @soak_hours, @success_threshold, @batch_per_tick, @maint_window, @paused, @paused_reason, @started_at, @updated_by, now())
+INSERT INTO agent_rollout (org_id, release_id, pilot_group_ids, soak_hours, success_threshold, batch_per_tick, maint_window, paused, paused_reason, started_at, updated_by, auto_new_release, updated_at)
+VALUES (@org_id, @release_id, @pilot_group_ids, @soak_hours, @success_threshold, @batch_per_tick, @maint_window, @paused, @paused_reason, @started_at, @updated_by, @auto_new_release, now())
 ON CONFLICT (org_id) DO UPDATE SET release_id = EXCLUDED.release_id, pilot_group_ids = EXCLUDED.pilot_group_ids, soak_hours = EXCLUDED.soak_hours,
     success_threshold = EXCLUDED.success_threshold, batch_per_tick = EXCLUDED.batch_per_tick, maint_window = EXCLUDED.maint_window,
-    paused = EXCLUDED.paused, paused_reason = EXCLUDED.paused_reason, started_at = EXCLUDED.started_at, updated_by = EXCLUDED.updated_by, updated_at = now();
+    paused = EXCLUDED.paused, paused_reason = EXCLUDED.paused_reason, started_at = EXCLUDED.started_at, updated_by = EXCLUDED.updated_by,
+    auto_new_release = EXCLUDED.auto_new_release, updated_at = now();
+
+-- name: SetAgentRolloutTarget :execrows
+UPDATE agent_rollout SET release_id = $2, started_at = $3, updated_at = now() WHERE org_id = $1;
 
 -- name: PauseAgentRollout :exec
 UPDATE agent_rollout SET paused = true, paused_reason = $2, updated_at = now() WHERE org_id = $1;
