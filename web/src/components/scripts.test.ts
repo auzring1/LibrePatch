@@ -31,7 +31,8 @@ describe("runIsOpen", () => {
 describe("helpers", () => {
   it("shortens a fingerprint and explains the opt-in refusal", () => {
     expect(shortSha("0123456789abcdef0123")).toBe("0123456789ab");
-    expect(refusedHint("scripts are not switched on on this computer")).toMatch(/--allow-scripts/);
+    expect(refusedHint("scripts are not switched on on this computer")).toMatch(/Update the agent/);
+    expect(refusedHint("scripts are switched off on this computer (the agent was installed with --no-scripts)")).toMatch(/--no-scripts/);
     expect(refusedHint("other")).toBe("");
   });
 });

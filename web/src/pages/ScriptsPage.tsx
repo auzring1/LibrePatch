@@ -8,6 +8,7 @@ import { jobOutcome, refusedHint, runIsOpen, runStatus, shortSha } from "../comp
 import { Card, DataTable, EmptyState, Icons, IconButton, Page, PageHeader, StatusPill, toast, useConfirm, type Column } from "../ui";
 
 interface Status {
+  enabled: boolean;
   require_approval: boolean;
   other_approvers: number;
   max_devices: number;
@@ -67,7 +68,7 @@ export function ScriptsPage() {
     <Page>
       <PageHeader
         title="Scripts"
-        description="PowerShell scripts you keep here can be run on computers you choose, as SYSTEM. Every version is kept, every run is recorded with why, and a computer only accepts a script if its agent was installed with scripts switched on."
+        description="PowerShell scripts you keep here can be run on computers you choose, as SYSTEM. Every version is kept, and every run is recorded with why."
         actions={
           canWrite ? (
             <Button onClick={() => setEdit("new")} leftSection={<Icons.Plus size={16} aria-hidden />}>
@@ -77,7 +78,7 @@ export function ScriptsPage() {
         }
       />
       <Alert color="yellow" icon={<Icons.Warning size={18} aria-hidden />} title="This is powerful">
-        A script runs with full control of each computer. Test it on one computer first. A computer whose agent was not installed with <Code>--allow-scripts</Code> (MSI: <Code>ALLOWSCRIPTS=1</Code>) refuses the job, and the server cannot change that.
+        A script runs with full control of each computer. Test it on one computer first. A computer whose agent was installed with <Code>--no-scripts</Code> (MSI: <Code>ALLOWSCRIPTS=0</Code>) refuses the job, and the server cannot change that. Running scripts can be switched off for everyone under Settings → Scripts.
         {status.data?.require_approval ? " Every run needs another administrator’s approval." : " You can require a second administrator’s approval under Settings → Scripts."}
       </Alert>
 
@@ -260,7 +261,8 @@ function RunModal({ script, status, onClose, onStarted }: { script: ScriptItem; 
     onError: (e) => setError(errorMessage(e)),
   });
   const hasTargets = groupIds.length + deviceIds.length > 0;
-  const blocked = !!status?.require_approval && status.other_approvers === 0;
+  const off = status?.enabled === false;
+  const blocked = (!!status?.require_approval && status.other_approvers === 0) || off;
   return (
     <Modal opened onClose={onClose} title={`Run “${script.name}” (version ${script.version})`} size="lg">
       <form onSubmit={(e) => (e.preventDefault(), setError(""), start.mutate())}>
@@ -281,8 +283,13 @@ function RunModal({ script, status, onClose, onStarted }: { script: ScriptItem; 
           />
           <NumberInput label="Stop the script after (seconds)" min={10} max={3600} value={timeout} onChange={setTimeoutS} maw={260} />
           <TextInput label="Why are you running it?" description="Recorded with the run and in the audit log." value={reason} onChange={(e) => setReason(e.currentTarget.value)} maxLength={200} required />
+          {off && (
+            <Alert color="red" icon={<Icons.Danger size={18} aria-hidden />}>
+              Running scripts is switched off. An administrator can switch it on under Settings → Scripts.
+            </Alert>
+          )}
           {status?.require_approval && !blocked && <Alert color="blue" icon={<Icons.Info size={18} aria-hidden />}>Another administrator has to approve this run before anything is sent.</Alert>}
-          {blocked && (
+          {blocked && !off && (
             <Alert color="red" icon={<Icons.Danger size={18} aria-hidden />}>
               Runs need another administrator’s approval, and there is no other active administrator, so this run could never start. Add an administrator, or turn the requirement off under Settings → Scripts.
             </Alert>

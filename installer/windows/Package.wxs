@@ -53,7 +53,8 @@
     <Property Id="SERVER" Secure="yes" />
     <Property Id="TOKEN" Secure="yes" Hidden="yes" />
     <Property Id="ALLOWEDJOBS" Secure="yes" />
-    <!-- ALLOWSCRIPTS=1 lets administrators run PowerShell scripts on this computer from the console (off by default, D127). -->
+    <!-- Scripts from the console are on by default (D150). ALLOWSCRIPTS=0 turns them off on this computer; any other value, and
+         ALLOWSCRIPTS=1 from the time scripts were opt-in, changes nothing. -->
     <Property Id="ALLOWSCRIPTS" Secure="yes" />
 
     <!-- Properties that must never be written to a verbose log. TOKEN is the enrollment secret;
@@ -138,7 +139,7 @@
     <SetProperty Id="AgentArgsServer" Value=" --server [SERVER]" Sequence="execute" After="CostFinalize" Condition="NOT Installed AND SERVER" />
     <SetProperty Id="AgentArgsToken" Value=" --token [TOKEN]" Sequence="execute" After="SetAgentArgsServer" Condition="NOT Installed AND TOKEN" />
     <SetProperty Id="AgentArgsJobs" Value=" --allowed-jobs [ALLOWEDJOBS]" Sequence="execute" After="SetAgentArgsToken" Condition="NOT Installed AND ALLOWEDJOBS" />
-    <SetProperty Id="AgentArgsScripts" Value=" --allow-scripts" Sequence="execute" After="SetAgentArgsJobs" Condition="NOT Installed AND ALLOWSCRIPTS=&quot;1&quot;" />
+    <SetProperty Id="AgentArgsScripts" Value=" --no-scripts" Sequence="execute" After="SetAgentArgsJobs" Condition="NOT Installed AND ALLOWSCRIPTS=&quot;0&quot;" />
     <SetProperty Id="InstallAgent" Value="&quot;[SetupDir]librepatch-agent.exe&quot; install --if-not-installed[AgentArgsServer][AgentArgsToken][AgentArgsJobs][AgentArgsScripts]" Sequence="execute" After="SetAgentArgsScripts" Condition="NOT Installed" />
     <SetProperty Id="RollbackInstallAgent" Value="&quot;[SetupDir]librepatch-agent.exe&quot; uninstall" Sequence="execute" After="CostFinalize" Condition="NOT Installed AND NOT AGENTSERVICEPATH" />
     <SetProperty Id="UninstallAgent" Value="&quot;[SetupDir]librepatch-agent.exe&quot; uninstall" Sequence="execute" After="CostFinalize" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />

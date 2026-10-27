@@ -376,3 +376,54 @@ func TestApproverCount(t *testing.T) {
 		t.Fatalf("a disabled administrator cannot approve: %d", n)
 	}
 }
+
+// Scripts are on until an administrator switches them off in Settings (D150); off, nothing can be run or approved.
+func TestScriptsAreOnByDefaultAndTheSettingSwitchesThemOff(t *testing.T) {
+	f := newFx(t)
+	ctx := context.Background()
+	if !f.svc.Enabled(ctx, f.org) {
+		t.Fatal("scripts should be on by default")
+	}
+	sid := f.script("Get-Date")
+	req := RunRequest{ScriptID: sid, DeviceIDs: f.devs[:1], Reason: "check the clock"}
+	if _, err := f.svc.RequestRun(ctx, f.actor(f.alice), req); err != nil {
+		t.Fatalf("a run with the default settings: %v", err)
+	}
+
+	// A run that waits for approval cannot be approved while scripts are off.
+	f.requireApproval(true)
+	waiting, err := f.svc.RequestRun(ctx, f.actor(f.alice), req)
+	if err != nil || waiting.Status != "pending_approval" {
+		t.Fatalf("%v %+v", err, waiting)
+	}
+	f.setScripts(map[string]any{"require_approval": true, "enabled": false})
+	if f.svc.Enabled(ctx, f.org) {
+		t.Fatal("the setting did not switch scripts off")
+	}
+	if _, err := f.svc.RequestRun(ctx, f.actor(f.alice), req); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("a run while scripts are off: %v", err)
+	}
+	if _, err := f.svc.Approve(ctx, f.actor(f.bob), waiting.ID, ""); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("an approval while scripts are off: %v", err)
+	}
+	if n := f.count("SELECT count(*) FROM jobs WHERE script_run_id = $1", waiting.ID); n != 0 {
+		t.Fatalf("%d jobs were created while scripts are off", n)
+	}
+
+	// Switched on again, the same request can be approved.
+	f.setScripts(map[string]any{"require_approval": true, "enabled": true})
+	if _, err := f.svc.Approve(ctx, f.actor(f.bob), waiting.ID, ""); err != nil {
+		t.Fatalf("approval after switching on: %v", err)
+	}
+}
+
+func (f *fx) setScripts(values map[string]any) {
+	f.t.Helper()
+	doc, err := f.set.Get(context.Background(), f.org, "scripts")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	if _, err := f.set.Put(context.Background(), settings.Actor{Org: f.org, User: f.alice}, "scripts", doc.Revision, values); err != nil {
+		f.t.Fatal(err)
+	}
+}

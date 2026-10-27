@@ -24,6 +24,8 @@ func (s *server) scriptsError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, scripts.ErrInvalid):
 		writeError(w, http.StatusUnprocessableEntity, "invalid_request", strings.TrimPrefix(err.Error(), scripts.ErrInvalid.Error()+": "))
+	case errors.Is(err, scripts.ErrDisabled):
+		writeError(w, http.StatusConflict, "scripts_disabled", "Running scripts is switched off. An administrator can switch it on under Settings, Scripts.")
 	case errors.Is(err, scripts.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "Not found.")
 	case errors.Is(err, scripts.ErrConflict):
@@ -143,7 +145,7 @@ func (s *server) scriptStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := principalFrom(r)
-	writeJSON(w, http.StatusOK, map[string]any{"require_approval": s.Scripts.RequireApproval(r.Context(), p.OrgID),
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": s.Scripts.Enabled(r.Context(), p.OrgID), "require_approval": s.Scripts.RequireApproval(r.Context(), p.OrgID),
 		"other_approvers": s.Scripts.OtherApprovers(r.Context(), p.OrgID, p.UserID), "max_devices": scripts.MaxTargets})
 }
 

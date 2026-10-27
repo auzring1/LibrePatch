@@ -13,10 +13,10 @@ type Options struct {
 	Server      string
 	Token       string
 	AllowedJobs string
-	// AllowScripts switches on running scripts from the console on this computer (off by default, D127).
-	AllowScripts bool
-	Wait         time.Duration
-	Out          io.Writer
+	// NoScripts switches off running scripts from the console on this computer (they are on by default, D150).
+	NoScripts bool
+	Wait      time.Duration
+	Out       io.Writer
 }
 
 // Install is Windows-only; use `librepatch-agent run` on development platforms.

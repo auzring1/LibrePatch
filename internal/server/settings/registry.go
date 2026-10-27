@@ -354,8 +354,10 @@ var sso = Section{
 
 var scripts = Section{
 	ID: "scripts", Label: "Scripts", Perm: PermSecurity,
-	Description: "Running scripts on devices is the most powerful thing this product can do: code you wrote runs as SYSTEM on the computers you choose. Only administrators can use it, every step is in the audit log, and a device only accepts a script if the agent on it was installed with scripts switched on (--allow-scripts, or ALLOWSCRIPTS=1 in the MSI); the server cannot switch that on.",
+	Description: "Running scripts on devices is the most powerful thing this product can do: code you wrote runs as SYSTEM on the computers you choose. Only administrators can use it, every step is in the audit log, and a computer can be excluded for good by installing its agent with --no-scripts (or ALLOWSCRIPTS=0 in the MSI); the server cannot switch that off again.",
 	Fields: []Field{
+		{Key: "enabled", Label: "Allow running scripts", Kind: Bool, Default: true, Effect: Live,
+			Help: "On: administrators can run scripts from the Scripts page on every computer whose agent allows it (all of them, unless one was installed with --no-scripts). Off: no script can be run and a run that is waiting for approval cannot be approved; the library stays and nothing is deleted."},
 		{Key: "require_approval", Label: "A second administrator must approve every run", Kind: Bool, Default: false, Effect: Live,
 			Help: "A run waits until another administrator (not the person who asked) approves exactly the script that was requested. Recommended whenever you have two or more administrators. With only one administrator nobody could approve, so it is off by default."},
 	},

@@ -6454,7 +6454,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Whether runs need a second person's approval, and whether anyone else could approve (requires scripts:read) */
+        /** Whether running scripts is switched on, whether runs need a second person's approval, and whether anyone else could approve (requires scripts:read) */
         get: {
             parameters: {
                 query?: never;
@@ -6471,6 +6471,8 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
+                            /** @description Settings > Scripts > Allow running scripts (on by default); off refuses every run and approval */
+                            enabled: boolean;
                             require_approval: boolean;
                             /**
                              * Format: int64
