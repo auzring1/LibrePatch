@@ -6,18 +6,18 @@ import (
 )
 
 func TestAppxNames(t *testing.T) {
-	if n, ok := AppxNameFromFamily("Microsoft.WindowsTerminal_8wekyb3d8bbwe"); !ok || n != "Microsoft.WindowsTerminal" {
+	if n, ok := AppxNameFromFamily("Microsoft.WindowsTerminal_contosopub001"); !ok || n != "Microsoft.WindowsTerminal" {
 		t.Fatalf("family: %q %v", n, ok)
 	}
-	if n, ok := AppxNameFromFullName("Microsoft.WindowsTerminal_1.25.2733.0_x64__8wekyb3d8bbwe"); !ok || n != "Microsoft.WindowsTerminal" {
+	if n, ok := AppxNameFromFullName("Microsoft.WindowsTerminal_1.25.2733.0_x64__contosopub001"); !ok || n != "Microsoft.WindowsTerminal" {
 		t.Fatalf("full name: %q %v", n, ok)
 	}
-	for _, bad := range []string{"", "Microsoft.WindowsTerminal", "A B_8wekyb3d8bbwe", "x;rm_8wekyb3d8bbwe", "a_b", "$(calc)_8wekyb3d8bbwe"} {
+	for _, bad := range []string{"", "Microsoft.WindowsTerminal", "A B_contosopub001", "x;rm_contosopub001", "a_b", "$(calc)_contosopub001"} {
 		if _, ok := AppxNameFromFamily(bad); ok {
 			t.Errorf("family %q accepted", bad)
 		}
 	}
-	for _, bad := range []string{"", "Name_1.0_x64_8wekyb3d8bbwe", "Na me_1.0_x64__8wekyb3d8bbwe", "Name_1.0_x64__8wekyb3d8bbwe'; calc"} {
+	for _, bad := range []string{"", "Name_1.0_x64_contosopub001", "Na me_1.0_x64__contosopub001", "Name_1.0_x64__contosopub001'; calc"} {
 		if _, ok := AppxNameFromFullName(bad); ok {
 			t.Errorf("full name %q accepted", bad)
 		}

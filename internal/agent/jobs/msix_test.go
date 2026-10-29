@@ -124,7 +124,7 @@ func TestMSIXPackageIsRemovedForAllUsers(t *testing.T) {
 		return RunResult{ExitCode: 0, LogTail: "Contoso.Terminal was removed."}, nil
 	}
 	se, env := r.uninstallEnv("u1", func(e *agentv1.JobEnvelope, b *agentv1.UninstallBody) {
-		b.ItemSource, b.ItemKey = "appx", "Contoso.Terminal_1.25.2733.0_x64__8wekyb3d8bbwe"
+		b.ItemSource, b.ItemKey = "appx", "Contoso.Terminal_1.25.2733.0_x64__contosopub001"
 	})
 	r.e.Accept(se, env)
 	r.tick()
@@ -148,7 +148,7 @@ func TestMSIXPackageIsRemovedForAllUsers(t *testing.T) {
 	} {
 		id := "ub" + strings.ReplaceAll(name, " ", "")
 		se, env := r.uninstallEnv(id, func(e *agentv1.JobEnvelope, b *agentv1.UninstallBody) {
-			b.ItemSource, b.ItemKey = "appx", "Contoso.Terminal_1.25.2733.0_x64__8wekyb3d8bbwe"
+			b.ItemSource, b.ItemKey = "appx", "Contoso.Terminal_1.25.2733.0_x64__contosopub001"
 			mut(e, b)
 		})
 		r.e.Accept(se, env)

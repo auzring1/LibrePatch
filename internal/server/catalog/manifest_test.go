@@ -147,7 +147,7 @@ func TestMSIXNeedsAPackageFamilyAndIsInstalledMachineWide(t *testing.T) {
 		t.Fatalf("detection without a name: %+v", p.Installers[0].Detection)
 	}
 
-	m = strings.Replace(singleton, "InstallerType: nullsoft", "InstallerType: msix\nScope: user\nPackageFamilyName: Contoso.Terminal_8wekyb3d8bbwe", 1)
+	m = strings.Replace(singleton, "InstallerType: nullsoft", "InstallerType: msix\nScope: user\nPackageFamilyName: Contoso.Terminal_contosopub001", 1)
 	p, err := ParseFiles([][]byte{[]byte(m)})
 	if err != nil {
 		t.Fatal(err)

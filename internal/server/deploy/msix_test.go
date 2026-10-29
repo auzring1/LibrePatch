@@ -58,13 +58,13 @@ func TestMSIXPackageIsDeployedMachineWide(t *testing.T) {
 func TestMSIXAppsCanBeRemovedFromTheInventory(t *testing.T) {
 	f := newFixture(t)
 	dev := f.device("pc-1", "amd64")
-	full := "Contoso.Terminal_1.25.2733.0_x64__8wekyb3d8bbwe"
+	full := "Contoso.Terminal_1.25.2733.0_x64__contosopub001"
 	f.install(dev, "machine", "", "appx", full, "1.25.2733.0")
-	f.install(dev, "user", sidA, "appx", "Contoso.Other_1.0.0.0_x64__8wekyb3d8bbwe", "1.0.0.0")
+	f.install(dev, "user", sidA, "appx", "Contoso.Other_1.0.0.0_x64__contosopub001", "1.0.0.0")
 
 	res, err := f.svc.UninstallSoftware(context.Background(), f.org, f.user, dev, "127.0.0.1", []SoftwareRef{
 		{Source: "appx", Scope: "machine", ItemKey: full},
-		{Source: "appx", Scope: "user", UserSID: sidA, ItemKey: "Contoso.Other_1.0.0.0_x64__8wekyb3d8bbwe"},
+		{Source: "appx", Scope: "user", UserSID: sidA, ItemKey: "Contoso.Other_1.0.0.0_x64__contosopub001"},
 	})
 	if err != nil {
 		t.Fatal(err)
