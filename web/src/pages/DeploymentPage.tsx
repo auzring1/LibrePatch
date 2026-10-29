@@ -5,6 +5,7 @@ import { Alert, Button, Code, Group, Modal, ScrollArea, Stack, Table, Text } fro
 import { api, errorMessage, type DeploymentDetail, type DeploymentJob, type JobDetail } from "../api/client";
 import { dateTime } from "../api/format";
 import { describePrompts } from "../components/prompts";
+import { jobCanBeCancelled, jobReason } from "../components/jobReasons";
 import { useSession } from "../api/session";
 import { Card, DataTable, Icons, Page, PageHeader, Skel, StatusPill, toast, useConfirm, type Column } from "../ui";
 import { DeploymentStatus, JobBadge } from "./DeploymentsPage";
@@ -98,7 +99,7 @@ export function DeploymentPage() {
         cell: (j) => (
           <>
             <JobBadge status={j.status} />
-            {j.status_reason && <span className="lp-dt__cell-sub">{j.status_reason}</span>}
+            {j.status_reason && <span className="lp-dt__cell-sub">{jobReason(j.status_reason)}</span>}
           </>
         ),
         csv: (j) => (j.status_reason ? `${j.status} (${j.status_reason})` : j.status),
@@ -254,8 +255,20 @@ export function DeploymentPage() {
 }
 
 export function JobModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const q = useQuery({ queryKey: ["job", id], queryFn: () => api<JobDetail>("GET", `/jobs/${id}`), refetchInterval: 15_000 });
+  const qc = useQueryClient();
+  const { canOrg } = useSession();
+  const q = useQuery({ queryKey: ["job", id], queryFn: () => api<JobDetail>("GET", `/jobs/${id}`), refetchInterval: 5_000 });
   const j = q.data;
+  const cancel = useMutation({
+    mutationFn: () => api("POST", `/jobs/${id}/cancel`, {}),
+    onSuccess: () => {
+      toast.success("Cancelled. A job that is running on the PC is ended there.");
+      void qc.invalidateQueries({ queryKey: ["job", id] });
+      void qc.invalidateQueries({ queryKey: ["device-jobs"] });
+      void qc.invalidateQueries({ queryKey: ["deployment"] });
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
   return (
     <Modal opened onClose={onClose} title={j?.title ?? "Job"} size="xl">
       {q.isLoading && (
@@ -276,7 +289,7 @@ export function JobModal({ id, onClose }: { id: string; onClose: () => void }) {
             <Text size="sm">{j.hostname}</Text>
             {j.status_reason && (
               <Text size="sm" c="dimmed">
-                {j.status_reason}
+                {jobReason(j.status_reason)}
               </Text>
             )}
             {j.reboot_required && (
@@ -288,6 +301,16 @@ export function JobModal({ id, onClose }: { id: string; onClose: () => void }) {
           <Text size="sm">
             Attempt {j.attempt} · created {dateTime(j.created_at)} · not before {dateTime(j.not_before)} · expires {dateTime(j.expires_at)}
           </Text>
+          {jobCanBeCancelled(j.status) && canOrg("deployments:write") && (
+            <Group>
+              <Button size="compact-sm" color="red" variant="light" loading={cancel.isPending} onClick={() => cancel.mutate()}>
+                Cancel this job
+              </Button>
+              <Text size="xs" c="dimmed">
+                Stops it, even if it is running or stuck on the PC.
+              </Text>
+            </Group>
+          )}
           {j.result && (
             <Stack gap={4}>
               {j.result.message && <Text size="sm">{j.result.message}</Text>}

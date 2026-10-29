@@ -261,6 +261,7 @@ func (s *server) routes(r chi.Router) {
 	r.With(s.require(auth.PermDeploymentsWrite)).Post("/deployments/{id}/cancel", s.cancelDeployment)
 	r.With(s.requireAny(auth.PermDeploymentsRead)).Get("/jobs/{id}", s.getJob)
 	r.With(s.requireAny(auth.PermDeploymentsWrite)).Post("/jobs/{id}/retry", s.retryJob)
+	r.With(s.requireAny(auth.PermDeploymentsWrite)).Post("/jobs/{id}/cancel", s.cancelJob)
 	r.With(s.require(auth.PermGroupsWrite)).Post("/groups/{id}/members", s.changeGroupMembers)
 
 	r.With(s.require(auth.PermEnrollmentRead)).Get("/agent-downloads", s.agentDownloads)

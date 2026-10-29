@@ -6,11 +6,12 @@ import { api, errorMessage, type DeviceJob } from "../api/client";
 import { dateTime } from "../api/format";
 import { JobBadge } from "../pages/DeploymentsPage";
 import { JobModal } from "../pages/DeploymentPage";
+import { jobReason } from "./jobReasons";
 import { EmptyState, Icons, TableSkeleton } from "../ui";
 
 export function JobsTab({ id }: { id: string }) {
   const [open, setOpen] = useState<string | null>(null);
-  const q = useQuery({ queryKey: ["device-jobs", id], queryFn: () => api<{ items: DeviceJob[] }>("GET", `/devices/${id}/jobs`), refetchInterval: 30_000 });
+  const q = useQuery({ queryKey: ["device-jobs", id], queryFn: () => api<{ items: DeviceJob[] }>("GET", `/devices/${id}/jobs`), refetchInterval: 10_000 });
   return (
     <>
       {q.isLoading && <TableSkeleton rows={3} cols={4} />}
@@ -42,7 +43,7 @@ export function JobsTab({ id }: { id: string }) {
                   <JobBadge status={j.status} />
                   {j.status_reason && (
                     <Text size="xs" c="dimmed">
-                      {j.status_reason}
+                      {jobReason(j.status_reason)}
                     </Text>
                   )}
                 </Table.Td>

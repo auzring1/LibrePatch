@@ -1,10 +1,12 @@
 package jobs
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
+	"github.com/auzring1/librepatch/internal/agent/wu"
 )
 
 func (r *rig) rebootCount() int {
@@ -33,7 +35,7 @@ func TestRestartIsNotHeldBackByARunningScan(t *testing.T) {
 	scan, scanEnv := r.wuEnv("scan", agentv1.JobType_JOB_TYPE_WU_SCAN, nil)
 	r.e.Accept(scan, scanEnv)
 	done := make(chan struct{})
-	go func() { r.e.tickLane(r.ctx, laneMain); close(done) }()
+	go func() { r.e.tickLane(r.ctx, laneScan); close(done) }()
 	select {
 	case <-r.p.wuc.scanning:
 	case <-time.After(5 * time.Second):
@@ -143,5 +145,121 @@ func TestSecondRestartRequestDoesNotRestartTheComputerTwice(t *testing.T) {
 	}
 	if r.e.loadRebootPlan() != nil {
 		t.Fatalf("the plan should be gone after the restart: %+v", r.e.loadRebootPlan())
+	}
+}
+
+// The bug that made a Refresh click wait for an hour: jobs ran one at a time, so a removal whose uninstaller never finished
+// held back everything behind it (D152). A refresh, a restart and a script now have lanes of their own.
+func TestRefreshAndScriptsRunWhileAnUninstallerHangs(t *testing.T) {
+	r := newRig(t)
+	r.e.init()
+	r.addProgram(code1, map[string]string{"DisplayName": "Acme", "UninstallString": "MsiExec.exe /X" + code1}, map[string]uint32{"WindowsInstaller": 1})
+	release := make(chan struct{})
+	started := make(chan struct{}, 1)
+	r.p.runFn = func(s RunSpec, user string) (RunResult, error) {
+		if strings.HasSuffix(s.Exe, "msiexec.exe") { // the uninstaller
+			select {
+			case started <- struct{}{}:
+			default:
+			}
+			<-release // never finishes on its own
+			r.p.machine.add(uninstallKey).remove(code1)
+			return RunResult{ExitCode: 0}, nil
+		}
+		return RunResult{ExitCode: 0, LogTail: "script output"}, nil // the script
+	}
+	un, unEnv := r.uninstallEnv("un", func(e *agentv1.JobEnvelope, b *agentv1.UninstallBody) { b.ItemKey = code1 })
+	r.e.Accept(un, unEnv)
+	unDone := make(chan struct{})
+	go func() { r.e.tickLane(r.ctx, laneMain); close(unDone) }()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the uninstaller never started")
+	}
+
+	refreshed := 0
+	r.e.InventoryNow = func() { refreshed++ }
+	// Both arrive while the uninstaller is stuck.
+	rf, rfEnv := r.wuEnv("refresh", agentv1.JobType_JOB_TYPE_INVENTORY_FULL, nil)
+	r.e.Accept(rf, rfEnv)
+	sc, scEnv := scriptEnv(r, "script", scriptBody("Write-Output hi"))
+	r.e.ScriptsEnabled = true
+	r.e.Accept(sc, scEnv)
+
+	r.e.tickLane(r.ctx, laneInventory)
+	r.e.tickLane(r.ctx, laneScript)
+	if r.state("refresh") != agentv1.JobState_JOB_STATE_SUCCEEDED || refreshed < 1 {
+		t.Fatalf("the refresh must not wait for the uninstaller: %v (refreshed %d)", r.state("refresh"), refreshed)
+	}
+	if r.state("script") != agentv1.JobState_JOB_STATE_SUCCEEDED {
+		t.Fatalf("the script must not wait for the uninstaller: %v", r.state("script"))
+	}
+	if r.state("un") != agentv1.JobState_JOB_STATE_RUNNING {
+		t.Fatalf("the uninstaller is still running: %v", r.state("un"))
+	}
+
+	close(release)
+	<-unDone
+	if r.state("un") != agentv1.JobState_JOB_STATE_SUCCEEDED {
+		t.Fatalf("uninstall %v: %+v", r.state("un"), r.rec.last("un"))
+	}
+}
+
+// Jobs that have to wait for the job in front of them say so, instead of sitting as "accepted" with no explanation.
+func TestQueuedJobsSayWhatTheyWaitFor(t *testing.T) {
+	r := newRig(t)
+	r.e.init()
+	release := make(chan struct{})
+	started := make(chan struct{}, 1)
+	r.installerRegisters("2.0", 0)
+	inner := r.p.runFn
+	r.p.runFn = func(s RunSpec, user string) (RunResult, error) {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		<-release
+		return inner(s, user)
+	}
+	first, firstEnv := r.installEnv("first", nil)
+	r.e.Accept(first, firstEnv)
+	second, secondEnv := r.installEnv("second", nil)
+	r.e.Accept(second, secondEnv)
+	done := make(chan struct{})
+	go func() { r.e.tickLane(r.ctx, laneMain); close(done) }()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first installer never started")
+	}
+	if r.state("first") != agentv1.JobState_JOB_STATE_RUNNING {
+		t.Fatalf("first: %v", r.state("first"))
+	}
+	r.eventually("the second job to say it is queued", func() bool { return r.state("second") == agentv1.JobState_JOB_STATE_WAITING })
+	if reason := r.rec.last("second").Reason; reason != "waiting_other_job" {
+		t.Fatalf("reason %q", reason)
+	}
+	close(release)
+	<-done
+	// The second one runs after the first (the installer is fake and registers the same product, so it is already satisfied).
+	if r.state("first") != agentv1.JobState_JOB_STATE_SUCCEEDED || r.state("second") != agentv1.JobState_JOB_STATE_SUCCEEDED {
+		t.Fatalf("first %v second %v", r.state("first"), r.state("second"))
+	}
+}
+
+// A scan that never gets an answer from its update source ends at the time limit instead of running for hours.
+func TestAScanEndsAtTheTimeLimit(t *testing.T) {
+	old := scanTimeout
+	scanTimeout = 50 * time.Millisecond
+	defer func() { scanTimeout = old }()
+	r := newRig(t)
+	r.p.wuc.scanGate, r.p.wuc.scanning = make(chan struct{}), make(chan struct{}, 1) // never opened
+	done := make(chan struct{})
+	go func() { r.e.scanAndReport(r.ctx, wu.Options{}); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the scan did not end at the time limit")
 	}
 }

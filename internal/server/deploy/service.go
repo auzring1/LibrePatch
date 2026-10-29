@@ -76,6 +76,8 @@ var (
 	ErrExcluded     = errors.New("deploy: package is excluded by an administrator")
 	ErrSelfUpdating = errors.New("deploy: package updates itself")
 	ErrNotRetryable = errors.New("deploy: only failed, expired, rejected or cancelled jobs can be retried")
+	// ErrNotCancellable means the job has already finished.
+	ErrNotCancellable = errors.New("deploy: the job has already finished")
 )
 
 func invalid(format string, a ...any) error {

@@ -3286,6 +3286,19 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/JobDetail" }
         "404": { $ref: "#/components/responses/Error" }
+  /jobs/{id}/cancel:
+    post:
+      tags: [deployments]
+      summary: Stop one job that has not finished, including one that is running on the device (requires deployments:write; audited)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "204": { description: Cancelled }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /jobs/{id}/retry:
     post:
       tags: [deployments]
