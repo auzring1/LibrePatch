@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/auzring1/librepatch/internal/shared/installer"
 )
 
 func fixture(t *testing.T, names ...string) [][]byte {
@@ -135,12 +137,34 @@ func TestExeWithoutSilentSwitchIsUnsupported(t *testing.T) {
 	}
 }
 
-func TestMSIXAndHostileSwitchesAreFlagged(t *testing.T) {
+func TestMSIXNeedsAPackageFamilyAndIsInstalledMachineWide(t *testing.T) {
 	m := strings.Replace(singleton, "InstallerType: nullsoft", "InstallerType: msix", 1)
 	p, _ := ParseFiles([][]byte{[]byte(m)})
-	if !strings.Contains(p.Installers[0].Unsupported, "MSIX") {
-		t.Fatalf("%q", p.Installers[0].Unsupported)
+	if !strings.Contains(p.Installers[0].Unsupported, "PackageFamilyName") {
+		t.Fatalf("a package without a family name cannot be found by the agent: %q", p.Installers[0].Unsupported)
 	}
+	if len(p.Installers[0].Detection) != 0 {
+		t.Fatalf("detection without a name: %+v", p.Installers[0].Detection)
+	}
+
+	m = strings.Replace(singleton, "InstallerType: nullsoft", "InstallerType: msix\nScope: user\nPackageFamilyName: Contoso.Terminal_8wekyb3d8bbwe", 1)
+	p, err := ParseFiles([][]byte{[]byte(m)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := p.Installers[0]
+	if in.Unsupported != "" || in.Scope != "machine" || in.Type != "msix" {
+		t.Fatalf("an MSIX package is deployable and installed for the whole computer: %+v", in)
+	}
+	if !installer.IsMSIXFileName(in.FileName) {
+		t.Fatalf("the staged file needs a package extension: %q", in.FileName)
+	}
+	if len(in.Detection) != 1 || in.Detection[0].Kind != "appx" || in.Detection[0].Key != "Contoso.Terminal_" || in.Detection[0].Cmp != "ge" || in.Detection[0].Version != p.Version {
+		t.Fatalf("detection: %+v", in.Detection)
+	}
+}
+
+func TestHostileSwitchesAreFlagged(t *testing.T) {
 	h := strings.Replace(singleton, "InstallerType: nullsoft", "InstallerType: exe\nInstallerSwitches:\n  Silent: /S & calc.exe", 1)
 	p, err := ParseFiles([][]byte{[]byte(h)})
 	if err != nil {

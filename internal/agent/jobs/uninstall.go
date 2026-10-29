@@ -37,6 +37,9 @@ func (e *Engine) uninstall(ctx context.Context, r *Record, env *agentv1.JobEnvel
 	scope, _ := scopeOf(b.Scope)
 	sid := env.TargetUserSid
 	timeout, _ := timeoutOf(b.TimeoutS)
+	if b.ItemSource == "appx" {
+		return e.uninstallAppx(ctx, r, env)
+	}
 
 	roots, err := e.P.UninstallRoots(scope, sid)
 	if err != nil {

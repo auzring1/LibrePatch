@@ -166,8 +166,12 @@ func (s *Service) UninstallSoftware(ctx context.Context, org, user, device uuid.
 			res.Skipped = append(res.Skipped, Skip{Device: row.Name, Reason: "system components cannot be removed from here"})
 			continue
 		}
-		if r.Source == "appx" || r.Source == "portable" {
+		if r.Source == "portable" {
 			res.Skipped = append(res.Skipped, Skip{Device: row.Name, Reason: "this kind of program (" + r.Source + ") cannot be uninstalled by " + brand.Name + " yet"})
+			continue
+		}
+		if r.Source == "appx" && r.Scope != "machine" {
+			res.Skipped = append(res.Skipped, Skip{Device: row.Name, Reason: "this app is installed for one person only; " + brand.Name + " removes apps installed for the whole computer"})
 			continue
 		}
 		sc := agentv1.InstallScope_INSTALL_SCOPE_MACHINE

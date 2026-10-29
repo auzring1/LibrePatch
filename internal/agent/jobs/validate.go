@@ -122,7 +122,16 @@ func ValidateInstall(b *agentv1.InstallBody, targetSID string) error {
 		return bad("unknown installer type")
 	}
 	if t == installer.MSIX {
-		return bad("MSIX installation is not supported by this agent version")
+		// An MSIX/AppX package is installed for the whole computer by a script of the agent's own (D151).
+		if scope != installer.Machine {
+			return bad("an MSIX/AppX package is installed for the whole computer, not for one user")
+		}
+		if !installer.IsMSIXFileName(in.FileName) {
+			return bad("an MSIX/AppX package file must end in .msix, .msixbundle, .appx or .appxbundle")
+		}
+		if _, err := msixName(b.Detection); err != nil {
+			return bad("%v", err)
+		}
 	}
 	if len(in.Sha256) != 32 {
 		return bad("installer SHA-256 is mandatory")
@@ -203,6 +212,13 @@ func ValidateUninstall(b *agentv1.UninstallBody, targetSID string) error {
 	}
 	switch b.ItemSource {
 	case "reg64", "reg32", "hku", "hku32", "msi":
+	case "appx":
+		if scope != installer.Machine {
+			return bad("an MSIX/AppX package is removed for the whole computer, not for one user")
+		}
+		if _, ok := installer.AppxNameFromFullName(b.ItemKey); !ok {
+			return bad("the package full name is not valid")
+		}
 	default:
 		return bad("unsupported item source %q", b.ItemSource)
 	}
