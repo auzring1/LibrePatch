@@ -5,6 +5,7 @@ describe("jobReason", () => {
   it("explains the reasons a job waits or ends", () => {
     expect(jobReason("waiting_other_job")).toBe("Waiting for another job on this PC to finish");
     expect(jobReason("cancelled_by_administrator")).toBe("Cancelled by an administrator");
+    expect(jobReason("no_silent_uninstall")).toMatch(/Details/);
     expect(jobReason("something_new")).toBe("something_new");
     expect(jobReason(null)).toBe("");
   });

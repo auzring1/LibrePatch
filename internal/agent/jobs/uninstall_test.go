@@ -134,6 +134,8 @@ func TestUninstallAlreadyGoneAndStillListed(t *testing.T) {
 		t.Fatalf("absent program: %v", r.state("u1"))
 	}
 	r.addProgram("AcmeTool", map[string]string{"QuietUninstallString": `"C:\Program Files\A\u.exe" /S`}, nil)
+	recheckDelay, recheckTries = time.Millisecond, 2
+	t.Cleanup(func() { recheckDelay, recheckTries = 1500*time.Millisecond, 10 })
 	r.p.runFn = func(RunSpec, string) (RunResult, error) { return RunResult{ExitCode: 0}, nil } // claims success, removes nothing
 	se, env = r.uninstallEnv("u2", nil)
 	r.e.Accept(se, env)
@@ -240,5 +242,93 @@ func TestCleanupUninstallOnlyRemovesOlderCopies(t *testing.T) {
 	r.tick()
 	if r.state("c4") != agentv1.JobState_JOB_STATE_REJECTED {
 		t.Fatalf("bad remove_older_than: %v", r.state("c4"))
+	}
+}
+
+// userUninstall runs a per-user removal for a program whose Uninstall key holds vals, and returns the job's final state.
+func userUninstall(t *testing.T, vals map[string]string, extra []string) (*rig, string) {
+	t.Helper()
+	r := newRig(t)
+	const sid = "S-1-5-21-1-2-3-1001"
+	r.p.sessions[sid] = true
+	root := r.p.userRoot(sid)
+	k := root.add(`Software\Microsoft\Windows\CurrentVersion\Uninstall\Tool`)
+	for n, v := range vals {
+		k.vals[n] = v
+	}
+	r.p.runFn = func(RunSpec, string) (RunResult, error) {
+		root.add(`Software\Microsoft\Windows\CurrentVersion\Uninstall`).remove("Tool")
+		return RunResult{}, nil
+	}
+	se, env := r.uninstallEnv("u1", func(e *agentv1.JobEnvelope, b *agentv1.UninstallBody) {
+		e.TargetUserSid, b.Scope, b.ItemSource, b.ItemKey, b.ExtraArgs = sid, agentv1.InstallScope_INSTALL_SCOPE_USER, "hku", "Tool", extra
+	})
+	r.e.Accept(se, env)
+	r.tick()
+	return r, r.rec.last("u1").Reason
+}
+
+func TestPerUserUninstallExpandsTheUsersOwnFolders(t *testing.T) {
+	// The user's hive stores %LOCALAPPDATA% unexpanded; the service must not reject that as "not an absolute path".
+	r, _ := userUninstall(t, map[string]string{"QuietUninstallString": `"%LOCALAPPDATA%\Tool\unins000.exe" /VERYSILENT`}, nil)
+	if r.state("u1") != agentv1.JobState_JOB_STATE_SUCCEEDED || len(r.p.runs) != 1 {
+		t.Fatalf("%v %+v", r.state("u1"), r.rec.last("u1").Result)
+	}
+	if strings.Contains(r.p.runs[0].Exe, "%") || !strings.HasSuffix(r.p.runs[0].Exe, `\Tool\unins000.exe`) {
+		t.Fatalf("not expanded: %q", r.p.runs[0].Exe)
+	}
+}
+
+func TestPerUserUninstallKnowsSquirrelAndNSIS(t *testing.T) {
+	r, _ := userUninstall(t, map[string]string{"UninstallString": `"C:\Users\a\AppData\Local\Tool\Update.exe" --uninstall`}, nil)
+	if r.state("u1") != agentv1.JobState_JOB_STATE_SUCCEEDED || !contains(r.p.runs[0].Args, "-s") {
+		t.Fatalf("squirrel: %v %+v", r.state("u1"), r.p.runs)
+	}
+	old := readHead
+	defer func() { readHead = old }()
+	readHead = func(string, int) ([]byte, error) { return []byte("MZ....Nullsoft Install System v3...."), nil }
+	r, _ = userUninstall(t, map[string]string{"UninstallString": `"C:\Users\a\AppData\Local\Tool\Uninstall.exe"`}, nil)
+	if r.state("u1") != agentv1.JobState_JOB_STATE_SUCCEEDED || len(r.p.runs[0].Args) != 2 || r.p.runs[0].Args[0] != "/S" ||
+		r.p.runs[0].Args[1] != `_?=C:\Users\a\AppData\Local\Tool` {
+		t.Fatalf("nsis: %v %+v", r.state("u1"), r.p.runs)
+	}
+	// An uninstaller that is not NSIS is never guessed at: /S could open a window nobody can see.
+	readHead = func(string, int) ([]byte, error) { return []byte("MZ....something else"), nil }
+	r, reason := userUninstall(t, map[string]string{"UninstallString": `"C:\Users\a\AppData\Local\Tool\Uninstall.exe"`}, nil)
+	if r.state("u1") != agentv1.JobState_JOB_STATE_FAILED || reason != "no_silent_uninstall" || len(r.p.runs) != 0 {
+		t.Fatalf("unknown: %v %q", r.state("u1"), reason)
+	}
+}
+
+func TestProgramsWithoutASilentUninstallerSayWhy(t *testing.T) {
+	r, reason := userUninstall(t, map[string]string{"UninstallString": `"C:\Program Files (x86)\Citrix\ICA Client\SelfServicePlugin\SelfService.exe" -uninstall Meditech`}, nil)
+	msg := r.rec.last("u1").Result.Message
+	if reason != "no_silent_uninstall" || !strings.Contains(msg, "Citrix") || len(r.p.runs) != 0 {
+		t.Fatalf("%q %q", reason, msg)
+	}
+	r, reason = userUninstall(t, map[string]string{"UninstallString": `rundll32.exe dfshim.dll,ShArpMaintain app.application`}, nil)
+	if reason != "no_silent_uninstall" || !strings.Contains(r.rec.last("u1").Result.Message, "ClickOnce") {
+		t.Fatalf("%q %q", reason, r.rec.last("u1").Result.Message)
+	}
+}
+
+func TestUninstallWaitsForAnUninstallerThatFinishesInTheBackground(t *testing.T) {
+	r := newRig(t)
+	r.addProgram("AcmeTool", map[string]string{"QuietUninstallString": `"C:\Program Files\A\u.exe" /S`}, nil)
+	recheckDelay = time.Millisecond
+	t.Cleanup(func() { recheckDelay = 1500 * time.Millisecond })
+	calls := 0
+	r.p.runFn = func(RunSpec, string) (RunResult, error) { return RunResult{ExitCode: 0}, nil }
+	r.p.onRoots = func() {
+		calls++
+		if calls == 4 { // the background copy of the uninstaller finishes a moment later
+			r.p.machine.add(uninstallKey).remove("AcmeTool")
+		}
+	}
+	se, env := r.uninstallEnv("u1", nil)
+	r.e.Accept(se, env)
+	r.tick()
+	if r.state("u1") != agentv1.JobState_JOB_STATE_SUCCEEDED {
+		t.Fatalf("%v %q", r.state("u1"), r.rec.last("u1").Reason)
 	}
 }

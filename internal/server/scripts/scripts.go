@@ -562,6 +562,24 @@ func (s *Service) runView(ctx context.Context, q *dbq.Queries, r dbq.ScriptRun) 
 	return v
 }
 
+// settled turns the stored "running" into what the run came to once none of its jobs is still open. The stored state is
+// only ever "running" (the run was sent), so the outcome is worked out from the jobs and never needs a second write.
+func settled(status string, open, ok, bad int64) string {
+	if status != "running" || open > 0 {
+		return status
+	}
+	switch {
+	case ok > 0 && bad == 0:
+		return "completed"
+	case ok > 0:
+		return "completed_with_errors"
+	case bad > 0:
+		return "failed"
+	default:
+		return "cancelled"
+	}
+}
+
 // GetRun returns one run.
 func (s *Service) GetRun(ctx context.Context, org, id uuid.UUID) (*RunView, error) {
 	q := dbq.New(s.Pool)
@@ -571,14 +589,19 @@ func (s *Service) GetRun(ctx context.Context, org, id uuid.UUID) (*RunView, erro
 	}
 	v := s.runView(ctx, q, r)
 	jobs, _ := q.ListScriptRunJobs(ctx, &id)
+	var open int64
 	for _, j := range jobs {
 		switch j.Status {
-		case "succeeded":
+		case "succeeded", "succeeded_reboot":
 			v.Succeeded++
 		case "failed", "expired", "rejected":
 			v.Failed++
+		case "cancelled":
+		default:
+			open++
 		}
 	}
+	v.Status = settled(v.Status, open, v.Succeeded, v.Failed)
 	return &v, nil
 }
 
@@ -596,6 +619,7 @@ func (s *Service) ListRuns(ctx context.Context, org uuid.UUID, limit int32) ([]R
 		if r.Status == "pending_approval" && s.now().Sub(r.RequestedAt) > ApprovalValidity {
 			v.Status, v.NeedsApproval = "expired", false
 		}
+		v.Status = settled(v.Status, r.Open, r.Succeeded, r.Failed)
 		out = append(out, v)
 	}
 	return out, nil

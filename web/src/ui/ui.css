@@ -51,6 +51,9 @@ a.lp-tile:hover, button.lp-tile:hover { border-color: var(--lp-border-strong); b
 .lp-tile__label { display: flex; align-items: center; gap: 0.375rem; color: var(--lp-text-muted); font-size: var(--lp-text-sm); font-weight: var(--lp-weight-medium); }
 .lp-tile__value { font-size: var(--lp-text-3xl); font-weight: var(--lp-weight-semibold); line-height: 1.15; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .lp-tile__hint { color: var(--lp-text-muted); font-size: var(--lp-text-xs); display: flex; align-items: center; gap: 0.25rem; }
+.lp-tiles--six { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 720px) { .lp-tiles--six { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1500px) { .lp-tiles--six { grid-template-columns: repeat(6, 1fr); } }
 .lp-tiles--compact { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--lp-space-2); }
 .lp-tiles--compact .lp-tile { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--lp-space-3); padding: var(--lp-space-2) var(--lp-space-3) var(--lp-space-2) var(--lp-space-4); box-shadow: none; }
 .lp-tiles--compact .lp-tile::before { top: 8px; bottom: 8px; }
@@ -168,7 +171,7 @@ a.lp-tile:hover, button.lp-tile:hover { border-color: var(--lp-border-strong); b
 .lp-dt { display: flex; flex-direction: column; gap: var(--lp-space-3); min-width: 0; }
 .lp-dt__toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lp-space-2); }
 .lp-dt__toolbar-spacer { flex: 1; }
-.lp-dt__searchbox { display: flex; align-items: center; gap: var(--lp-space-2); height: 34px; min-width: 220px; padding: 0 var(--lp-space-3); background: var(--lp-surface); border: 1px solid var(--lp-border-strong); border-radius: var(--lp-radius-md); color: var(--lp-text-muted); }
+.lp-dt__searchbox { display: flex; flex: 0 1 260px; align-items: center; gap: var(--lp-space-2); height: 34px; min-width: 160px; padding: 0 var(--lp-space-3); background: var(--lp-surface); border: 1px solid var(--lp-border-strong); border-radius: var(--lp-radius-md); color: var(--lp-text-muted); }
 .lp-dt__searchbox:focus-within { border-color: var(--lp-focus); box-shadow: 0 0 0 1px var(--lp-focus); }
 .lp-dt__searchbox input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--lp-text); font: inherit; }
 .lp-dt__searchbox input::placeholder { color: var(--lp-text-muted); opacity: 1; }

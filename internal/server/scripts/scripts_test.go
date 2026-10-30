@@ -366,6 +366,67 @@ func TestScriptOutputIsKeptApartFromTheJobResult(t *testing.T) {
 	}
 }
 
+func TestARunShowsWhatItCameToOnceEveryJobIsDone(t *testing.T) {
+	f := newFx(t)
+	ctx := context.Background()
+	run, err := f.svc.RequestRun(ctx, f.actor(f.alice), RunRequest{ScriptID: f.script("1"), DeviceIDs: f.devs[:2], Reason: "why"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.dep.Wait()
+	state := func() (string, string) {
+		d, err := f.svc.RunDetail(ctx, f.org, run.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, _ := f.svc.ListRuns(ctx, f.org, 10)
+		return d.Status, rows[0].Status
+	}
+	if a, b := state(); a != "running" || b != "running" {
+		t.Fatalf("jobs are still open: %s %s", a, b)
+	}
+	d, _ := f.svc.RunDetail(ctx, f.org, run.ID)
+	finish := func(job uuid.UUID, dev uuid.UUID, st agentv1.JobState, out agentv1.JobOutcome) {
+		row, _ := dbq.New(f.pool).GetDevice(ctx, dev)
+		for _, s := range []agentv1.JobState{agentv1.JobState_JOB_STATE_ACCEPTED, agentv1.JobState_JOB_STATE_RUNNING} {
+			if err := f.dep.ApplyUpdate(ctx, row, &agentv1.JobUpdate{JobId: job.String(), Attempt: 1, State: s}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := f.dep.ApplyUpdate(ctx, row, &agentv1.JobUpdate{JobId: job.String(), Attempt: 1, State: st, Result: &agentv1.JobResult{Outcome: out}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	finish(d.Jobs[0].JobID, d.Jobs[0].DeviceID, agentv1.JobState_JOB_STATE_SUCCEEDED, agentv1.JobOutcome_JOB_OUTCOME_SUCCESS)
+	if a, b := state(); a != "running" || b != "running" {
+		t.Fatalf("one job is still open: %s %s", a, b)
+	}
+	finish(d.Jobs[1].JobID, d.Jobs[1].DeviceID, agentv1.JobState_JOB_STATE_FAILED, agentv1.JobOutcome_JOB_OUTCOME_FAILED)
+	if a, b := state(); a != "completed_with_errors" || b != "completed_with_errors" {
+		t.Fatalf("one worked and one failed: %s %s", a, b)
+	}
+}
+
+func TestSettledStates(t *testing.T) {
+	for _, c := range []struct {
+		status        string
+		open, ok, bad int64
+		want          string
+	}{
+		{"running", 1, 5, 0, "running"},
+		{"running", 0, 5, 0, "completed"},
+		{"running", 0, 3, 2, "completed_with_errors"},
+		{"running", 0, 0, 2, "failed"},
+		{"running", 0, 0, 0, "cancelled"},
+		{"pending_approval", 0, 0, 0, "pending_approval"},
+		{"rejected", 0, 0, 0, "rejected"},
+	} {
+		if got := settled(c.status, c.open, c.ok, c.bad); got != c.want {
+			t.Errorf("%+v: got %s", c, got)
+		}
+	}
+}
+
 func TestApproverCount(t *testing.T) {
 	f := newFx(t)
 	if n := f.svc.OtherApprovers(context.Background(), f.org, f.alice); n != 1 {

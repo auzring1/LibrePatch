@@ -28,6 +28,14 @@ describe("runIsOpen", () => {
   });
 });
 
+describe("runStatus", () => {
+  it("says what a finished run came to", () => {
+    expect(runStatus("completed").label).toBe("Finished");
+    expect(runStatus("completed_with_errors").kind).toBe("warning");
+    expect(runStatus("failed").kind).toBe("danger");
+  });
+});
+
 describe("helpers", () => {
   it("shortens a fingerprint and explains the opt-in refusal", () => {
     expect(shortSha("0123456789abcdef0123")).toBe("0123456789ab");

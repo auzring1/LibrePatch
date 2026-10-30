@@ -21,7 +21,7 @@ export function ScriptsPage() {
   const canWrite = can("scripts:write");
   const canRun = can("scripts:run");
   const scripts = useQuery({ queryKey: ["scripts"], queryFn: () => api<{ items: ScriptItem[] }>("GET", "/scripts") });
-  const runs = useQuery({ queryKey: ["script-runs"], queryFn: () => api<{ items: ScriptRun[] }>("GET", "/scripts/runs"), refetchInterval: 10_000 });
+  const runs = useQuery({ queryKey: ["script-runs"], queryFn: () => api<{ items: ScriptRun[] }>("GET", "/scripts/runs"), refetchInterval: (query) => (query.state.data?.items.some((r) => r.status === "running" || r.status === "pending_approval") ? 4000 : 20_000) });
   const status = useQuery({ queryKey: ["script-status"], queryFn: () => api<Status>("GET", "/scripts/status") });
   const [edit, setEdit] = useState<string | "new" | null>(null);
   const [runFor, setRunFor] = useState<ScriptItem | null>(null);
@@ -322,6 +322,11 @@ function RunDetailModal({ id, me, onClose }: { id: string; me: string; onClose: 
     queryFn: () => api<ScriptRunDetail>("GET", `/scripts/runs/${id}`),
     refetchInterval: (query) => (query.state.data && !runIsOpen(query.state.data.status, query.state.data.jobs) ? false : 3000),
   });
+  // The list behind this window shows the same run: when the run ends here, bring the list up to date at once.
+  const runState = q.data?.status;
+  useEffect(() => {
+    if (runState) void qc.invalidateQueries({ queryKey: ["script-runs"] });
+  }, [runState, qc]);
   const [note, setNote] = useState("");
   const [output, setOutput] = useState<{ host: string; out: ScriptOutput } | null>(null);
   const refresh = () => (void qc.invalidateQueries({ queryKey: ["script-run", id] }), void qc.invalidateQueries({ queryKey: ["script-runs"] }));

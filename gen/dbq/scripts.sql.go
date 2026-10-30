@@ -398,7 +398,8 @@ const listScriptRuns = `-- name: ListScriptRuns :many
 SELECT r.id, r.script_id, r.script_name, r.version, r.reason, r.status, r.requested_at, r.decided_at, r.devices, r.requested_by,
        COALESCE(u.display_name, '') AS requested_by_name, COALESCE(d.display_name, '') AS decided_by_name,
        (SELECT count(*) FROM jobs j WHERE j.script_run_id = r.id AND j.status = 'succeeded')::bigint AS succeeded,
-       (SELECT count(*) FROM jobs j WHERE j.script_run_id = r.id AND j.status IN ('failed', 'expired', 'rejected'))::bigint AS failed
+       (SELECT count(*) FROM jobs j WHERE j.script_run_id = r.id AND j.status IN ('failed', 'expired', 'rejected'))::bigint AS failed,
+       (SELECT count(*) FROM jobs j WHERE j.script_run_id = r.id AND j.status NOT IN ('succeeded', 'succeeded_reboot', 'failed', 'expired', 'cancelled', 'rejected'))::bigint AS open
 FROM script_runs r LEFT JOIN users u ON u.id = r.requested_by LEFT JOIN users d ON d.id = r.decided_by
 WHERE r.org_id = $1 ORDER BY r.requested_at DESC LIMIT $2
 `
@@ -423,6 +424,7 @@ type ListScriptRunsRow struct {
 	DecidedByName   string
 	Succeeded       int64
 	Failed          int64
+	Open            int64
 }
 
 func (q *Queries) ListScriptRuns(ctx context.Context, arg ListScriptRunsParams) ([]ListScriptRunsRow, error) {
@@ -449,6 +451,7 @@ func (q *Queries) ListScriptRuns(ctx context.Context, arg ListScriptRunsParams) 
 			&i.DecidedByName,
 			&i.Succeeded,
 			&i.Failed,
+			&i.Open,
 		); err != nil {
 			return nil, err
 		}
