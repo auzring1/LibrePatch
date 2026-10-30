@@ -892,6 +892,17 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Update defaults settings saved.")).toBeVisible();
   await expect(mainNav(page).getByRole("link", { name: "Windows updates", exact: true })).toBeVisible();
+  // "Ignore WSUS" turns the source "whatever the device is set to" into Windows Update on the internet, and says so on Automations.
+  await page.getByRole("switch", { name: /^Ignore WSUS and check Microsoft directly/ }).check({ force: true });
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Update defaults settings saved.").last()).toBeVisible();
+  await page.goto("/automations?tab=windows");
+  await expect(page.getByText("WSUS is ignored (Settings, Update defaults)")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Service", exact: true }).or(page.getByLabel("Service", { exact: true })).first()).toHaveValue("Windows Update (internet); WSUS is ignored");
+  await page.goto("/settings/updates");
+  await page.getByRole("switch", { name: /^Ignore WSUS and check Microsoft directly/ }).uncheck({ force: true });
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Update defaults settings saved.").last()).toBeVisible();
   // A custom device field is defined here and then offered on the device page and in the device list.
   await setNav.getByRole("link", { name: "Device defaults", exact: true }).click();
   await page.getByRole("group", { name: "Custom device fields" }).getByRole("button", { name: "Add" }).click();

@@ -12,6 +12,17 @@ import (
 	"github.com/google/uuid"
 )
 
+const bumpWURev = `-- name: BumpWURev :exec
+INSERT INTO org_settings (org_id, wu_rev, updated_at) VALUES ($1, 2, now())
+ON CONFLICT (org_id) DO UPDATE SET wu_rev = org_settings.wu_rev + 1, updated_at = now()
+`
+
+// Makes every device get a scan with the current source settings (used when a setting that changes the source is saved).
+func (q *Queries) BumpWURev(ctx context.Context, orgID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, bumpWURev, orgID)
+	return err
+}
+
 const bumpWUSettings = `-- name: BumpWUSettings :exec
 INSERT INTO org_settings (org_id, wu_service, wu_include_drivers, wu_rev, updated_at) VALUES ($1, $2, $3, 2, now())
 ON CONFLICT (org_id) DO UPDATE SET wu_service = EXCLUDED.wu_service, wu_include_drivers = EXCLUDED.wu_include_drivers,
@@ -33,11 +44,16 @@ const countPolicyConflicts = `-- name: CountPolicyConflicts :many
 SELECT d.id, d.hostname, d.wu_policy
 FROM devices d
 WHERE d.org_id = $1 AND d.status = 'active' AND d.wu_policy IS NOT NULL
-  AND (d.wu_policy->>'wsus_configured' = 'true' OR d.wu_policy->>'wufb_deferrals' = 'true'
+  AND ((NOT $2::boolean AND d.wu_policy->>'wsus_configured' = 'true') OR d.wu_policy->>'wufb_deferrals' = 'true'
        OR d.wu_policy->>'no_auto_update' = 'true' OR d.wu_policy->>'wu_service_disabled' = 'true')
 ORDER BY lower(d.hostname)
 LIMIT 500
 `
+
+type CountPolicyConflictsParams struct {
+	OrgID      uuid.UUID
+	IgnoreWsus bool
+}
 
 type CountPolicyConflictsRow struct {
 	ID       uuid.UUID
@@ -46,8 +62,9 @@ type CountPolicyConflictsRow struct {
 }
 
 // Devices whose update policy is managed by something else (WSUS, deferrals, disabled automatic updates, service off).
-func (q *Queries) CountPolicyConflicts(ctx context.Context, orgID uuid.UUID) ([]CountPolicyConflictsRow, error) {
-	rows, err := q.db.Query(ctx, countPolicyConflicts, orgID)
+// With ignore_wsus on, a WSUS setting alone is not a conflict (WSUS is treated as not existing, D154).
+func (q *Queries) CountPolicyConflicts(ctx context.Context, arg CountPolicyConflictsParams) ([]CountPolicyConflictsRow, error) {
+	rows, err := q.db.Query(ctx, countPolicyConflicts, arg.OrgID, arg.IgnoreWsus)
 	if err != nil {
 		return nil, err
 	}

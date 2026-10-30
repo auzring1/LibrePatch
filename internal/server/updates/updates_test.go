@@ -2,6 +2,7 @@ package updates
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -849,5 +850,62 @@ func TestSwitchingWindowsUpdatesOffStopsEverything(t *testing.T) {
 	r.dep.Wait()
 	if len(r.jobsFor(r.p1)) != 1 || len(r.jobsFor(r.p2)) != 1 {
 		t.Fatalf("switching back on must resume the rollout: %d %d", len(r.jobsFor(r.p1)), len(r.jobsFor(r.p2)))
+	}
+}
+
+func TestIgnoringWSUSSendsDevicesToTheInternetAndHidesWSUS(t *testing.T) {
+	f := newFx(t)
+	ctx := context.Background()
+	d := f.device("a", true)
+	f.svc.Tick(ctx)
+	f.dep.Wait()
+	lastService := func() agentv1.WuService {
+		var body []byte
+		_ = f.pool.QueryRow(ctx, "SELECT body FROM jobs WHERE device_id = $1 AND type = 'wu_scan' ORDER BY created_at DESC LIMIT 1", d.ID).Scan(&body)
+		var env agentv1.JobEnvelope
+		_ = proto.Unmarshal(body, &env)
+		return env.GetWuScan().Service
+	}
+	if lastService() != agentv1.WuService_WU_SERVICE_DEFAULT {
+		t.Fatal("without the setting a device follows its own configuration")
+	}
+
+	ignore := true
+	f.svc.IgnoreWSUS = func(context.Context, uuid.UUID) bool { return ignore }
+	f.svc.SettingsChanged(ctx, f.org) // what saving the setting does
+	f.svc.Tick(ctx)
+	f.dep.Wait()
+	if lastService() != agentv1.WuService_WU_SERVICE_WINDOWS_UPDATE {
+		t.Fatalf("a device must be sent to Windows Update on the internet: %v", lastService())
+	}
+	if f.count("SELECT count(*) FROM jobs WHERE type = 'wu_scan'") != 2 {
+		t.Fatal("saving the setting sends every online device one new scan")
+	}
+	if !f.svc.GetSettings(ctx, f.org).IgnoreWSUS {
+		t.Fatal("the settings say so")
+	}
+	// A Microsoft Update source chosen on purpose is kept.
+	if err := f.svc.SetSettings(ctx, f.actor(), Settings{Service: "microsoft_update"}); err != nil {
+		t.Fatal(err)
+	}
+	f.svc.Tick(ctx)
+	f.dep.Wait()
+	if lastService() != agentv1.WuService_WU_SERVICE_MICROSOFT_UPDATE {
+		t.Fatalf("%v", lastService())
+	}
+}
+
+func TestMaskWSUSRemovesOnlyTheWSUSParts(t *testing.T) {
+	raw := []byte(`{"wsus_configured":true,"wsus_server":"https://wsus.example:8531","wufb_deferrals":true,"no_auto_update":false,"active_hours_policy":false,"wu_service_disabled":false,"effective_source":"wsus","notes":["A WSUS server is configured by policy; Windows Update on the internet is not used unless a policy allows it.","Feature updates are deferred by 30 days."]}`)
+	var p policyJSON
+	if err := json.Unmarshal(MaskWSUS(raw), &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.WSUSConfigured || p.WSUSServer != "" || p.EffectiveSource != "windows_update" || len(p.Notes) != 1 || !strings.Contains(p.Notes[0], "deferred") || !p.WUfBDeferrals {
+		t.Fatalf("%+v", p)
+	}
+	plain := []byte(`{"wsus_configured":false,"effective_source":"windows_update"}`)
+	if string(MaskWSUS(plain)) != string(plain) || string(MaskWSUS(nil)) != "" || string(MaskWSUS([]byte("null"))) != "null" {
+		t.Fatal("a policy without WSUS is returned as it was")
 	}
 }

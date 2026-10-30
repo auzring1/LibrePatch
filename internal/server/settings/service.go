@@ -63,6 +63,9 @@ type Service struct {
 	Log    *slog.Logger
 	Now    func() time.Time
 
+	// OnChange, if set, is told after a section was saved with the keys whose value changed (before and after).
+	OnChange func(ctx context.Context, org uuid.UUID, section string, changes map[string]any)
+
 	mu    sync.Mutex
 	cache map[string]cached
 	// single is the id of the organization, found once: the product is single-tenant per installation.
@@ -415,6 +418,7 @@ func (s *Service) Put(ctx context.Context, a Actor, section string, rev int64, i
 	}
 	// Keys the caller left out keep their saved values (a PUT with part of a section is a patch of that section).
 	var out Doc
+	var changed map[string]any
 	err := store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
 		cur, err := q.GetSettingsSectionForUpdate(ctx, dbq.GetSettingsSectionForUpdateParams{OrgID: a.Org, Section: sec.ID})
 		exists := err == nil
@@ -510,6 +514,7 @@ func (s *Service) Put(ctx context.Context, a Actor, section string, rev int64, i
 		}
 		out = Doc{Section: sec.ID, Revision: curRev + 1, Values: vals, SecretsSet: set, UpdatedAt: now}
 		changes := Diff(sec, before.Values, vals)
+		changed = changes
 		for p, v := range secrets {
 			switch {
 			case v == nil:
@@ -528,6 +533,9 @@ func (s *Service) Put(ctx context.Context, a Actor, section string, rev int64, i
 		return Doc{}, err
 	}
 	s.invalidate(a.Org, sec.ID)
+	if s.OnChange != nil && len(changed) > 0 {
+		s.OnChange(ctx, a.Org, sec.ID, changed)
+	}
 	return out, nil
 }
 

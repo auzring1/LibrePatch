@@ -156,6 +156,15 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 	a.Updates.Enabled = func(ctx context.Context, org uuid.UUID) bool {
 		return a.Settings.Peek(ctx, org, "updates").Bool("windows_updates_enabled")
 	}
+	a.Updates.IgnoreWSUS = func(ctx context.Context, org uuid.UUID) bool {
+		u := a.Settings.Peek(ctx, org, "updates")
+		return u.Bool("windows_updates_enabled") && u.Bool("ignore_wsus")
+	}
+	a.Settings.OnChange = func(ctx context.Context, org uuid.UUID, section string, changes map[string]any) {
+		if _, ok := changes["ignore_wsus"]; ok && section == "updates" {
+			a.Updates.SettingsChanged(ctx, org) // every online device gets a scan from the new source
+		}
+	}
 	a.Deploy.PeerCache = func(ctx context.Context, org uuid.UUID) bool {
 		return a.Settings.Peek(ctx, org, "downloads").Bool("peer_cache")
 	}

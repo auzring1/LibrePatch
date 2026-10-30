@@ -4344,6 +4344,7 @@ components:
       properties:
         service: { type: string, enum: [default, windows_update, microsoft_update] }
         include_drivers: { type: boolean }
+        ignore_wsus: { type: boolean, readOnly: true, description: "Settings > Update defaults > Ignore WSUS and check Microsoft directly. When on, the default service means Windows Update on the internet and WSUS is hidden from device policies and conflicts." }
     UpdateRule:
       type: object
       additionalProperties: false

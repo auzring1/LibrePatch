@@ -402,7 +402,9 @@ func (s *server) updateConflicts(w http.ResponseWriter, r *http.Request) {
 	if !s.windowsUpdates(w, r) {
 		return
 	}
-	rows, err := s.q().CountPolicyConflicts(r.Context(), principalFrom(r).OrgID)
+	org := principalFrom(r).OrgID
+	ignore := s.Updates.IgnoresWSUS(r.Context(), org)
+	rows, err := s.q().CountPolicyConflicts(r.Context(), dbq.CountPolicyConflictsParams{OrgID: org, IgnoreWsus: ignore})
 	if err != nil {
 		internalError(w)
 		return
@@ -414,7 +416,7 @@ func (s *server) updateConflicts(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]view, 0, len(rows))
 	for _, x := range rows {
-		items = append(items, view{x.ID, x.Hostname, x.WuPolicy})
+		items = append(items, view{x.ID, x.Hostname, maskedPolicy(x.WuPolicy, ignore)})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
@@ -463,7 +465,7 @@ func (s *server) deviceWindowsUpdates(w http.ResponseWriter, r *http.Request) {
 	// reboot_required is the live flag from the heartbeat, not the one saved with the last scan: a
 	// restart since then must clear the banner without waiting for the next scan.
 	writeJSON(w, http.StatusOK, map[string]any{"scanned_at": wu.WuScannedAt, "scan_error": wu.WuScanError, "reboot_required": d.PendingReboot,
-		"policy": json.RawMessage(wu.WuPolicy), "service": wu.WuService, "truncated": wu.WuTruncated, "items": items})
+		"policy": maskedPolicy(wu.WuPolicy, s.Updates.IgnoresWSUS(r.Context(), principalFrom(r).OrgID)), "service": wu.WuService, "truncated": wu.WuTruncated, "items": items})
 }
 
 func (s *server) deviceJobResponse(w http.ResponseWriter, id uuid.UUID, err error) {
@@ -567,4 +569,12 @@ func (s *server) rebootDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := s.Updates.RebootDevice(r.Context(), s.actor(r), d.ID, req.Minutes, req.Reason)
 	s.deviceJobResponse(w, id, err)
+}
+
+// maskedPolicy is a device's reported update policy, without the WSUS parts when the organization ignores WSUS (D154).
+func maskedPolicy(raw []byte, ignoreWSUS bool) json.RawMessage {
+	if ignoreWSUS {
+		return updates.MaskWSUS(raw)
+	}
+	return raw
 }

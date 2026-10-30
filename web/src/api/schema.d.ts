@@ -9092,6 +9092,8 @@ export interface components {
             /** @enum {string} */
             service: "default" | "windows_update" | "microsoft_update";
             include_drivers?: boolean;
+            /** @description Settings > Update defaults > Ignore WSUS and check Microsoft directly. When on, the default service means Windows Update on the internet and WSUS is hidden from device policies and conflicts. */
+            readonly ignore_wsus?: boolean;
         };
         UpdateRule: {
             /** Format: uuid */
