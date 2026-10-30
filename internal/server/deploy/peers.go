@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/auzring1/librepatch/gen/dbq"
 	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
@@ -81,4 +82,13 @@ func notePeerContent(ctx context.Context, q *dbq.Queries, device uuid.UUID, body
 	}
 	_ = q.PrunePeerContent(ctx, now.Add(-2*peerMemory))
 	return q.UpsertPeerContent(ctx, dbq.UpsertPeerContentParams{DeviceID: device, Sha256: sha, SeenAt: now})
+}
+
+// profileSID returns the SID a stored profile-removal job is about ("" for anything else).
+func profileSID(body []byte) string {
+	var env agentv1.JobEnvelope
+	if proto.Unmarshal(body, &env) != nil {
+		return ""
+	}
+	return env.GetProfileDelete().GetSid()
 }

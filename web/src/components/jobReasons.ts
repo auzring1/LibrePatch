@@ -10,6 +10,8 @@ const REASONS: Record<string, string> = {
   dependency_failed: "A job it depended on failed",
   expired: "Expired before the PC could run it",
   failed: "Failed; Details says why",
+  profile_in_use: "The profile is in use (the person is signed in)",
+  profile_protected: "Protected: the account this computer signs in to automatically",
   no_silent_uninstall: "Cannot be removed without a window; Details says why",
   uninstaller_failed: "The uninstaller failed",
   installer_failed: "The installer failed",

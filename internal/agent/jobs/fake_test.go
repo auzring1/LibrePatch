@@ -89,6 +89,11 @@ type fakePlatform struct {
 	gone      map[string]bool // paths that are certainly absent (PathGone)
 	deleted   []string        // Uninstall keys removed as leftovers
 	deleteErr error
+	profiles  map[string]ProfileInfo // user profiles by SID (ProfileInfo)
+	names     map[string][2]string   // SID -> {domain, name}
+	autoLogon [2]string              // the account that signs in by itself
+	profErr   error                  // DeleteProfile fails with this
+	profGone  []string               // profiles removed
 
 	runs   []RunSpec
 	runFn  func(spec RunSpec, asUser string) (RunResult, error)
@@ -333,6 +338,28 @@ func (f *fakePlatform) HasSession(sid string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.sessions[sid]
+}
+func (f *fakePlatform) ProfileInfo(sid string) (ProfileInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.profiles[sid], nil
+}
+func (f *fakePlatform) AccountName(sid string) (string, string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := f.names[sid]
+	return n[0], n[1]
+}
+func (f *fakePlatform) AutoLogon() (string, string) { return f.autoLogon[0], f.autoLogon[1] }
+func (f *fakePlatform) DeleteProfile(sid string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.profErr != nil {
+		return f.profErr
+	}
+	delete(f.profiles, sid)
+	f.profGone = append(f.profGone, sid)
+	return nil
 }
 func (f *fakePlatform) PathGone(p string) bool {
 	f.mu.Lock()

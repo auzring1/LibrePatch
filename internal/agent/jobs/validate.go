@@ -297,6 +297,8 @@ func ceilingName(t agentv1.JobType) string {
 		return "inspect"
 	case agentv1.JobType_JOB_TYPE_RUN_SCRIPT:
 		return "run_script"
+	case agentv1.JobType_JOB_TYPE_PROFILE_DELETE:
+		return "profile_delete"
 	}
 	return ""
 }
@@ -401,6 +403,23 @@ func ValidateWU(env *agentv1.JobEnvelope) error {
 			return bad("bad reboot body")
 		}
 		return validateRebootPolicy(b.Reboot, true)
+	}
+	return nil
+}
+
+var profileSIDRe = regexp.MustCompile(`^S-1-(5-21|12-1)(-[0-9]{1,10}){4,5}$`)
+
+// ValidateProfileDelete checks a profile removal. Only a person's own account is accepted: a domain, local or Entra ID user SID.
+// The built-in accounts (SYSTEM, local service, network service) and service SIDs never match.
+func ValidateProfileDelete(b *agentv1.ProfileDeleteBody) error {
+	if b == nil {
+		return bad("missing body")
+	}
+	if !profileSIDRe.MatchString(b.Sid) {
+		return bad("not a user account SID")
+	}
+	if len(b.Username) > 256 {
+		return bad("descriptive fields too long")
 	}
 	return nil
 }

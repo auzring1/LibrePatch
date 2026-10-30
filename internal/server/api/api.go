@@ -231,6 +231,7 @@ func (s *server) routes(r chi.Router) {
 	r.With(s.require(auth.PermReleasesWrite)).Put("/agent-rollout", s.putAgentRollout)
 	r.With(s.requireDevice(auth.PermDeploymentsRead)).Get("/devices/{id}/updates", s.deviceUpdates)
 	r.With(s.requireDevice(auth.PermDeploymentsWrite)).Post("/devices/{id}/software/uninstall", s.uninstallDeviceSoftware)
+	r.With(s.requireDevice(auth.PermDevicesProfiles)).Post("/devices/{id}/users/{sid}/remove-profile", s.removeDeviceProfile)
 	r.With(s.requireDevice(auth.PermDevicesWrite)).Post("/devices/{id}/refresh", s.refreshDevice)
 
 	r.With(s.require(auth.PermCatalogRead)).Get("/catalog/packages", s.listPackages)

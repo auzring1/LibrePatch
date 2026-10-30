@@ -28,6 +28,8 @@ import (
 var (
 	ErrDeviceOffline = errors.New("deploy: the device is offline")
 	ErrNotActive     = errors.New("deploy: the device is not an active, enrolled device")
+	// ErrProfileInUse: the person whose profile was to be removed is signed in on the device.
+	ErrProfileInUse = errors.New("deploy: that person is signed in on the device")
 )
 
 // newJob builds the stored (unsigned) form of an ad-hoc job that belongs to no deployment.
@@ -63,6 +65,8 @@ func (s *Service) newJobWindow(org, device uuid.UUID, sid string, typ agentv1.Jo
 		env.Body = &agentv1.JobEnvelope_Inspect{Inspect: b}
 	case *agentv1.RunScriptBody:
 		env.Body = &agentv1.JobEnvelope_RunScript{RunScript: b}
+	case *agentv1.ProfileDeleteBody:
+		env.Body = &agentv1.JobEnvelope_ProfileDelete{ProfileDelete: b}
 	default:
 		return dbq.InsertJobParams{}, errors.New("deploy: unsupported ad-hoc body")
 	}
@@ -704,3 +708,55 @@ func (s *Service) Publish(org uuid.UUID, typ string, device, job, dep uuid.UUID)
 
 // DispatchAsync hands queued jobs to the device without holding up the caller.
 func (s *Service) DispatchAsync(device uuid.UUID) { s.dispatchAsync(device) }
+
+// profileRemovalExpiry is how long a profile removal may wait for the device. It is short on purpose: an administrator clicked
+// it to happen now, and a removal that runs hours later, after the person came back, would be a surprise.
+const profileRemovalExpiry = time.Hour
+
+// RemoveProfile asks an online device to remove one user's profile the way Windows does it (D157). The profile must be one the
+// device itself reported, and not one it reported as in use; the agent checks again on the device, at the moment it runs.
+func (s *Service) RemoveProfile(ctx context.Context, org, user, device uuid.UUID, ip, sid string) (uuid.UUID, error) {
+	d, err := s.activeDevice(ctx, org, device)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if !d.Online {
+		return uuid.Nil, ErrDeviceOffline
+	}
+	q := dbq.New(s.Pool)
+	u, err := q.GetDeviceUser(ctx, dbq.GetDeviceUserParams{DeviceID: device, Sid: sid})
+	if err != nil {
+		return uuid.Nil, invalid("that profile is not in this device's list (refresh the device and try again)")
+	}
+	if u.ProfilePath == "" {
+		return uuid.Nil, invalid("this account has no profile on the device")
+	}
+	if u.Loaded {
+		return uuid.Nil, ErrProfileInUse
+	}
+	who := u.Username
+	if u.Domain != "" {
+		who = u.Domain + `\` + u.Username
+	}
+	now := s.now()
+	j, err := s.newJob(org, device, "", agentv1.JobType_JOB_TYPE_PROFILE_DELETE, "profile_delete", "Remove profile "+who,
+		&agentv1.ProfileDeleteBody{Sid: sid, Username: who}, now, now.Add(profileRemovalExpiry))
+	if err != nil {
+		return uuid.Nil, err
+	}
+	err = store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
+		if err := q.InsertJob(ctx, j); err != nil {
+			return err
+		}
+		_, err := audit.Write(ctx, tx, audit.Entry{OrgID: &org, ActorType: audit.ActorUser, ActorID: user.String(), ActorIP: ip,
+			Action: "device.profile_remove", TargetType: "device", TargetIDs: []string{device.String()}, Outcome: audit.Success,
+			Details: map[string]any{"hostname": d.Hostname, "account": who, "sid": sid, "profile_path": u.ProfilePath}}, now)
+		return err
+	})
+	if err != nil {
+		return uuid.Nil, err
+	}
+	s.publish(org, "job.updated", device, j.ID, uuid.Nil)
+	s.dispatchAsync(device)
+	return j.ID, nil
+}

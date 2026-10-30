@@ -12,6 +12,20 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteDeviceUser = `-- name: DeleteDeviceUser :exec
+DELETE FROM device_users WHERE device_id = $1 AND sid = $2
+`
+
+type DeleteDeviceUserParams struct {
+	DeviceID uuid.UUID
+	Sid      string
+}
+
+func (q *Queries) DeleteDeviceUser(ctx context.Context, arg DeleteDeviceUserParams) error {
+	_, err := q.db.Exec(ctx, deleteDeviceUser, arg.DeviceID, arg.Sid)
+	return err
+}
+
 const finishSoftwareSync = `-- name: FinishSoftwareSync :exec
 UPDATE devices SET software_rev = $2, software_updated_at = $3, inventory_truncated = $4,
        software_count = (SELECT count(*) FROM software_installs WHERE device_id = $1)
@@ -70,6 +84,31 @@ func (q *Queries) GetDeviceInstall(ctx context.Context, arg GetDeviceInstallPara
 		&i.Version,
 		&i.SystemComponent,
 		&i.ProductCode,
+	)
+	return i, err
+}
+
+const getDeviceUser = `-- name: GetDeviceUser :one
+SELECT device_id, sid, username, domain, profile_path, last_logon_at, loaded, is_admin FROM device_users WHERE device_id = $1 AND sid = $2
+`
+
+type GetDeviceUserParams struct {
+	DeviceID uuid.UUID
+	Sid      string
+}
+
+func (q *Queries) GetDeviceUser(ctx context.Context, arg GetDeviceUserParams) (DeviceUser, error) {
+	row := q.db.QueryRow(ctx, getDeviceUser, arg.DeviceID, arg.Sid)
+	var i DeviceUser
+	err := row.Scan(
+		&i.DeviceID,
+		&i.Sid,
+		&i.Username,
+		&i.Domain,
+		&i.ProfilePath,
+		&i.LastLogonAt,
+		&i.Loaded,
+		&i.IsAdmin,
 	)
 	return i, err
 }

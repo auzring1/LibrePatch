@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/auzring1/librepatch/internal/server/deploy"
@@ -15,6 +16,8 @@ func (s *server) deviceActionError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, deploy.ErrDeviceOffline):
 		writeError(w, http.StatusConflict, "device_offline", "The device is offline. Try again when it is connected.")
+	case errors.Is(err, deploy.ErrProfileInUse):
+		writeError(w, http.StatusConflict, "profile_in_use", "That person is signed in on the device, so their profile cannot be removed. Sign them out first.")
 	case errors.Is(err, deploy.ErrNotActive):
 		writeError(w, http.StatusConflict, "not_active", "This device is not an active, enrolled device.")
 	case errors.Is(err, deploy.ErrInvalid):
@@ -59,6 +62,32 @@ func (s *server) uninstallDeviceSoftware(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusCreated, res)
+}
+
+// removeDeviceProfile: POST /devices/{id}/users/{sid}/remove-profile (devices:profiles). The person's Windows profile is
+// removed on the device. It needs the device online, and the request must say it is confirmed.
+func (s *server) removeDeviceProfile(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Confirm bool `json:"confirm"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if !req.Confirm {
+		writeError(w, http.StatusUnprocessableEntity, "confirmation_required", "Removing a profile deletes the person's files on that computer; confirm it.")
+		return
+	}
+	d, ok := s.deviceFromURL(w, r)
+	if !ok {
+		return
+	}
+	p := principalFrom(r)
+	id, err := s.Deploy.RemoveProfile(r.Context(), p.OrgID, p.UserID, d.ID, clientIP(r), chi.URLParam(r, "sid"))
+	if err != nil {
+		s.deviceActionError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]uuid.UUID{"job_id": id})
 }
 
 // deviceUpdates: GET /devices/{id}/updates.

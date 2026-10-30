@@ -1993,6 +1993,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/devices/{id}/users/{sid}/remove-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove one user's Windows profile from an online device, the way Windows does it (requires devices:profiles, administrators only, not available to API tokens; audited)
+         * @description Asks the device to remove the profile with Windows' own profile deletion (registry entry, profile folder and hive), not by deleting a folder. The account itself is not deleted. The device refuses, and the job fails with a reason, when the person is signed in or has a disconnected session, when their registry hive is loaded, and for the account the computer signs in to automatically. The request must carry `confirm: true`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    /** @description The user's SID as listed for the device */
+                    sid: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Must be true */
+                        confirm: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Queued */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            job_id: string;
+                        };
+                    };
+                };
+                404: components["responses"]["Error"];
+                /** @description The device is offline or not active */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/devices/{id}/refresh": {
         parameters: {
             query?: never;

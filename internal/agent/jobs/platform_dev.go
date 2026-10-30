@@ -53,6 +53,12 @@ func (p *devPlatform) AppxPackages(string) ([]string, error) { return nil, nil }
 func (p *devPlatform) SessionEvents() <-chan struct{}        { return sessionSig }
 func (p *devPlatform) HasSession(string) bool                { return true }
 func (p *devPlatform) PathGone(string) bool                  { return false }
+func (p *devPlatform) ProfileInfo(string) (ProfileInfo, error) {
+	return ProfileInfo{}, ErrUnsupported
+}
+func (p *devPlatform) AccountName(string) (string, string) { return "", "" }
+func (p *devPlatform) AutoLogon() (string, string)         { return "", "" }
+func (p *devPlatform) DeleteProfile(string) error          { return ErrUnsupported }
 func (p *devPlatform) DeleteUninstallEntry(installer.Scope, string, string) error {
 	return ErrUnsupported
 }

@@ -890,6 +890,41 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+  /devices/{id}/users/{sid}/remove-profile:
+    post:
+      tags: [devices]
+      summary: Remove one user's Windows profile from an online device, the way Windows does it (requires devices:profiles, administrators only, not available to API tokens; audited)
+      description: >-
+        Asks the device to remove the profile with Windows' own profile deletion (registry entry, profile folder and hive), not by deleting a
+        folder. The account itself is not deleted. The device refuses, and the job fails with a reason, when the person is signed in or has a
+        disconnected session, when their registry hive is loaded, and for the account the computer signs in to automatically. The request must
+        carry `confirm: true`.
+      parameters:
+        - { $ref: "#/components/parameters/ID" }
+        - { name: sid, in: path, required: true, description: The user's SID as listed for the device, schema: { type: string, maxLength: 100 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirm]
+              properties:
+                confirm: { type: boolean, description: Must be true }
+      responses:
+        "202":
+          description: Queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id]
+                properties:
+                  job_id: { type: string, format: uuid }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: The device is offline or not active, or the person is signed in, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { $ref: "#/components/responses/Error" }
   /devices/{id}/refresh:
     post:
       tags: [devices]
