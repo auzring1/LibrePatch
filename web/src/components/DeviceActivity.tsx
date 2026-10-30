@@ -12,6 +12,8 @@ const ACTION_LABELS: Record<string, string> = {
   "device.enroll": "Device enrolled",
   "device.approve": "Device approved",
   "device.revoke": "Device revoked",
+  "device.revoke_requested": "Revoke requested (uninstalling the agent first)",
+  "device.profile_remove": "User profile removal requested",
   "device.delete": "Device deleted",
   "device.refresh": "Information refresh requested",
   "device.reboot": "Restart requested",

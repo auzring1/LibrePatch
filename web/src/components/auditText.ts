@@ -54,6 +54,8 @@ const PHRASES: Record<string, Phrase> = {
   "device.revoke": on("revoked", "a device"),
   "device.reboot": on("restarted", "a device"),
   "device.refresh": on("asked for a fresh inventory from", "a device"),
+  "device.revoke_requested": on("asked to uninstall the agent, then revoke,", "a device"),
+  "device.profile_remove": on("asked to remove a user profile from", "a device"),
   "device.wake": on("woke up", "a device"),
   "device.inspect": on("looked at the running programs, services or event log of", "a device"),
   "device.fields_update": on("changed the custom fields of", "a device"),

@@ -1083,7 +1083,10 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   // --- Audit log ---
   await mainNav(page).getByRole("link", { name: "Audit log", exact: true }).click();
   await expect(page.getByRole("cell", { name: "setup.complete" })).toBeVisible();
-  if (agentBin) await expect(page.getByRole("cell", { name: "device.revoke" })).toBeVisible();
+  if (agentBin) {
+    await expect(page.getByRole("cell", { name: "device.revoke", exact: true })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "device.revoke_requested", exact: true })).toBeVisible(); // the "uninstall the agent first" request (D158)
+  }
   await expect(page.getByRole("cell", { name: "branding.update" }).first()).toBeVisible();
   await expect(page.getByRole("cell", { name: "branding.reset" })).toBeVisible();
   await page.getByRole("button", { name: "Verify the chain" }).click();
