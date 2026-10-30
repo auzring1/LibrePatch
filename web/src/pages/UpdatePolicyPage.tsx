@@ -12,8 +12,8 @@ const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const classifications = ["Security Updates", "Critical Updates", "Definition Updates", "Drivers", "Feature Packs", "Service Packs", "Update Rollups", "Updates", "Upgrades", "Tools"];
 const severities = ["Critical", "Important", "Moderate", "Low", "Unrated"];
 
-const serviceOptions = [
-  { value: "default", label: "Whatever each device is configured for (WSUS if set by policy)" },
+const serviceOptions = (ignoreWSUS: boolean) => [
+  { value: "default", label: ignoreWSUS ? "Windows Update (internet); WSUS is ignored" : "Whatever each device is configured for (WSUS if set by policy)" },
   { value: "windows_update", label: "Windows Update (internet)" },
   { value: "microsoft_update", label: "Microsoft Update (Office and other Microsoft products too)" },
 ];
@@ -57,7 +57,11 @@ export function SourceCard({ canEdit }: { canEdit: boolean }) {
   return (
     <Card
       title="Update source"
-      description="Where devices look for updates. Devices managed by WSUS or Windows Update for Business policies keep following that policy; see the conflicts below."
+      description={
+        q.data?.ignore_wsus
+          ? "Where devices look for updates. WSUS is ignored (Settings, Update defaults): devices go straight to Windows Update on the internet."
+          : "Where devices look for updates. Devices managed by WSUS or Windows Update for Business policies keep following that policy; see the conflicts below."
+      }
       footer={
         canEdit && !q.isLoading ? (
           <Group justify="flex-end">
@@ -77,7 +81,7 @@ export function SourceCard({ canEdit }: { canEdit: boolean }) {
         <Skeleton height={36} width={480} maw="100%" />
       ) : (
         <Group align="flex-end">
-          <Select label="Service" data={serviceOptions} value={service} onChange={(v) => setService(v ?? "default")} allowDeselect={false} disabled={!canEdit} w={480} maw="100%" />
+          <Select label="Service" data={serviceOptions(!!q.data?.ignore_wsus)} value={service} onChange={(v) => setService(v ?? "default")} allowDeselect={false} disabled={!canEdit} w={480} maw="100%" />
           <Checkbox label="Include drivers" checked={drivers} onChange={(e) => setDrivers(e.currentTarget.checked)} disabled={!canEdit} mb={6} />
         </Group>
       )}
@@ -434,6 +438,7 @@ type Conflict = { device_id: string; hostname: string; policy?: WuPolicy };
 export function ConflictsCard() {
   const q = useQuery({ queryKey: ["updates", "conflicts"], queryFn: () => api<{ items: Conflict[] }>("GET", "/update-conflicts") });
   const items = q.data?.items ?? [];
+  const ignoreWSUS = !!useQuery({ queryKey: ["updates", "settings"], queryFn: () => api<UpdateSettings>("GET", "/update-settings") }).data?.ignore_wsus;
   const columns = useMemo<Column<Conflict>[]>(
     () => [
       { id: "device", header: "Device", required: true, primary: true, width: 220, value: (c) => c.hostname },
@@ -444,7 +449,10 @@ export function ConflictsCard() {
   );
   if (q.isLoading || items.length === 0) return null;
   return (
-    <Card title="Devices managed by another update policy" description={`WSUS, deferral policies or disabled automatic updates on these devices can delay or block what ${PRODUCT_NAME} installs.`}>
+    <Card
+      title="Devices managed by another update policy"
+      description={`${ignoreWSUS ? "Deferral policies or disabled automatic updates" : "WSUS, deferral policies or disabled automatic updates"} on these devices can delay or block what ${PRODUCT_NAME} installs.`}
+    >
       <DataTable<Conflict>
         id="update-conflicts"
         label="Policy conflicts"

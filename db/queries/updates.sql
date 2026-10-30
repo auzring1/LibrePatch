@@ -105,10 +105,11 @@ SELECT wu_rev, wu_scanned_at, wu_scan_error, wu_reboot_required, wu_policy, wu_s
 
 -- name: CountPolicyConflicts :many
 -- Devices whose update policy is managed by something else (WSUS, deferrals, disabled automatic updates, service off).
+-- With ignore_wsus on, a WSUS setting alone is not a conflict (WSUS is treated as not existing, D154).
 SELECT d.id, d.hostname, d.wu_policy
 FROM devices d
-WHERE d.org_id = $1 AND d.status = 'active' AND d.wu_policy IS NOT NULL
-  AND (d.wu_policy->>'wsus_configured' = 'true' OR d.wu_policy->>'wufb_deferrals' = 'true'
+WHERE d.org_id = @org_id AND d.status = 'active' AND d.wu_policy IS NOT NULL
+  AND ((NOT @ignore_wsus::boolean AND d.wu_policy->>'wsus_configured' = 'true') OR d.wu_policy->>'wufb_deferrals' = 'true'
        OR d.wu_policy->>'no_auto_update' = 'true' OR d.wu_policy->>'wu_service_disabled' = 'true')
 ORDER BY lower(d.hostname)
 LIMIT 500;
@@ -250,6 +251,11 @@ ORDER BY d.id LIMIT 200;
 
 -- name: SetDeviceWUSettingsRev :exec
 UPDATE devices SET wu_settings_rev = $2 WHERE id = $1;
+
+-- name: BumpWURev :exec
+-- Makes every device get a scan with the current source settings (used when a setting that changes the source is saved).
+INSERT INTO org_settings (org_id, wu_rev, updated_at) VALUES ($1, 2, now())
+ON CONFLICT (org_id) DO UPDATE SET wu_rev = org_settings.wu_rev + 1, updated_at = now();
 
 -- name: BumpWUSettings :exec
 INSERT INTO org_settings (org_id, wu_service, wu_include_drivers, wu_rev, updated_at) VALUES ($1, $2, $3, 2, now())

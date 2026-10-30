@@ -439,6 +439,46 @@ func (q *Queries) ListPackageVersions(ctx context.Context, packageID uuid.UUID) 
 	return items, nil
 }
 
+const listStaleMSIXVersions = `-- name: ListStaleMSIXVersions :many
+SELECT p.org_id, p.identifier, v.version, p.imported_by
+FROM catalog_installers i JOIN catalog_versions v ON v.id = i.version_id JOIN catalog_packages p ON p.id = v.package_id
+WHERE p.source = 'winget' AND i.installer_type = 'msix' AND i.unsupported LIKE 'MSIX/AppX installation is not supported%'
+GROUP BY p.org_id, p.identifier, v.version, p.imported_by
+`
+
+type ListStaleMSIXVersionsRow struct {
+	OrgID      uuid.UUID
+	Identifier string
+	Version    string
+	ImportedBy *uuid.UUID
+}
+
+// Versions imported before MSIX/AppX could be deployed (D151) still carry the old "not supported" verdict.
+func (q *Queries) ListStaleMSIXVersions(ctx context.Context) ([]ListStaleMSIXVersionsRow, error) {
+	rows, err := q.db.Query(ctx, listStaleMSIXVersions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStaleMSIXVersionsRow{}
+	for rows.Next() {
+		var i ListStaleMSIXVersionsRow
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.Identifier,
+			&i.Version,
+			&i.ImportedBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listVersionInstallers = `-- name: ListVersionInstallers :many
 SELECT id, version_id, architecture, scope, installer_type, nested_type, nested_path, url, sha256, size, file_name, signer_subject, product_code, upgrade_code, switches, success_codes, expected_codes, min_os, detection, uses_content_blob, unsupported FROM catalog_installers WHERE version_id = $1 ORDER BY architecture, scope, installer_type, id
 `

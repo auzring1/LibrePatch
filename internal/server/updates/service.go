@@ -47,6 +47,9 @@ type Service struct {
 	// Enabled, if set, says whether Windows update management is switched on for an organization. Nil means on.
 	Enabled func(ctx context.Context, org uuid.UUID) bool
 
+	// IgnoreWSUS, if set, says whether the organization treats WSUS as not existing (Settings, Update defaults, D154). Nil means no.
+	IgnoreWSUS func(ctx context.Context, org uuid.UUID) bool
+
 	Pool   *pgxpool.Pool
 	Deploy *deploy.Service
 	Events *events.Broker
@@ -67,6 +70,11 @@ type ringCache struct {
 // approves, schedules or installs, and what devices report about Windows updates is discarded.
 func (s *Service) On(ctx context.Context, org uuid.UUID) bool {
 	return s.Enabled == nil || s.Enabled(ctx, org)
+}
+
+// IgnoresWSUS reports whether devices go straight to Windows Update on the internet, as if no WSUS server were set.
+func (s *Service) IgnoresWSUS(ctx context.Context, org uuid.UUID) bool {
+	return s.IgnoreWSUS != nil && s.IgnoreWSUS(ctx, org)
 }
 
 func (s *Service) now() time.Time {

@@ -2,6 +2,7 @@ package updates
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/google/uuid"
@@ -156,6 +157,43 @@ func (s *Service) settings(ctx context.Context, org uuid.UUID) orgWU {
 		out.service = agentv1.WuService_WU_SERVICE_MICROSOFT_UPDATE
 	}
 	out.drivers, out.rev = os.WuIncludeDrivers, os.WuRev
+	if out.service == agentv1.WuService_WU_SERVICE_DEFAULT && s.IgnoresWSUS(ctx, org) {
+		out.service = agentv1.WuService_WU_SERVICE_WINDOWS_UPDATE // "whatever the device is set to" would be WSUS; it is ignored (D154)
+	}
+	return out
+}
+
+// SettingsChanged is called when a setting that changes where devices look for updates was saved: every online device is sent
+// a scan that carries the new source, so the change shows within minutes instead of at the next daily scan.
+func (s *Service) SettingsChanged(ctx context.Context, org uuid.UUID) {
+	if err := dbq.New(s.Pool).BumpWURev(ctx, org); err != nil {
+		s.log().Error("bump update settings revision", "err", err)
+	}
+}
+
+// MaskWSUS removes what a device reported about WSUS from its policy when WSUS is ignored: the server, the "configured" flag, the
+// notes that talk about it, and the effective source (the internet is where it looks). Other findings (deferrals, disabled
+// automatic updates) stay. Anything that is not the usual policy document is returned as it was.
+func MaskWSUS(raw []byte) []byte {
+	var p policyJSON
+	if len(raw) == 0 || json.Unmarshal(raw, &p) != nil || !p.WSUSConfigured {
+		return raw
+	}
+	p.WSUSConfigured, p.WSUSServer = false, ""
+	if p.EffectiveSource == "wsus" {
+		p.EffectiveSource = "windows_update"
+	}
+	notes := p.Notes[:0:0]
+	for _, n := range p.Notes {
+		if !strings.Contains(strings.ToLower(n), "wsus") {
+			notes = append(notes, n)
+		}
+	}
+	p.Notes = notes
+	out, err := json.Marshal(p)
+	if err != nil {
+		return raw
+	}
 	return out
 }
 
@@ -163,6 +201,8 @@ func (s *Service) settings(ctx context.Context, org uuid.UUID) orgWU {
 type Settings struct {
 	Service        string `json:"service"` // default | windows_update | microsoft_update
 	IncludeDrivers bool   `json:"include_drivers"`
+	// IgnoreWSUS is read-only here: it is a setting under Settings, Update defaults (D154).
+	IgnoreWSUS bool `json:"ignore_wsus"`
 }
 
 // GetSettings returns the source settings.
@@ -171,6 +211,7 @@ func (s *Service) GetSettings(ctx context.Context, org uuid.UUID) Settings {
 	if os, err := dbq.New(s.Pool).GetOrgSettings(ctx, org); err == nil {
 		out.Service, out.IncludeDrivers = os.WuService, os.WuIncludeDrivers
 	}
+	out.IgnoreWSUS = s.IgnoresWSUS(ctx, org)
 	return out
 }
 

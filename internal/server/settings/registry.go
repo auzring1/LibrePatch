@@ -228,6 +228,8 @@ var updates = Section{
 	Fields: []Field{
 		{Key: "windows_updates_enabled", Label: "Manage Windows updates", Kind: Bool, Default: true, Effect: Live,
 			Help: "Off turns every Windows update feature off for everyone: the Windows updates pages and the Windows tab under Automations disappear, devices stop scanning for Windows updates and nothing is approved or installed. Software updates, update rings for software and restarts keep working. Switch it off when another tool (WSUS, Intune, Windows Update for Business) manages Windows updates."},
+		{Key: "ignore_wsus", Label: "Ignore WSUS and check Microsoft directly", Kind: Bool, Default: false, ShowIf: "windows_updates_enabled", Effect: Live,
+			Help: "On: devices always look for Windows updates on Windows Update on the internet, and download them from there, whatever WSUS or Configuration Manager server a Group Policy names. " + "It is treated as if WSUS did not exist: the WSUS notes and the one-time \"Check Microsoft online\" button disappear. The policy on the device is not changed. Devices that cannot reach the internet will then find no updates. A Microsoft Update source chosen under Automations is kept."},
 		{Key: "ring_restart", Label: "Restart policy for new rings", Kind: Enum, Default: "outside_active_hours", Effect: Prefill,
 			Help:    "What a new ring does about restarts after installing.",
 			Options: []Option{{"never", "Never restart automatically"}, {"outside_active_hours", "Restart outside active hours"}, {"deadline", "Restart by a deadline"}}},

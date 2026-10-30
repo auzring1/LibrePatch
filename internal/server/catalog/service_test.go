@@ -420,3 +420,30 @@ func TestVerificationIsForWingetPackagesInTheCallersOrganization(t *testing.T) {
 		t.Fatalf("another organization's package: %v", verr)
 	}
 }
+
+func TestAnMSIXPackageStoredBeforeSupportBecomesDeployableByItself(t *testing.T) {
+	db := pgtest.New(t)
+	org, user := newOrg(t, db.Pool)
+	m := strings.Replace(singleton, "InstallerType: nullsoft", "InstallerType: msix\nScope: user\nPackageFamilyName: Acme.Tool_acmepubl00001", 1)
+	src := &fakeSource{files: map[string][][]byte{"Acme.Tool@2.0.1": {[]byte(m)}}, vers: []string{"2.0.1"}}
+	s := &Service{Pool: db.Pool, Source: src}
+	ctx := context.Background()
+	res, err := s.Import(ctx, org, user, "Acme.Tool", "")
+	if err != nil || res.Deployable != 1 {
+		t.Fatalf("%v %+v", err, res)
+	}
+	// What an older server stored: the old verdict and a per-user scope.
+	if _, err := db.Pool.Exec(ctx, `UPDATE catalog_installers SET unsupported = 'MSIX/AppX installation is not supported in this version', scope = 'user' WHERE version_id = $1`, res.VersionID); err != nil {
+		t.Fatal(err)
+	}
+	if n := s.RefreshStaleMSIX(ctx); n != 1 {
+		t.Fatalf("refreshed %d", n)
+	}
+	ins, _ := dbq.New(db.Pool).ListVersionInstallers(ctx, res.VersionID)
+	if len(ins) != 1 || ins[0].Unsupported != "" || ins[0].Scope != "machine" {
+		t.Fatalf("%+v", ins)
+	}
+	if n := s.RefreshStaleMSIX(ctx); n != 0 {
+		t.Fatalf("nothing is left to refresh, got %d", n)
+	}
+}
