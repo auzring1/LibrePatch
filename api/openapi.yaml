@@ -4740,7 +4740,7 @@ components:
         version: { type: integer }
         sha256: { type: string }
         reason: { type: string }
-        status: { type: string, enum: [pending_approval, running, rejected, cancelled, expired] }
+        status: { type: string, enum: [pending_approval, running, completed, completed_with_errors, failed, rejected, cancelled, expired], description: "running while any computer's job is still open; then completed, completed_with_errors or failed, worked out from the jobs" }
         devices: { type: integer }
         timeout_s: { type: integer }
         requested_at: { type: string, format: date-time }

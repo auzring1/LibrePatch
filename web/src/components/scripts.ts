@@ -4,6 +4,9 @@ import type { PillKind } from "../ui";
 export const RUN_STATUS: Record<string, { label: string; kind: PillKind }> = {
   pending_approval: { label: "Waiting for approval", kind: "warning" },
   running: { label: "Running", kind: "info" },
+  completed: { label: "Finished", kind: "success" },
+  completed_with_errors: { label: "Finished with errors", kind: "warning" },
+  failed: { label: "Failed", kind: "danger" },
   rejected: { label: "Rejected", kind: "danger" },
   cancelled: { label: "Cancelled", kind: "neutral" },
   expired: { label: "Not approved in time", kind: "neutral" },

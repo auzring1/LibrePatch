@@ -9,6 +9,8 @@ const REASONS: Record<string, string> = {
   deployment_cancelled: "The deployment was cancelled",
   dependency_failed: "A job it depended on failed",
   expired: "Expired before the PC could run it",
+  failed: "Failed; Details says why",
+  no_silent_uninstall: "Cannot be removed without a window; Details says why",
   uninstaller_failed: "The uninstaller failed",
   installer_failed: "The installer failed",
   failed_detection: "Finished, but the program was not found afterwards",

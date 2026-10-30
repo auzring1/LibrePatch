@@ -85,6 +85,7 @@ type fakePlatform struct {
 	files    map[string]string
 	trusted  func(string) error
 	freeMB   uint64
+	onRoots  func() // called each time the Uninstall roots are opened
 
 	runs   []RunSpec
 	runFn  func(spec RunSpec, asUser string) (RunResult, error)
@@ -263,7 +264,17 @@ func (f *fakePlatform) StagingDir(_ installer.Scope, sid, id string) (string, er
 func (f *fakePlatform) RemoveAll(p string) error           { return os.RemoveAll(p) }
 func (f *fakePlatform) FreeSpaceMB(string) (uint64, error) { return f.freeMB, nil }
 func (f *fakePlatform) OSBuild() uint32                    { return f.build }
-func (f *fakePlatform) Env(_ installer.Scope, _ string, n string) string {
+func (f *fakePlatform) Env(scope installer.Scope, _ string, n string) string {
+	if scope == installer.User {
+		switch n {
+		case "LOCALAPPDATA":
+			return `C:\Users\a\AppData\Local`
+		case "APPDATA":
+			return `C:\Users\a\AppData\Roaming`
+		case "USERPROFILE":
+			return `C:\Users\a`
+		}
+	}
 	if n == "PROGRAMFILES" {
 		return filepath.Join(f.root, "pf")
 	}
@@ -281,6 +292,9 @@ func (f *fakePlatform) FileVersion(p string) (string, bool, error) {
 	return "", false, nil
 }
 func (f *fakePlatform) UninstallRoots(scope installer.Scope, sid string) ([]inventory.RegNode, error) {
+	if f.onRoots != nil {
+		f.onRoots()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if scope == installer.User {

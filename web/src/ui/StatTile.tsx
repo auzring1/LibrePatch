@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Children, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { PillKind } from "./StatusPill";
 
@@ -56,8 +56,10 @@ export function StatTile({ label, value, kind, icon, hint, to, onClick, selected
  * so the table is not pushed below the fold. The hint stays for screen readers and as a tooltip.
  */
 export function StatGrid({ children, label, compact }: { children: ReactNode; label?: string; compact?: boolean }) {
+  // Six tiles split 3 + 3 (or all in a row on a wide screen) instead of leaving a lone gap after four.
+  const six = !compact && Children.count(children) === 6;
   return (
-    <div className={`lp-tiles${compact ? " lp-tiles--compact" : ""}`} role="group" aria-label={label}>
+    <div className={`lp-tiles${compact ? " lp-tiles--compact" : ""}${six ? " lp-tiles--six" : ""}`} role="group" aria-label={label}>
       {children}
     </div>
   );

@@ -29,7 +29,7 @@ export function startSteps(d: Dashboard, canOrg: (perm: string) => boolean): Sta
     steps.push({
       id: "policy",
       title: "Let your apps update themselves",
-      text: "One policy can keep every app current, with a delay, stages through your rings and your approval if you want them.",
+      text: "One policy can keep every app current, with a delay, and with your approval first if you want it.",
       to: "/automations",
       cta: "Open Automations",
       done: d.setup.policies > 0,

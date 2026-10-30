@@ -9497,8 +9497,11 @@ export interface components {
             version: number;
             sha256: string;
             reason: string;
-            /** @enum {string} */
-            status: "pending_approval" | "running" | "rejected" | "cancelled" | "expired";
+            /**
+             * @description running while any computer's job is still open; then completed, completed_with_errors or failed, worked out from the jobs
+             * @enum {string}
+             */
+            status: "pending_approval" | "running" | "completed" | "completed_with_errors" | "failed" | "rejected" | "cancelled" | "expired";
             devices: number;
             timeout_s: number;
             /** Format: date-time */
