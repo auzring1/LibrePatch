@@ -429,3 +429,45 @@ func TestAStaleEntryThatCannotBeDeletedFailsWithTheReason(t *testing.T) {
 		t.Fatalf("%v %+v", r.state("u1"), r.rec.last("u1").Result)
 	}
 }
+
+// An MSI product that Windows Installer does not know (error 1605, as seen with a leftover "Web Companion" entry) cannot be
+// uninstalled by anything: the leftover list entry is removed instead of the job failing.
+func TestAnMSIProductWindowsInstallerDoesNotKnowHasItsLeftoverEntryRemoved(t *testing.T) {
+	for _, code := range []int{1605, 1614} {
+		r := newRig(t)
+		r.addProgram(code1, map[string]string{"DisplayName": "Web Companion", "UninstallString": "MsiExec.exe /X" + code1}, map[string]uint32{"WindowsInstaller": 1})
+		r.p.runFn = func(RunSpec, string) (RunResult, error) { return RunResult{ExitCode: code}, nil }
+		se, env := r.uninstallEnv("u1", func(e *agentv1.JobEnvelope, b *agentv1.UninstallBody) { b.ItemKey = code1 })
+		r.e.Accept(se, env)
+		r.tick()
+		res := r.rec.last("u1").Result
+		if r.state("u1") != agentv1.JobState_JOB_STATE_SUCCEEDED || len(r.p.deleted) != 1 || r.p.deleted[0] != code1 ||
+			!strings.Contains(res.Message, "not installed") || !res.DetectionPassed {
+			t.Fatalf("exit %d: %v deleted=%v %+v", code, r.state("u1"), r.p.deleted, res)
+		}
+	}
+	// Any other failure stays a failure, and the entry stays.
+	r := newRig(t)
+	r.addProgram(code1, map[string]string{"UninstallString": "MsiExec.exe /X" + code1}, map[string]uint32{"WindowsInstaller": 1})
+	r.p.runFn = func(RunSpec, string) (RunResult, error) { return RunResult{ExitCode: 1603}, nil }
+	se, env := r.uninstallEnv("u2", func(e *agentv1.JobEnvelope, b *agentv1.UninstallBody) { b.ItemKey = code1 })
+	r.e.Accept(se, env)
+	r.tick()
+	if r.state("u2") != agentv1.JobState_JOB_STATE_FAILED || len(r.p.deleted) != 0 {
+		t.Fatalf("a real failure must stay one: %v %v", r.state("u2"), r.p.deleted)
+	}
+	// Per user, while signed in: the same, through the user's own registry.
+	r = newRig(t)
+	r.p.sessions[staleSID] = true
+	k := r.p.userRoot(staleSID).add(`Software\Microsoft\Windows\CurrentVersion\Uninstall\` + code1)
+	k.vals["UninstallString"], k.dw["WindowsInstaller"] = "MsiExec.exe /X"+code1, 1
+	r.p.runFn = func(RunSpec, string) (RunResult, error) { return RunResult{ExitCode: 1605}, nil }
+	se, env = r.uninstallEnv("u3", func(e *agentv1.JobEnvelope, b *agentv1.UninstallBody) {
+		e.TargetUserSid, b.Scope, b.ItemSource, b.ItemKey = staleSID, agentv1.InstallScope_INSTALL_SCOPE_USER, "hku", code1
+	})
+	r.e.Accept(se, env)
+	r.tick()
+	if r.state("u3") != agentv1.JobState_JOB_STATE_SUCCEEDED || len(r.p.deleted) != 1 {
+		t.Fatalf("per user: %v %v", r.state("u3"), r.p.deleted)
+	}
+}

@@ -32,6 +32,12 @@ var (
 	recheckTries = 10
 )
 
+// Windows Installer exit codes that mean "there is no such installed product": ERROR_UNKNOWN_PRODUCT and ERROR_PRODUCT_UNINSTALLED.
+const (
+	msiUnknownProduct     = 1605
+	msiProductUninstalled = 1614
+)
+
 // errNoSilent marks a program that cannot be removed without someone clicking through its uninstaller.
 type errNoSilent struct{ msg string }
 
@@ -105,7 +111,7 @@ func (e *Engine) uninstall(ctx context.Context, r *Record, env *agentv1.JobEnvel
 	if b.RemoveOlderThan == "" && entry != nil {
 		// A program whose uninstaller file is gone cannot be uninstalled by anything: what is left is a stale list entry.
 		if exe, ok := staleUninstaller(entry, b); ok && e.P.PathGone(exe) {
-			return e.removeStaleEntry(scope, sid, b, exe)
+			return e.removeListEntry(scope, sid, b, fmt.Sprintf("the program's uninstaller (%s) no longer exists", winBase(exe)))
 		}
 	}
 	plan, perr := e.planUninstall(b, scope, entry)
@@ -148,6 +154,11 @@ func (e *Engine) uninstall(ctx context.Context, r *Record, env *agentv1.JobEnvel
 			return &outcome{res: &agentv1.JobResult{}, cancelled: true}
 		}
 		return fail("could not run the uninstaller: %v", err)
+	}
+	if plan.typ == installer.MSI && !rr.TimedOut && b.RemoveOlderThan == "" && (rr.ExitCode == msiUnknownProduct || rr.ExitCode == msiProductUninstalled) {
+		// Windows Installer itself says this product is not installed (for this user, when it ran as the user): the list entry
+		// is a leftover that no uninstaller can remove.
+		return e.removeListEntry(scope, sid, b, fmt.Sprintf("Windows Installer says this product is not installed (error %d)", rr.ExitCode))
 	}
 	oc := installer.Resolve(plan.typ, rr.ExitCode, nil, nil)
 	if rr.TimedOut {
@@ -220,14 +231,14 @@ func staleUninstaller(en *entryInfo, b *agentv1.UninstallBody) (string, bool) {
 	return exe, true
 }
 
-// removeStaleEntry deletes the leftover list entry of a program whose uninstaller file no longer exists, and says so.
-// Nothing else is touched: no files, no other registry keys.
-func (e *Engine) removeStaleEntry(scope installer.Scope, sid string, b *agentv1.UninstallBody, exe string) *outcome {
+// removeListEntry deletes the leftover list entry of a program that cannot be uninstalled because it is already gone (why says
+// how that is known), and reports success with that explanation. Nothing else is touched: no files, no other registry keys.
+func (e *Engine) removeListEntry(scope installer.Scope, sid string, b *agentv1.UninstallBody, why string) *outcome {
 	if err := e.P.DeleteUninstallEntry(scope, sid, b.ItemKey); err != nil {
 		if errors.Is(err, ErrNoSession) {
 			return &outcome{waitUser: true, res: &agentv1.JobResult{}} // the user's registry is only changeable while they are signed in
 		}
-		return fail("the uninstaller %s is gone, but its leftover list entry could not be removed: %v", winBase(exe), err)
+		return fail("%s, but its leftover list entry could not be removed: %v", why, err)
 	}
 	if roots, err := e.P.UninstallRoots(scope, sid); err == nil {
 		still, closeRoots := findEntry(roots, b.ItemKey)
@@ -238,7 +249,7 @@ func (e *Engine) removeStaleEntry(scope installer.Scope, sid string, b *agentv1.
 		}
 	}
 	return &outcome{res: &agentv1.JobResult{Outcome: agentv1.JobOutcome_JOB_OUTCOME_SUCCESS, DetectionPassed: true,
-		Message: short(fmt.Sprintf("the program's uninstaller (%s) no longer exists, so there was nothing to run; the leftover entry in the installed programs list was removed", winBase(exe)))}}
+		Message: short(why + ", so there was nothing to run; the leftover entry in the installed programs list was removed")}}
 }
 
 // entryInfo is what the planner needs from an Uninstall key.
