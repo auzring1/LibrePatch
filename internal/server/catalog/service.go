@@ -90,6 +90,28 @@ func (s *Service) Import(ctx context.Context, org, user uuid.UUID, identifier, v
 	return s.store(ctx, org, user, p)
 }
 
+// RefreshStaleMSIX imports again the winget versions that were stored while MSIX/AppX could not be deployed, so they become
+// deployable without anyone re-importing them by hand (D153). Nothing is done once none is left, or while the source is off.
+func (s *Service) RefreshStaleMSIX(ctx context.Context) int {
+	if s.Source == nil {
+		return 0
+	}
+	rows, err := dbq.New(s.Pool).ListStaleMSIXVersions(ctx)
+	if err != nil {
+		return 0
+	}
+	done := 0
+	for _, r := range rows {
+		if ctx.Err() != nil || r.ImportedBy == nil {
+			continue
+		}
+		if _, err := s.Import(ctx, r.OrgID, *r.ImportedBy, r.Identifier, r.Version); err == nil {
+			done++
+		}
+	}
+	return done
+}
+
 func (s *Service) store(ctx context.Context, org, user uuid.UUID, p *Parsed) (*ImportResult, error) {
 	res := &ImportResult{Identifier: p.Identifier, Version: p.Version, Installers: len(p.Installers)}
 	err := store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {

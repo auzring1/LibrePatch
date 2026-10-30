@@ -88,3 +88,10 @@ SELECT * FROM content_blobs WHERE org_id = $1 AND sha256 = $2;
 
 -- name: ListAllOrgPackages :many
 SELECT * FROM catalog_packages WHERE org_id = $1 ORDER BY lower(name), id LIMIT 2000;
+
+-- name: ListStaleMSIXVersions :many
+-- Versions imported before MSIX/AppX could be deployed (D151) still carry the old "not supported" verdict.
+SELECT p.org_id, p.identifier, v.version, p.imported_by
+FROM catalog_installers i JOIN catalog_versions v ON v.id = i.version_id JOIN catalog_packages p ON p.id = v.package_id
+WHERE p.source = 'winget' AND i.installer_type = 'msix' AND i.unsupported LIKE 'MSIX/AppX installation is not supported%'
+GROUP BY p.org_id, p.identifier, v.version, p.imported_by;

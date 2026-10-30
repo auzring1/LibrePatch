@@ -438,6 +438,9 @@ func (a *App) housekeeping(ctx context.Context) {
 				// service lets only one run at a time and asks each feed only when it is due.
 				go a.Vulns.Tick(ctx)
 			}
+			if n%60 == 3 {
+				go a.Catalog.RefreshStaleMSIX(ctx) // packages imported before MSIX could be deployed; a no-op once none is left
+			}
 			if n%60 == 7 {
 				a.Catalog.RefreshDueOverlays(ctx) // asks each overlay URL at most every 12 hours
 			}
