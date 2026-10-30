@@ -75,17 +75,20 @@ func (n *node) Close()                            {}
 // ---- fake platform ----
 
 type fakePlatform struct {
-	mu       sync.Mutex
-	root     string
-	machine  *node
-	users    map[string]*node
-	sessions map[string]bool
-	sig      Signature
-	build    uint32
-	files    map[string]string
-	trusted  func(string) error
-	freeMB   uint64
-	onRoots  func() // called each time the Uninstall roots are opened
+	mu        sync.Mutex
+	root      string
+	machine   *node
+	users     map[string]*node
+	sessions  map[string]bool
+	sig       Signature
+	build     uint32
+	files     map[string]string
+	trusted   func(string) error
+	freeMB    uint64
+	onRoots   func()          // called each time the Uninstall roots are opened
+	gone      map[string]bool // paths that are certainly absent (PathGone)
+	deleted   []string        // Uninstall keys removed as leftovers
+	deleteErr error
 
 	runs   []RunSpec
 	runFn  func(spec RunSpec, asUser string) (RunResult, error)
@@ -330,6 +333,28 @@ func (f *fakePlatform) HasSession(sid string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.sessions[sid]
+}
+func (f *fakePlatform) PathGone(p string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.gone[p]
+}
+func (f *fakePlatform) DeleteUninstallEntry(scope installer.Scope, sid, key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	if scope == installer.User {
+		if !f.sessions[sid] {
+			return ErrNoSession
+		}
+		f.userRoot(sid).add(`Software\Microsoft\Windows\CurrentVersion\Uninstall`).remove(key)
+	} else {
+		f.machine.add(`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`).remove(key)
+	}
+	f.deleted = append(f.deleted, key)
+	return nil
 }
 func (f *fakePlatform) SessionEvents() <-chan struct{}   { return f.events }
 func (f *fakePlatform) TrustedExecutable(p string) error { return f.trusted(p) }

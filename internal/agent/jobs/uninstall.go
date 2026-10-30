@@ -102,6 +102,12 @@ func (e *Engine) uninstall(ctx context.Context, r *Record, env *agentv1.JobEnvel
 		get := func(n string) string { return e.P.Env(scope, sid, n) }
 		entry.quiet, entry.uninstall = expandVars(entry.quiet, get), expandVars(entry.uninstall, get)
 	}
+	if b.RemoveOlderThan == "" && entry != nil {
+		// A program whose uninstaller file is gone cannot be uninstalled by anything: what is left is a stale list entry.
+		if exe, ok := staleUninstaller(entry, b); ok && e.P.PathGone(exe) {
+			return e.removeStaleEntry(scope, sid, b, exe)
+		}
+	}
 	plan, perr := e.planUninstall(b, scope, entry)
 	if perr != nil {
 		var ns errNoSilent
@@ -187,6 +193,52 @@ func (e *Engine) uninstall(ctx context.Context, r *Record, env *agentv1.JobEnvel
 		break
 	}
 	return &outcome{res: res}
+}
+
+// staleUninstaller names the program the entry would run to uninstall itself, when that is an ordinary file by absolute
+// local path. MSI products (msiexec removes those, present or not), entries without a command and paths that could not be
+// expanded are never judged: they return false.
+func staleUninstaller(en *entryInfo, b *agentv1.UninstallBody) (string, bool) {
+	if en.windowsInstaller || b.ProductCode != "" || b.ItemSource == "msi" || guidRe.MatchString(b.ItemKey) {
+		return "", false
+	}
+	cmd := en.quiet
+	if cmd == "" {
+		cmd = en.uninstall
+	}
+	if cmd == "" || guidInRe.MatchString(cmd) {
+		return "", false
+	}
+	toks, err := installer.SplitCommandLine(cmd)
+	if err != nil || len(toks) == 0 {
+		return "", false
+	}
+	exe := toks[0]
+	if !isAbsWin(exe) || strings.HasPrefix(exe, `\\`) || strings.Contains(exe, "%") || strings.EqualFold(winBase(exe), "msiexec.exe") {
+		return "", false
+	}
+	return exe, true
+}
+
+// removeStaleEntry deletes the leftover list entry of a program whose uninstaller file no longer exists, and says so.
+// Nothing else is touched: no files, no other registry keys.
+func (e *Engine) removeStaleEntry(scope installer.Scope, sid string, b *agentv1.UninstallBody, exe string) *outcome {
+	if err := e.P.DeleteUninstallEntry(scope, sid, b.ItemKey); err != nil {
+		if errors.Is(err, ErrNoSession) {
+			return &outcome{waitUser: true, res: &agentv1.JobResult{}} // the user's registry is only changeable while they are signed in
+		}
+		return fail("the uninstaller %s is gone, but its leftover list entry could not be removed: %v", winBase(exe), err)
+	}
+	if roots, err := e.P.UninstallRoots(scope, sid); err == nil {
+		still, closeRoots := findEntry(roots, b.ItemKey)
+		closeRoots()
+		if still != nil {
+			return &outcome{reason: "failed_detection", res: &agentv1.JobResult{Outcome: agentv1.JobOutcome_JOB_OUTCOME_FAILED,
+				Message: short("the leftover list entry was deleted but is still listed")}}
+		}
+	}
+	return &outcome{res: &agentv1.JobResult{Outcome: agentv1.JobOutcome_JOB_OUTCOME_SUCCESS, DetectionPassed: true,
+		Message: short(fmt.Sprintf("the program's uninstaller (%s) no longer exists, so there was nothing to run; the leftover entry in the installed programs list was removed", winBase(exe)))}}
 }
 
 // entryInfo is what the planner needs from an Uninstall key.

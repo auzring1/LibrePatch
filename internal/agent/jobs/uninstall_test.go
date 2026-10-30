@@ -332,3 +332,100 @@ func TestUninstallWaitsForAnUninstallerThatFinishesInTheBackground(t *testing.T)
 		t.Fatalf("%v %q", r.state("u1"), r.rec.last("u1").Reason)
 	}
 }
+
+const staleSID = "S-1-5-21-1-2-3-1001"
+
+// staleProgram sets up a per-user program whose uninstaller file is gone (or not), runs the removal and returns the rig.
+func staleProgram(t *testing.T, cmd string, gone bool, signedIn bool, mut func(*agentv1.UninstallBody)) *rig {
+	t.Helper()
+	recheckDelay = time.Millisecond
+	t.Cleanup(func() { recheckDelay = 1500 * time.Millisecond })
+	r := newRig(t)
+	if signedIn {
+		r.p.sessions[staleSID] = true
+	}
+	k := r.p.userRoot(staleSID).add(`Software\Microsoft\Windows\CurrentVersion\Uninstall\Tool`)
+	k.vals["UninstallString"] = cmd
+	r.p.gone = map[string]bool{}
+	if gone {
+		r.p.gone[`C:\Users\a\AppData\Local\Tool\uninst.exe`] = true
+	}
+	se, env := r.uninstallEnv("u1", func(e *agentv1.JobEnvelope, b *agentv1.UninstallBody) {
+		e.TargetUserSid, b.Scope, b.ItemSource, b.ItemKey = staleSID, agentv1.InstallScope_INSTALL_SCOPE_USER, "hku", "Tool"
+		if mut != nil {
+			mut(b)
+		}
+	})
+	r.e.Accept(se, env)
+	r.tick()
+	return r
+}
+
+func TestAStaleListEntryWhoseUninstallerIsGoneIsRemoved(t *testing.T) {
+	r := staleProgram(t, `"C:\Users\a\AppData\Local\Tool\uninst.exe"`, true, true, nil)
+	res := r.rec.last("u1").Result
+	if r.state("u1") != agentv1.JobState_JOB_STATE_SUCCEEDED || len(r.p.runs) != 0 || len(r.p.deleted) != 1 || r.p.deleted[0] != "Tool" ||
+		!res.DetectionPassed || !strings.Contains(res.Message, "no longer exists") {
+		t.Fatalf("%v runs=%d deleted=%v %+v", r.state("u1"), len(r.p.runs), r.p.deleted, res)
+	}
+	// The variables in the user's own command are expanded first, so the file is looked for in the right place.
+	r = staleProgram(t, `"%LOCALAPPDATA%\Tool\uninst.exe"`, true, true, nil)
+	if r.state("u1") != agentv1.JobState_JOB_STATE_SUCCEEDED || len(r.p.deleted) != 1 {
+		t.Fatalf("%v %v", r.state("u1"), r.p.deleted)
+	}
+}
+
+func TestAStaleEntryOfSomeoneNotSignedInWaitsForThem(t *testing.T) {
+	r := staleProgram(t, `"C:\Users\a\AppData\Local\Tool\uninst.exe"`, true, false, nil)
+	if r.state("u1") != agentv1.JobState_JOB_STATE_WAITING || len(r.p.deleted) != 0 {
+		t.Fatalf("their registry can only be changed while they are signed in: %v %v", r.state("u1"), r.p.deleted)
+	}
+}
+
+func TestOnlyACertainlyMissingOrdinaryUninstallerCountsAsStale(t *testing.T) {
+	// The file is there (or might be: an unmounted drive or a share is "not certain"): the normal removal is tried.
+	r := staleProgram(t, `"C:\Users\a\AppData\Local\Tool\unins000.exe"`, false, true, nil)
+	if len(r.p.deleted) != 0 || len(r.p.runs) != 1 {
+		t.Fatalf("an uninstaller that may exist is run, not given up on: deleted=%v runs=%d", r.p.deleted, len(r.p.runs))
+	}
+	// A path that could not be expanded is never judged.
+	r = staleProgram(t, `"%TEMP%\Tool\uninst.exe" /S`, true, true, nil)
+	if len(r.p.deleted) != 0 {
+		t.Fatalf("%v", r.p.deleted)
+	}
+	// An MSI product is removed by msiexec, whatever the command line says.
+	r = staleProgram(t, `MsiExec.exe /X`+code1, true, true, func(b *agentv1.UninstallBody) { b.ProductCode = code1 })
+	if len(r.p.deleted) != 0 {
+		t.Fatalf("%v", r.p.deleted)
+	}
+	// A cleanup of an old copy during an update never deletes list entries.
+	r = staleProgram(t, `"C:\Users\a\AppData\Local\Tool\uninst.exe"`, true, true, func(b *agentv1.UninstallBody) { b.RemoveOlderThan = "9.9.9" })
+	if len(r.p.deleted) != 0 {
+		t.Fatalf("%v", r.p.deleted)
+	}
+}
+
+func TestAStaleMachineEntryIsRemovedToo(t *testing.T) {
+	r := newRig(t)
+	r.addProgram("AcmeTool", map[string]string{"UninstallString": `"C:\Program Files\Acme\gone.exe"`}, nil)
+	r.p.gone = map[string]bool{`C:\Program Files\Acme\gone.exe`: true}
+	se, env := r.uninstallEnv("u1", nil)
+	r.e.Accept(se, env)
+	r.tick()
+	if r.state("u1") != agentv1.JobState_JOB_STATE_SUCCEEDED || len(r.p.runs) != 0 || len(r.p.deleted) != 1 {
+		t.Fatalf("%v %+v", r.state("u1"), r.rec.last("u1").Result)
+	}
+}
+
+func TestAStaleEntryThatCannotBeDeletedFailsWithTheReason(t *testing.T) {
+	r := newRig(t)
+	r.addProgram("AcmeTool", map[string]string{"UninstallString": `"C:\Program Files\Acme\gone.exe"`}, nil)
+	r.p.gone = map[string]bool{`C:\Program Files\Acme\gone.exe`: true}
+	r.p.deleteErr = errors.New("access denied")
+	se, env := r.uninstallEnv("u1", nil)
+	r.e.Accept(se, env)
+	r.tick()
+	if r.state("u1") != agentv1.JobState_JOB_STATE_FAILED || !strings.Contains(r.rec.last("u1").Result.Message, "access denied") {
+		t.Fatalf("%v %+v", r.state("u1"), r.rec.last("u1").Result)
+	}
+}
