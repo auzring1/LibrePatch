@@ -305,7 +305,13 @@ paths:
   /devices/{id}/revoke:
     post:
       tags: [devices]
-      summary: Revoke a device; its live connection is cut immediately (requires devices:write)
+      summary: Revoke a device; its live connection is cut immediately, or after it has uninstalled its agent (requires devices:write)
+      description: >-
+        With `uninstall_agent` the device is first told, with a signed job, to uninstall its agent, and is revoked as soon as it reports it
+        is doing so (or, if it goes silent while uninstalling, ten minutes later). A revoked device cannot connect, so it could not be
+        told anything afterwards; that is why the revoke follows the uninstall. An offline device gets the job when it comes online, for
+        up to 30 days. Until then the device stays active with `revoke_pending` true. A plain revoke (without `uninstall_agent`) also
+        drops a request that is still waiting.
       parameters: [{ $ref: "#/components/parameters/ID" }]
       requestBody:
         required: true
@@ -316,7 +322,18 @@ paths:
               additionalProperties: false
               properties:
                 reason: { type: string, maxLength: 500 }
+                uninstall_agent: { type: boolean, description: Uninstall the agent first; the device is revoked when it has }
       responses:
+        "202":
+          description: The agent was asked to uninstall itself; the device is revoked when it has
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, pending]
+                properties:
+                  job_id: { type: string, format: uuid }
+                  pending: { type: boolean }
         "204": { description: Revoked }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
@@ -5052,6 +5069,7 @@ components:
         site_id: { type: string, format: uuid }
         status: { type: string, enum: [pending, active, revoked, retired] }
         status_reason: { type: string }
+        revoke_pending: { type: boolean, description: An "uninstall the agent, then revoke" request is waiting for the device }
         hostname: { type: string }
         os_caption: { type: string }
         os_build: { type: string }

@@ -30,6 +30,7 @@ enum JobType {
   JOB_TYPE_RUN_SCRIPT = 14;  // run an administrator's script as SYSTEM; only on an agent whose owner switched scripts on (D127)
   JOB_TYPE_INSPECT = 13;  // read-only view: running programs, services or recent event log entries (D125)
   JOB_TYPE_PROFILE_DELETE = 15;  // remove one user's Windows profile the proper way (D157)
+  JOB_TYPE_AGENT_UNINSTALL = 16; // the agent removes itself from the computer; sent when a device is revoked with "uninstall the agent" (D158)
 }
 
 message JobEnvelope {
@@ -61,6 +62,7 @@ message JobEnvelope {
     InspectBody inspect = 30;
     RunScriptBody run_script = 31;
     ProfileDeleteBody profile_delete = 32;
+    AgentUninstallBody agent_uninstall = 33;
   }
 }
 
@@ -295,6 +297,14 @@ message InspectBody {
 message ProfileDeleteBody {
   string sid = 1;        // the user's SID (S-1-5-21-... or S-1-12-1-...)
   string username = 2;   // for the log only: DOMAIN\name as the console showed it
+}
+
+// AgentUninstallBody asks the agent to remove itself (service, device key, data and program files; the MSI product when it was
+// installed from the MSI). The agent reports the job as done first and starts the removal a few seconds later, so the answer
+// reaches the server before the agent is gone (D158). It is refused by an agent whose local policy ceiling leaves it out.
+message AgentUninstallBody {
+  string reason = 1;        // why the device is being revoked, for the log
+  string requested_by = 2;  // the administrator's user id, so the server can finish the revoke under their name
 }
 
 enum ScriptInterpreter {

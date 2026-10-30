@@ -57,8 +57,11 @@ func (p *devPlatform) ProfileInfo(string) (ProfileInfo, error) {
 	return ProfileInfo{}, ErrUnsupported
 }
 func (p *devPlatform) AccountName(string) (string, string) { return "", "" }
-func (p *devPlatform) AutoLogon() (string, string)         { return "", "" }
-func (p *devPlatform) DeleteProfile(string) error          { return ErrUnsupported }
+func (p *devPlatform) StartSelfUninstall(time.Duration) (string, error) {
+	return "", ErrUnsupported
+}
+func (p *devPlatform) AutoLogon() (string, string) { return "", "" }
+func (p *devPlatform) DeleteProfile(string) error  { return ErrUnsupported }
 func (p *devPlatform) DeleteUninstallEntry(installer.Scope, string, string) error {
 	return ErrUnsupported
 }

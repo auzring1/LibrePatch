@@ -299,6 +299,8 @@ func ceilingName(t agentv1.JobType) string {
 		return "run_script"
 	case agentv1.JobType_JOB_TYPE_PROFILE_DELETE:
 		return "profile_delete"
+	case agentv1.JobType_JOB_TYPE_AGENT_UNINSTALL:
+		return "agent_uninstall"
 	}
 	return ""
 }
@@ -419,6 +421,17 @@ func ValidateProfileDelete(b *agentv1.ProfileDeleteBody) error {
 		return bad("not a user account SID")
 	}
 	if len(b.Username) > 256 {
+		return bad("descriptive fields too long")
+	}
+	return nil
+}
+
+// ValidateAgentUninstall checks a request for the agent to remove itself.
+func ValidateAgentUninstall(b *agentv1.AgentUninstallBody) error {
+	if b == nil {
+		return bad("missing body")
+	}
+	if len(b.Reason) > 512 || len(b.RequestedBy) > 64 {
 		return bad("descriptive fields too long")
 	}
 	return nil

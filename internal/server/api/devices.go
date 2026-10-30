@@ -16,6 +16,7 @@ import (
 	"github.com/auzring1/librepatch/gen/dbq"
 	"github.com/auzring1/librepatch/internal/server/audit"
 	"github.com/auzring1/librepatch/internal/server/auth"
+	"github.com/auzring1/librepatch/internal/server/deploy"
 	"github.com/auzring1/librepatch/internal/server/events"
 	"github.com/auzring1/librepatch/internal/server/store"
 )
@@ -27,6 +28,7 @@ type deviceView struct {
 	SiteID             uuid.UUID         `json:"site_id"`
 	Status             string            `json:"status"`
 	StatusReason       string            `json:"status_reason"`
+	RevokePending      bool              `json:"revoke_pending"`
 	Hostname           string            `json:"hostname"`
 	OSCaption          string            `json:"os_caption"`
 	OSBuild            string            `json:"os_build"`
@@ -151,6 +153,10 @@ func (s *server) getDevice(w http.ResponseWriter, r *http.Request) {
 		RevokedAt: d.RevokedAt, UptimeS: d.UptimeS, PendingReboot: d.PendingReboot, LoggedOnUser: d.LoggedOnUser, PeerPort: d.PeerPort,
 		ReplacesDeviceID: d.ReplacesDeviceID, Certificates: []certView{}, Chassis: d.Chassis,
 		SoftwareCount: d.SoftwareCount, SoftwareUpdatedAt: d.SoftwareUpdatedAt, InventoryTruncated: d.InventoryTruncated}
+	if d.Status == "active" {
+		_, perr := s.q().OpenAgentUninstall(r.Context(), d.ID)
+		v.RevokePending = perr == nil
+	}
 	if len(d.Hardware) > 0 {
 		v.Hardware = d.Hardware
 		var hw struct {
@@ -241,6 +247,9 @@ func (s *server) approveDevice(w http.ResponseWriter, r *http.Request) {
 
 type revokeReq struct {
 	Reason string `json:"reason"`
+	// UninstallAgent asks the device to uninstall its agent first and be revoked once it has (D158). The device is not revoked
+	// until then, so the answer is 202 and the device page shows the revoke as pending.
+	UninstallAgent bool `json:"uninstall_agent"`
 }
 
 func (s *server) revokeDevice(w http.ResponseWriter, r *http.Request) {
@@ -261,25 +270,22 @@ func (s *server) revokeDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := principalFrom(r)
-	now := s.now()
-	err := store.Tx(r.Context(), s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
-		n, err := q.RevokeDevice(r.Context(), dbq.RevokeDeviceParams{ID: d.ID, OrgID: p.OrgID, StatusReason: req.Reason,
-			RevokedBy: &p.UserID, RevokedAt: &now})
+	// Only an enrolled, active device has an agent that can be told to uninstall itself; a pending one is just rejected.
+	if req.UninstallAgent && d.Status == "active" {
+		id, err := s.Deploy.RequestRevokeWithUninstall(r.Context(), p.OrgID, p.UserID, d.ID, clientIP(r), req.Reason)
 		if err != nil {
-			return err
+			s.deviceActionError(w, err)
+			return
 		}
-		if n == 0 {
-			return errConflict
-		}
-		if err := q.RevokeDeviceCerts(r.Context(), dbq.RevokeDeviceCertsParams{DeviceID: d.ID, RevokedAt: &now, RevokeReason: req.Reason}); err != nil {
-			return err
-		}
-		_, err = audit.Write(r.Context(), tx, audit.Entry{OrgID: &p.OrgID, ActorType: audit.ActorUser, ActorID: p.UserID.String(),
-			ActorIP: clientIP(r), Action: "device.revoke", TargetType: "device", TargetIDs: []string{d.ID.String()},
-			Outcome: audit.Success, Details: map[string]any{"hostname": d.Hostname, "reason": req.Reason}}, now)
-		return err
-	})
-	if errors.Is(err, errConflict) {
+		writeJSON(w, http.StatusAccepted, map[string]any{"job_id": id, "pending": true})
+		return
+	}
+	// A plain revoke also drops an "uninstall, then revoke" request that was still waiting.
+	if err := s.Deploy.CancelPendingUninstall(r.Context(), p.OrgID, p.UserID, d.ID, clientIP(r)); err != nil {
+		s.Log.Error("cancel pending agent uninstall", "err", err)
+	}
+	err := s.Deploy.RevokeDevice(r.Context(), p.OrgID, &p.UserID, d.ID, req.Reason, clientIP(r), nil)
+	if errors.Is(err, deploy.ErrAlreadyRevoked) {
 		writeError(w, http.StatusConflict, "already_revoked", "Device is already revoked or retired.")
 		return
 	} else if err != nil {
@@ -287,9 +293,6 @@ func (s *server) revokeDevice(w http.ResponseWriter, r *http.Request) {
 		internalError(w)
 		return
 	}
-	// Committed: cut the live connection immediately (PROTOCOL §7).
-	s.Devices.Disconnect(d.ID, "revoked")
-	s.Events.Publish(p.OrgID, events.Event{Type: events.DeviceUpdated, DeviceID: d.ID})
 	w.WriteHeader(http.StatusNoContent)
 }
 

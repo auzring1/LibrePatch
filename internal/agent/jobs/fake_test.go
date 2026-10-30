@@ -75,25 +75,28 @@ func (n *node) Close()                            {}
 // ---- fake platform ----
 
 type fakePlatform struct {
-	mu        sync.Mutex
-	root      string
-	machine   *node
-	users     map[string]*node
-	sessions  map[string]bool
-	sig       Signature
-	build     uint32
-	files     map[string]string
-	trusted   func(string) error
-	freeMB    uint64
-	onRoots   func()          // called each time the Uninstall roots are opened
-	gone      map[string]bool // paths that are certainly absent (PathGone)
-	deleted   []string        // Uninstall keys removed as leftovers
-	deleteErr error
-	profiles  map[string]ProfileInfo // user profiles by SID (ProfileInfo)
-	names     map[string][2]string   // SID -> {domain, name}
-	autoLogon [2]string              // the account that signs in by itself
-	profErr   error                  // DeleteProfile fails with this
-	profGone  []string               // profiles removed
+	mu            sync.Mutex
+	root          string
+	machine       *node
+	users         map[string]*node
+	sessions      map[string]bool
+	sig           Signature
+	build         uint32
+	files         map[string]string
+	trusted       func(string) error
+	freeMB        uint64
+	onRoots       func()          // called each time the Uninstall roots are opened
+	gone          map[string]bool // paths that are certainly absent (PathGone)
+	deleted       []string        // Uninstall keys removed as leftovers
+	deleteErr     error
+	profiles      map[string]ProfileInfo // user profiles by SID (ProfileInfo)
+	names         map[string][2]string   // SID -> {domain, name}
+	autoLogon     [2]string              // the account that signs in by itself
+	profErr       error                  // DeleteProfile fails with this
+	profGone      []string               // profiles removed
+	selfUninstall []time.Duration        // StartSelfUninstall calls (the wait they were given)
+	selfErr       error
+	selfHow       string
 
 	runs   []RunSpec
 	runFn  func(spec RunSpec, asUser string) (RunResult, error)
@@ -349,6 +352,15 @@ func (f *fakePlatform) AccountName(sid string) (string, string) {
 	defer f.mu.Unlock()
 	n := f.names[sid]
 	return n[0], n[1]
+}
+func (f *fakePlatform) StartSelfUninstall(wait time.Duration) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.selfErr != nil {
+		return "", f.selfErr
+	}
+	f.selfUninstall = append(f.selfUninstall, wait)
+	return f.selfHow, nil
 }
 func (f *fakePlatform) AutoLogon() (string, string) { return f.autoLogon[0], f.autoLogon[1] }
 func (f *fakePlatform) DeleteProfile(sid string) error {

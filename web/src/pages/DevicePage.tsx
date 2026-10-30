@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Alert, Button, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Checkbox, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
 import { api, errorMessage, type Device } from "../api/client";
 import { ago } from "../api/format";
 import { useSession } from "../api/session";
@@ -23,6 +23,8 @@ export function DevicePage() {
   const qc = useQueryClient();
   const [revokeOpen, setRevokeOpen] = useState(false);
   const [reason, setReason] = useState("");
+  // Revoking an enrolled computer also uninstalls its agent, unless this is turned off (D158).
+  const [uninstallAgent, setUninstallAgent] = useState(true);
   const q = useQuery({ queryKey: ["device", id], queryFn: () => api<Device>("GET", `/devices/${id}`), enabled: !!id });
   const refresh = () => qc.invalidateQueries({ queryKey: ["devices"] }).then(() => qc.invalidateQueries({ queryKey: ["device", id] }));
   const approve = useMutation({
@@ -31,8 +33,15 @@ export function DevicePage() {
     onError: (e) => toast.error(errorMessage(e)),
   });
   const revoke = useMutation({
-    mutationFn: () => api("POST", `/devices/${id}/revoke`, { reason }),
-    onSuccess: () => (setRevokeOpen(false), setReason(""), toast.success("Device revoked and disconnected."), refresh()),
+    mutationFn: (uninstall: boolean) => api<{ pending?: boolean } | undefined>("POST", `/devices/${id}/revoke`, { reason, uninstall_agent: uninstall }),
+    onSuccess: (res, uninstall) => {
+      setRevokeOpen(false);
+      setReason("");
+      if (uninstall && res?.pending) toast.info("The computer is being told to uninstall its agent. It is revoked as soon as it has.");
+      else toast.success("Device revoked and disconnected.");
+      void refresh();
+      void qc.invalidateQueries({ queryKey: ["device-jobs", id] });
+    },
     onError: (e) => toast.error(errorMessage(e)),
   });
   const refreshDevice = useMutation({
@@ -125,6 +134,20 @@ export function DevicePage() {
               This device has the same hardware identity as an existing device. Approving it revokes the old identity ({d.replaces_device_id}).
             </Alert>
           )}
+          {d.status === "active" && d.revoke_pending && (
+            <Alert color="orange" icon={<Icons.Warning size={18} aria-hidden />} title="Revoke pending">
+              <Stack gap={6}>
+                <Text size="sm">
+                  {d.online ? "This computer is uninstalling its agent." : "This computer is offline, so it will uninstall its agent when it next connects."} It is revoked as soon as it has. Until then it still counts as active.
+                </Text>
+                <div>
+                  <Button size="xs" color="red" variant="default" onClick={() => revoke.mutate(false)} loading={revoke.isPending}>
+                    Revoke now without uninstalling
+                  </Button>
+                </div>
+              </Stack>
+            </Alert>
+          )}
           {d.status === "revoked" && d.status_reason && (
             <Alert color="red" icon={<Icons.Danger size={18} aria-hidden />}>
               Revoked: {d.status_reason}
@@ -188,12 +211,21 @@ export function DevicePage() {
       <Modal opened={revokeOpen} onClose={() => setRevokeOpen(false)} title="Revoke device">
         <Stack>
           <Text size="sm">
-            The device is disconnected immediately and can never reconnect with its current identity. To manage it again, reinstall the agent
-            with a new enrollment token.
+            {uninstallAgent && d?.status === "active"
+              ? "The computer is told to uninstall its agent first, and is revoked as soon as it has: it can never reconnect with its current identity. If it is offline, this waits until it connects (up to 30 days)."
+              : "The device is disconnected immediately and can never reconnect with its current identity. To manage it again, reinstall the agent with a new enrollment token."}
           </Text>
+          {d?.status === "active" && (
+            <Checkbox
+              label="Also uninstall the agent from the computer"
+              description={uninstallAgent ? "Removes the service, its key and its files. Programs and user files are not touched." : "The agent stays installed and keeps trying to connect, uselessly."}
+              checked={uninstallAgent}
+              onChange={(e) => setUninstallAgent(e.currentTarget.checked)}
+            />
+          )}
           <TextInput label="Reason (recorded in the audit log)" value={reason} onChange={(e) => setReason(e.currentTarget.value)} maxLength={500} />
-          <Button color="red" onClick={() => revoke.mutate()} loading={revoke.isPending}>
-            Revoke device
+          <Button color="red" onClick={() => revoke.mutate(uninstallAgent && d?.status === "active")} loading={revoke.isPending}>
+            {uninstallAgent && d?.status === "active" ? "Uninstall the agent and revoke" : "Revoke device"}
           </Button>
         </Stack>
       </Modal>

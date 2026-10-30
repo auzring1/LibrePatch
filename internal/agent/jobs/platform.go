@@ -111,6 +111,9 @@ type Platform interface {
 	// machine = HKLM 64+32 views; user = that user's hive (HKCU view). Callers close them.
 	UninstallRoots(scope installer.Scope, sid string) (roots []inventory.RegNode, err error)
 	AppxPackages(sid string) ([]string, error)
+	// StartSelfUninstall starts the removal of this agent in a separate process that waits first, so this process can still
+	// report the job as done. how says what will run ("MSI package" when it was installed from the MSI, else "agent uninstall").
+	StartSelfUninstall(wait time.Duration) (how string, err error)
 	// ProfileInfo says what Windows has recorded for one user's profile.
 	ProfileInfo(sid string) (ProfileInfo, error)
 	// AccountName resolves a SID to its domain and name ("", "" when it cannot be resolved).

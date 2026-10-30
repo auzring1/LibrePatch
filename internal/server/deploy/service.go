@@ -48,6 +48,9 @@ type Service struct {
 	// PeerCache tells whether the organization shares downloaded installers between computers (D126). nil = no.
 	PeerCache func(ctx context.Context, org uuid.UUID) bool
 
+	// OnRevoked, if set, is told after a device was revoked, to cut its live connection.
+	OnRevoked func(org, device uuid.UUID)
+
 	// AfterTerminal, if set, runs once when a job reaches a final state (Windows Update bookkeeping).
 	AfterTerminal func(ctx context.Context, j dbq.Job, status string, u *agentv1.JobUpdate)
 

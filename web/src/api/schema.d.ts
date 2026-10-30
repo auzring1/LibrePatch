@@ -701,7 +701,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke a device; its live connection is cut immediately (requires devices:write) */
+        /**
+         * Revoke a device; its live connection is cut immediately, or after it has uninstalled its agent (requires devices:write)
+         * @description With `uninstall_agent` the device is first told, with a signed job, to uninstall its agent, and is revoked as soon as it reports it is doing so (or, if it goes silent while uninstalling, ten minutes later). A revoked device cannot connect, so it could not be told anything afterwards; that is why the revoke follows the uninstall. An offline device gets the job when it comes online, for up to 30 days. Until then the device stays active with `revoke_pending` true. A plain revoke (without `uninstall_agent`) also drops a request that is still waiting.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -715,10 +718,25 @@ export interface paths {
                 content: {
                     "application/json": {
                         reason?: string;
+                        /** @description Uninstall the agent first; the device is revoked when it has */
+                        uninstall_agent?: boolean;
                     };
                 };
             };
             responses: {
+                /** @description The agent was asked to uninstall itself; the device is revoked when it has */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            job_id: string;
+                            pending: boolean;
+                        };
+                    };
+                };
                 /** @description Revoked */
                 204: {
                     headers: {
@@ -9876,6 +9894,8 @@ export interface components {
             /** @enum {string} */
             status: "pending" | "active" | "revoked" | "retired";
             status_reason?: string;
+            /** @description An "uninstall the agent */
+            revoke_pending?: boolean;
             hostname: string;
             os_caption?: string;
             os_build?: string;

@@ -547,6 +547,21 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await page.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Revoke device" }).click();
       await page.getByLabel("Reason (recorded in the audit log)").fill("GUI test");
+      // Revoking an enrolled computer tells its agent to uninstall itself first (D158); that is the default.
+      await expect(page.getByRole("checkbox", { name: /Also uninstall the agent/ })).toBeChecked();
+      await page.getByRole("button", { name: "Uninstall the agent and revoke" }).click();
+      await expect(page.getByText(/being told to uninstall its agent/)).toBeVisible();
+      // The test agent runs on Linux and cannot remove itself, so it answers "failed": the device stays active and is not revoked.
+      await page.getByRole("tab", { name: "Jobs" }).click();
+      const failed = page.getByRole("table", { name: "Device jobs" }).getByRole("row", { name: /Uninstall the agent, then revoke the device/ });
+      await expect(failed).toBeVisible({ timeout: 15_000 });
+      await expect(failed.getByText("Failed")).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText(/^Revoked: /)).toHaveCount(0);
+      // Revoking without the uninstall is one click away.
+      await page.getByRole("button", { name: "More actions" }).click();
+      await page.getByRole("menuitem", { name: "Revoke device" }).click();
+      await page.getByLabel("Reason (recorded in the audit log)").fill("GUI test");
+      await page.getByRole("checkbox", { name: /Also uninstall the agent/ }).uncheck({ force: true });
       await page.getByRole("button", { name: "Revoke device" }).click();
       await expect(page.getByText("Revoked: GUI test")).toBeVisible({ timeout: 15_000 });
       // A revoked device can be deleted; an active one cannot (no button).

@@ -253,3 +253,11 @@ func TestWinDeleteProfileRemovesTheProfileAndKeepsTheAccount(t *testing.T) {
 		t.Errorf("%+v %v", again, err)
 	}
 }
+
+// Windows Installer is asked for the agent's MSI by upgrade code. On a machine where the MSI is not installed the answer is
+// empty; where it is, it is a product code. Either way the call must not fail.
+func TestWinInstalledMSIProductIsEmptyOrAProductCode(t *testing.T) {
+	if code := installedMSIProduct(); code != "" && (len(code) != 38 || code[0] != '{' || code[37] != '}') {
+		t.Errorf("not a product code: %q", code)
+	}
+}
