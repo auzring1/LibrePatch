@@ -266,6 +266,7 @@ export function SoftwareTab({ id, hostname, active }: { id: string; hostname: st
       )}
       <DataTable<DeviceSoftware>
         id="device-software"
+        scope={id}
         label="Installed software"
         data={q.data?.items}
         loading={q.isLoading}
@@ -420,6 +421,7 @@ export function MissingUpdatesTab({ id, hostname, active }: { id: string; hostna
       </Text>
       <DataTable<AvailableUpdate>
         id="device-software-updates"
+        scope={id}
         label="Software updates"
         data={q.data?.items}
         loading={q.isLoading}

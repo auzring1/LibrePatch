@@ -140,13 +140,13 @@ export function InspectTab({ id, online, hostname }: { id: string; online: boole
               {data.truncated ? `; showing ${data.items.length} of ${data.total} (the list was shortened to fit)` : `; ${data.total} ${data.total === 1 ? "entry" : "entries"}`}.
             </Text>
             {shown === "processes" && (
-              <DataTable<ProcessRow> id="inspect-processes" label="Running programs" data={data.items as ProcessRow[]} columns={processColumns} rowId={(p) => String(p.pid)} initialSort={{ id: "name" }} searchPlaceholder="Search programs" exportName="processes" pageSize={50} />
+              <DataTable<ProcessRow> id="inspect-processes" scope={id} label="Running programs" data={data.items as ProcessRow[]} columns={processColumns} rowId={(p) => String(p.pid)} initialSort={{ id: "name" }} searchPlaceholder="Search programs" exportName="processes" pageSize={50} />
             )}
             {shown === "services" && (
-              <DataTable<ServiceRow> id="inspect-services" label="Services" data={data.items as ServiceRow[]} columns={serviceColumns} rowId={(s) => s.name} initialSort={{ id: "display" }} searchPlaceholder="Search services" exportName="services" pageSize={50} />
+              <DataTable<ServiceRow> id="inspect-services" scope={id} label="Services" data={data.items as ServiceRow[]} columns={serviceColumns} rowId={(s) => s.name} initialSort={{ id: "display" }} searchPlaceholder="Search services" exportName="services" pageSize={50} />
             )}
             {shown === "events" && (
-              <DataTable<EventRow> id="inspect-events" label="Event log" data={(data.items as EventRow[]).map((e, i) => ({ ...e, _i: i }))} columns={eventColumns} rowId={(e) => String(e._i)} initialSort={{ id: "time", desc: true }} searchPlaceholder="Search events" exportName="events" pageSize={50} />
+              <DataTable<EventRow> id="inspect-events" scope={id} label="Event log" data={(data.items as EventRow[]).map((e, i) => ({ ...e, _i: i }))} columns={eventColumns} rowId={(e) => String(e._i)} initialSort={{ id: "time", desc: true }} searchPlaceholder="Search events" exportName="events" pageSize={50} />
             )}
           </>
         )}

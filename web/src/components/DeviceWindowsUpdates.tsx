@@ -245,6 +245,7 @@ export function WindowsUpdatesTab({ id, active }: { id: string; active: boolean 
       )}
       <DataTable<Item>
         id="device-windows-updates"
+        scope={id}
         label="Windows updates on this device"
         data={d.items}
         columns={columns}

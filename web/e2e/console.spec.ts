@@ -199,7 +199,11 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await shot(page, "05-device-software");
       await page.getByLabel("Search Installed software").fill("zzz-no-such-package");
       await expect(page.getByText("No matching rows")).toBeVisible();
-      await page.getByLabel("Search Installed software").fill("");
+      // What was searched belongs to this visit: another visit (or another device) starts with an empty search.
+      await page.reload();
+      await page.getByRole("tab", { name: /^Installed software/ }).click();
+      await expect(page.getByTestId("software-row").first()).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByLabel("Search Installed software")).toHaveValue("");
       // Users moved into Overview and the client certificates into Hardware; the tab follows the URL.
       await page.getByRole("tab", { name: "Overview" }).click();
       await expect(page.getByRole("heading", { name: "User profiles" })).toBeVisible();

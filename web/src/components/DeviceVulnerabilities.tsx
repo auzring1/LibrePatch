@@ -63,6 +63,7 @@ export function VulnerabilitiesTab({ device: d }: { device: Device }) {
       ) : (
         <DataTable<DeviceVulnerability>
           id="device-vulnerabilities"
+          scope={d.id}
           label="Known vulnerabilities on this device"
           data={q.isLoading ? undefined : q.data?.items}
           loading={q.isLoading}
