@@ -259,6 +259,38 @@ func (s *server) getJob(w http.ResponseWriter, r *http.Request) {
 		"depends_on": j.DependsOn, "result": result, "events": evs})
 }
 
+// POST /jobs/{id}/cancel: stop one job that has not finished, whatever it is waiting for.
+func (s *server) cancelJob(w http.ResponseWriter, r *http.Request) {
+	if !s.deploySvc(w) {
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not_found", "Job not found.")
+		return
+	}
+	p := principalFrom(r)
+	if !p.Access.OrgHas(auth.PermDeploymentsWrite) {
+		j, jerr := s.q().GetJob(r.Context(), dbq.GetJobParams{ID: id, OrgID: p.OrgID})
+		if jerr != nil || !s.deviceInScope(r.Context(), p, auth.PermDeploymentsWrite, j.DeviceID) {
+			writeError(w, http.StatusNotFound, "not_found", "Job not found.")
+			return
+		}
+	}
+	err = s.Deploy.CancelJob(r.Context(), p.OrgID, p.UserID, id, clientIP(r))
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		writeError(w, http.StatusNotFound, "not_found", "Job not found.")
+	case errors.Is(err, deploy.ErrNotCancellable):
+		writeError(w, http.StatusConflict, "not_cancellable", "The job has already finished.")
+	case err != nil:
+		s.Log.Error("cancel job", "err", err)
+		internalError(w)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 func (s *server) retryJob(w http.ResponseWriter, r *http.Request) {
 	if !s.deploySvc(w) {
 		return

@@ -136,6 +136,11 @@ type UninstallResult struct {
 	Skipped []Skip      `json:"skipped"`
 }
 
+// uninstallTimeoutS is how long a removal started from the inventory may run before the agent ends it. An uninstaller that waits
+// for a window nobody can see never finishes by itself; an hour of that used to hold up everything behind it (D152). Thirty
+// minutes is enough for the slowest ordinary removal.
+const uninstallTimeoutS = 1800
+
 // UninstallSoftware queues one uninstall job per listed inventory row (no catalog package needed).
 // The command is derived on the device from the row's own registry data (D45); system components
 // (drivers, runtimes, updates hidden from Apps & features) are refused.
@@ -179,7 +184,7 @@ func (s *Service) UninstallSoftware(ctx context.Context, org, user, device uuid.
 			sc = agentv1.InstallScope_INSTALL_SCOPE_USER
 		}
 		body := &agentv1.UninstallBody{Name: row.Name, Scope: sc, ItemSource: r.Source, ItemKey: r.ItemKey,
-			Method: agentv1.UninstallMethod_UNINSTALL_METHOD_AUTO, TimeoutS: 3600, MaxRetries: 1, RetryBackoffS: 120}
+			Method: agentv1.UninstallMethod_UNINSTALL_METHOD_AUTO, TimeoutS: uninstallTimeoutS, MaxRetries: 1, RetryBackoffS: 120}
 		if r.Source == "msi" {
 			body.ProductCode = r.ItemKey
 		}

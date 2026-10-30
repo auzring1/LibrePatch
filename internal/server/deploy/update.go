@@ -250,6 +250,45 @@ func (s *Service) CancelDeployment(ctx context.Context, org, user, id uuid.UUID,
 	return nil
 }
 
+// CancelJob stops one job that has not finished: one that waits, one that the device holds and one that is running (the device
+// ends the program it started). A deployment or a script run is not cancelled with it. The device is told at once when it is
+// connected, and when it reconnects otherwise.
+func (s *Service) CancelJob(ctx context.Context, org, user, jobID uuid.UUID, ip string) error {
+	q := dbq.New(s.Pool)
+	j, err := q.GetJob(ctx, dbq.GetJobParams{ID: jobID, OrgID: org})
+	if err != nil {
+		return err
+	}
+	now := s.now()
+	err = store.Tx(ctx, s.Pool, func(tx pgx.Tx, q *dbq.Queries) error {
+		n, err := q.CancelJob(ctx, dbq.CancelJobParams{ID: jobID, OrgID: org, StatusReason: "cancelled_by_administrator", FinishedAt: &now})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrNotCancellable
+		}
+		if err := q.MarkCancelPending(ctx, jobID); err != nil {
+			return err
+		}
+		if err := q.InsertJobEvent(ctx, dbq.InsertJobEventParams{JobID: jobID, Kind: "cancelled", Message: "an administrator cancelled the job"}); err != nil {
+			return err
+		}
+		_, err = audit.Write(ctx, tx, audit.Entry{OrgID: &org, ActorType: audit.ActorUser, ActorID: user.String(), ActorIP: ip,
+			Action: "job.cancel", TargetType: "job", TargetIDs: []string{jobID.String()}, Outcome: audit.Success,
+			Details: map[string]any{"title": j.Title, "type": j.Type, "device": j.DeviceID.String(), "status_before": j.Status}}, now)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	if fresh, err := q.GetJob(ctx, dbq.GetJobParams{ID: jobID, OrgID: org}); err == nil && fresh.CancelPending {
+		s.offerCancel(fresh)
+	}
+	s.publish(org, "job.updated", j.DeviceID, jobID, derefID(j.DeploymentID))
+	return nil
+}
+
 // Retry queues a new attempt of a finished job.
 func (s *Service) Retry(ctx context.Context, org, user, jobID uuid.UUID, ip string) (uuid.UUID, error) {
 	q := dbq.New(s.Pool)

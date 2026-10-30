@@ -5,7 +5,7 @@ Open source under the GNU AGPL-3.0 (D100). There is no licensing system, no devi
 
 Self-hosted Windows endpoint patch and software management: a Go agent, a Go server (REST API, SSE, embedded
 React console) and PostgreSQL, run with docker compose. Security first: mTLS, signed jobs, mandatory MFA, RBAC, hash-chained
-audit. Start with `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (latest decision: D151) and `docs/RUNBOOK.md`.
+audit. Start with `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (latest decision: D152) and `docs/RUNBOOK.md`.
 
 ## The maintainer and the deployment
 - The maintainer is an IT administrator, not a full-time developer. Explain things in plain words and ask when a request is unclear.
@@ -32,7 +32,7 @@ audit. Start with `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (late
 - Every state-changing API action writes an audit entry (`audit.Write`/`audit.Log`) and has an RBAC permission
   (`internal/server/auth/rbac.go`). Update `api/openapi.yaml` with the API.
 - A guard test forbids the owner's real organization name in code and tests; use "Contoso Health" in fixtures.
-- Record design choices in `docs/DECISIONS.md` (next number D152) and security-relevant ones in `docs/SECURITY.md`.
+- Record design choices in `docs/DECISIONS.md` (next number D153) and security-relevant ones in `docs/SECURITY.md`.
 - Say plainly what was and was not verified. Windows-only agent paths, the real winget CDN and the Synology itself are
   not testable from a Linux sandbox.
 - Commit messages end with the `Co-Authored-By` and `Claude-Session` trailers the session gives you.

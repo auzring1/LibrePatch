@@ -247,7 +247,7 @@ func TestViewsAndWakeRunOnTheControlLaneWhileAScanIsRunning(t *testing.T) {
 	scan, scanEnv := r.wuEnv("scan", agentv1.JobType_JOB_TYPE_WU_SCAN, nil)
 	r.e.Accept(scan, scanEnv)
 	done := make(chan struct{})
-	go func() { r.e.tickLane(r.ctx, laneMain); close(done) }()
+	go func() { r.e.tickLane(r.ctx, laneScan); close(done) }()
 	select {
 	case <-r.p.wuc.scanning:
 	case <-time.After(5 * time.Second):

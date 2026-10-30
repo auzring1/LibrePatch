@@ -71,44 +71,49 @@ type Engine struct {
 	Trust func() (root []byte, signing [][]byte, deviceID, orgID string)
 
 	mu       sync.Mutex
-	wake     chan struct{} // wakes the job loop
-	wakeCtl  chan struct{} // wakes the restart loop (see lane)
+	wakes    map[lane]chan struct{} // wake one loop per lane (see lane)
 	cancels  map[string]context.CancelFunc
 	rebootMu sync.Mutex   // guards the stored restart plan: both loops read and write it
 	unsafe   atomic.Int32 // jobs running now that a restart would interrupt (installs, uninstalls, updates)
 }
 
-// lane selects which accepted jobs a loop works on. A restart request only writes a plan and starts Windows' own
-// countdown, so it has a loop of its own: it must not wait behind a Windows Update scan, a software inventory or an
-// installer that happens to be running (a Restart click took as long as that other work). It still waits for a job
-// that a restart would interrupt (see Engine.unsafe).
+// lane selects which accepted jobs a loop works on (D152). Jobs that have nothing to do with each other run side by side:
+// a click on Refresh must not wait for an uninstaller, a restart request must not wait for a Windows Update scan, and a
+// script must not hold up either. Within one lane jobs run one at a time, in the order they were due.
+//
+// The installing lane is one on purpose: installers, removals, Windows Update installs and agent updates all drive the
+// same Windows Installer / servicing machinery, which allows one of them at a time (a second one is answered with "another
+// installation is in progress").
 type lane uint8
 
 const (
-	laneAll     lane = iota // every job: single-step use and tests
-	laneMain                // every job except restart requests
-	laneControl             // restart requests and the restart countdown
+	laneAll       lane = iota // every job: single-step use and tests
+	laneMain                  // installs, updates, removals, Windows Update installs and hiding, agent updates
+	laneControl               // restart requests and the restart countdown, wake-up packets, read-only views
+	laneInventory             // "refresh device information"
+	laneScan                  // Windows Update scans, and the daily one
+	laneScript                // scripts
 )
 
-func (l lane) handles(t agentv1.JobType) bool {
-	switch l {
-	case laneMain:
-		return !controlJob(t)
-	case laneControl:
-		return controlJob(t)
-	}
-	return true
-}
+// workLanes are the lanes that run on a loop of their own.
+var workLanes = []lane{laneMain, laneControl, laneInventory, laneScan, laneScript}
 
-// controlJob is a quick job that must not wait behind an installer: a restart request, a wake-up packet and a
-// read-only view.
-func controlJob(t agentv1.JobType) bool {
+// laneOf says which lane a job type belongs to.
+func laneOf(t agentv1.JobType) lane {
 	switch t {
 	case agentv1.JobType_JOB_TYPE_REBOOT, agentv1.JobType_JOB_TYPE_WAKE, agentv1.JobType_JOB_TYPE_INSPECT:
-		return true
+		return laneControl
+	case agentv1.JobType_JOB_TYPE_INVENTORY_FULL:
+		return laneInventory
+	case agentv1.JobType_JOB_TYPE_WU_SCAN:
+		return laneScan
+	case agentv1.JobType_JOB_TYPE_RUN_SCRIPT:
+		return laneScript
 	}
-	return false
+	return laneMain
 }
+
+func (l lane) handles(t agentv1.JobType) bool { return l == laneAll || laneOf(t) == l }
 
 // interruptedByRestart reports whether a restart would break a job of this type halfway.
 func interruptedByRestart(t agentv1.JobType) bool {
@@ -144,21 +149,29 @@ func (e *Engine) local() *time.Location {
 func (e *Engine) init() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.wake == nil {
-		e.wake = make(chan struct{}, 1)
-		e.wakeCtl = make(chan struct{}, 1)
+	if e.wakes == nil {
+		e.wakes = map[lane]chan struct{}{}
+		for _, l := range workLanes {
+			e.wakes[l] = make(chan struct{}, 1)
+		}
 		e.cancels = map[string]context.CancelFunc{}
 	}
 }
 
-// Wake makes the loop re-evaluate its queue.
+// Wake makes every loop re-evaluate its queue.
 func (e *Engine) Wake() {
 	e.init()
-	for _, c := range []chan struct{}{e.wake, e.wakeCtl} {
-		select {
-		case c <- struct{}{}:
-		default:
-		}
+	for _, l := range workLanes {
+		e.wakeLane(l)
+	}
+}
+
+// wakeLane makes one loop re-evaluate its queue: a new job only needs to wake the lane it will run in.
+func (e *Engine) wakeLane(l lane) {
+	e.init()
+	select {
+	case e.wakes[l] <- struct{}{}:
+	default:
 	}
 }
 
@@ -304,7 +317,7 @@ func (e *Engine) Accept(se *agentv1.SignedEnvelope, env *agentv1.JobEnvelope) {
 		reject("unsupported job type", agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
 		return
 	}
-	e.Wake()
+	e.wakeLane(laneOf(env.Type))
 }
 
 // cancelJob handles a CANCEL envelope (itself recorded as a finished job).
@@ -324,16 +337,21 @@ func (e *Engine) cancelJob(target string, self *Record) {
 		Outcome: agentv1.JobOutcome_JOB_OUTCOME_SUCCESS, FinishedAt: e.now().Unix()})
 }
 
-// Run processes the queue until ctx ends: jobs one at a time on this goroutine, restart requests on a second loop.
+// Run processes the queue until ctx ends: one loop per lane, so unrelated jobs run side by side. The installing lane runs on
+// this goroutine and is also woken when someone signs in (jobs that wait for a person).
 func (e *Engine) Run(ctx context.Context) {
 	e.init()
 	e.SelfUpdateStartup()
-	go e.loop(ctx, laneControl, e.wakeCtl, nil)
+	for _, l := range workLanes {
+		if l != laneMain {
+			go e.loop(ctx, l, e.wakes[l], nil)
+		}
+	}
 	var sessions <-chan struct{}
 	if e.P != nil {
 		sessions = e.P.SessionEvents()
 	}
-	e.loop(ctx, laneMain, e.wake, sessions)
+	e.loop(ctx, laneMain, e.wakes[laneMain], sessions)
 }
 
 func (e *Engine) loop(ctx context.Context, l lane, wake, sessions <-chan struct{}) {
@@ -380,19 +398,21 @@ func (e *Engine) tickLane(ctx context.Context, l lane) time.Duration {
 			next = t
 		}
 	}
-	if l != laneControl {
+	if l == laneScan || l == laneAll { // the daily scan belongs to the lane of scans: it waits for nothing and holds nothing up
 		if t := e.autoScan(ctx); !t.IsZero() {
 			soonest(t)
 		}
 	}
-	if t := e.checkReboot(); !t.IsZero() {
-		soonest(t)
+	if l == laneControl || l == laneMain || l == laneAll {
+		if t := e.checkReboot(); !t.IsZero() {
+			soonest(t)
+		}
 	}
 	userPoll := e.PollUserJobs
 	if userPoll == 0 {
 		userPoll = 15 * time.Minute
 	}
-	for _, r := range recs {
+	for i, r := range recs {
 		if ctx.Err() != nil {
 			return 0
 		}
@@ -454,19 +474,37 @@ func (e *Engine) tickLane(ctx context.Context, l lane) time.Duration {
 			e.setState(r, agentv1.JobState_JOB_STATE_WAITING, "waiting_install_finish", nil)
 			continue
 		}
+		e.markQueued(recs[i+1:], l)
 		e.runJob(ctx, r, env)
 		if r.state() == agentv1.JobState_JOB_STATE_WAITING && r.NextRun > 0 {
 			soonest(time.Unix(r.NextRun, 0))
 		}
 	}
 	// A job in this pass may have scheduled a restart that is already due.
-	if t := e.checkReboot(); !t.IsZero() {
-		soonest(t)
+	if l == laneControl || l == laneMain || l == laneAll {
+		if t := e.checkReboot(); !t.IsZero() {
+			soonest(t)
+		}
 	}
 	if next.IsZero() {
 		return 0
 	}
 	return next.Sub(e.now()) + time.Second
+}
+
+// markQueued tells the console that jobs of this lane which are ready to run are waiting for the one that is about to run,
+// instead of leaving them looking as if nothing had happened to them (they stay "accepted" otherwise).
+func (e *Engine) markQueued(later []*Record, l lane) {
+	now := e.now()
+	for _, q := range later {
+		if !l.handles(agentv1.JobType(q.Type)) || q.terminal() || q.AwaitRestart || q.Cancel || q.state() != agentv1.JobState_JOB_STATE_ACCEPTED {
+			continue
+		}
+		if now.Unix() > q.Expires || now.Before(time.Unix(q.NotBefore, 0)) {
+			continue
+		}
+		e.setState(q, agentv1.JobState_JOB_STATE_WAITING, "waiting_other_job", nil)
+	}
 }
 
 func (e *Engine) runJob(ctx context.Context, r *Record, env *agentv1.JobEnvelope) {

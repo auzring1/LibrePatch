@@ -43,9 +43,15 @@ func (e *Engine) saveWUOptions(o wu.Options) {
 	}
 }
 
+// scanTimeout is the longest a Windows Update scan may take (a variable so tests can shorten it).
+var scanTimeout = 20 * time.Minute
+
 // scanAndReport scans and hands the snapshot (also a failed one, carrying the error) to the agent
 // core for delivery. It returns the snapshot.
 func (e *Engine) scanAndReport(ctx context.Context, o wu.Options) *agentv1.WuInventory {
+	// A scan against an update source that does not answer can take hours; it ends here instead, with the error reported.
+	ctx, cancel := context.WithTimeout(ctx, scanTimeout)
+	defer cancel()
 	c := e.P.WindowsUpdate()
 	ups, err := c.Scan(ctx, o)
 	snap := wu.Snapshot(ups, c.Policy(), e.P.RebootRequired(), o, err, e.now())
