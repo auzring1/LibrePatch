@@ -6,6 +6,8 @@ describe("jobReason", () => {
     expect(jobReason("waiting_other_job")).toBe("Waiting for another job on this PC to finish");
     expect(jobReason("cancelled_by_administrator")).toBe("Cancelled by an administrator");
     expect(jobReason("no_silent_uninstall")).toMatch(/Details/);
+    expect(jobReason("profile_in_use")).toMatch(/signed in/);
+    expect(jobReason("profile_protected")).toMatch(/automatically/);
     expect(jobReason("something_new")).toBe("something_new");
     expect(jobReason(null)).toBe("");
   });

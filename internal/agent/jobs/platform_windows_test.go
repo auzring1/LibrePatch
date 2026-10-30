@@ -5,11 +5,14 @@ package jobs
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 
 	"github.com/auzring1/librepatch/internal/shared/installer"
@@ -198,5 +201,55 @@ func TestWinDeleteUninstallEntryRemovesOnlyThatKey(t *testing.T) {
 	// A user who is not signed in: the registry cannot be changed.
 	if err := p.DeleteUninstallEntry(installer.User, "S-1-5-21-1-2-3-9999", name); err != ErrNoSession {
 		t.Errorf("an unloaded hive gives ErrNoSession, got %v", err)
+	}
+}
+
+// Creates a throw-away local account with a real profile, removes the profile with the platform's DeleteProfile and checks
+// that the profile entry and the folder are gone while the account stays. Needs an elevated session (the CI runner is one).
+func TestWinDeleteProfileRemovesTheProfileAndKeepsTheAccount(t *testing.T) {
+	elevated(t)
+	const user = "lpprofiletest"
+	if out, err := exec.Command("net", "user", user, "Lp-T3st-Pass-9x!", "/add").CombinedOutput(); err != nil {
+		t.Skipf("cannot create a test account: %v %s", err, out)
+	}
+	defer func() { _ = exec.Command("net", "user", user, "/delete").Run() }()
+	sid, _, _, err := windows.LookupSID("", user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sidStr := sid.String()
+	createProfile := windows.NewLazySystemDLL("userenv.dll").NewProc("CreateProfile")
+	sp, _ := windows.UTF16PtrFromString(sidStr)
+	np, _ := windows.UTF16PtrFromString(user)
+	buf := make([]uint16, 260)
+	if hr, _, _ := createProfile.Call(uintptr(unsafe.Pointer(sp)), uintptr(unsafe.Pointer(np)), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf))); hr != 0 {
+		t.Skipf("cannot create a profile (HRESULT %#x)", hr)
+	}
+	folder := windows.UTF16ToString(buf)
+
+	p := NewPlatform(t.TempDir())
+	info, err := p.ProfileInfo(sidStr)
+	if err != nil || !info.Exists || info.Loaded || !strings.EqualFold(info.Path, folder) {
+		t.Fatalf("before: %+v %v (folder %q)", info, err, folder)
+	}
+	if d, n := p.AccountName(sidStr); !strings.EqualFold(n, user) || d == "" {
+		t.Errorf("AccountName = %q %q", d, n)
+	}
+	if err := p.DeleteProfile(sidStr); err != nil {
+		t.Fatal(err)
+	}
+	after, err := p.ProfileInfo(sidStr)
+	if err != nil || after.Exists {
+		t.Errorf("the profile entry should be gone: %+v %v", after, err)
+	}
+	if _, err := os.Stat(folder); !os.IsNotExist(err) {
+		t.Errorf("the profile folder should be gone: %v", err)
+	}
+	if _, _, _, err := windows.LookupSID("", user); err != nil {
+		t.Errorf("the account itself must stay: %v", err)
+	}
+	// Removing it again is a quiet no-op on our side: the entry is simply not there.
+	if again, err := p.ProfileInfo(sidStr); err != nil || again.Exists {
+		t.Errorf("%+v %v", again, err)
 	}
 }

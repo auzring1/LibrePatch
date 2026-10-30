@@ -22,6 +22,16 @@ import (
 // ErrNoSession means the target user has no interactive session right now.
 var ErrNoSession = errors.New("jobs: user has no active session")
 
+// ErrProfileInUse means Windows refused to remove a profile because something is using it.
+var ErrProfileInUse = errors.New("jobs: the profile is in use")
+
+// ProfileInfo is one user's profile as Windows records it.
+type ProfileInfo struct {
+	Exists bool   // there is a profile entry for the SID
+	Path   string // the profile folder Windows recorded for it
+	Loaded bool   // the user's registry hive is loaded, so something is using the profile
+}
+
 // ErrUnsupported means this platform cannot do the requested operation.
 var ErrUnsupported = errors.New("jobs: not supported on this platform")
 
@@ -101,6 +111,15 @@ type Platform interface {
 	// machine = HKLM 64+32 views; user = that user's hive (HKCU view). Callers close them.
 	UninstallRoots(scope installer.Scope, sid string) (roots []inventory.RegNode, err error)
 	AppxPackages(sid string) ([]string, error)
+	// ProfileInfo says what Windows has recorded for one user's profile.
+	ProfileInfo(sid string) (ProfileInfo, error)
+	// AccountName resolves a SID to its domain and name ("", "" when it cannot be resolved).
+	AccountName(sid string) (domain, name string)
+	// AutoLogon returns the account the computer signs in to by itself ("", "" when automatic sign-in is off).
+	AutoLogon() (domain, name string)
+	// DeleteProfile removes the profile with Windows' own profile deletion (registry entry, folder, hive). It returns
+	// ErrProfileInUse when Windows refuses because the profile is loaded.
+	DeleteProfile(sid string) error
 	// PathGone reports whether path is certainly absent: an absolute path on a local fixed drive that does not exist.
 	// A network path, a removable or unmounted drive, or any error other than "not found" is not certain, so false.
 	PathGone(path string) bool

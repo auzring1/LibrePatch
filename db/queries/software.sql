@@ -120,6 +120,12 @@ ON CONFLICT (device_id, sid) DO UPDATE SET
 -- name: SetUsersRev :exec
 UPDATE devices SET users_rev = $2 WHERE id = $1;
 
+-- name: GetDeviceUser :one
+SELECT * FROM device_users WHERE device_id = $1 AND sid = $2;
+
+-- name: DeleteDeviceUser :exec
+DELETE FROM device_users WHERE device_id = $1 AND sid = $2;
+
 -- name: ListDeviceUsers :many
 SELECT * FROM device_users WHERE device_id = $1 ORDER BY loaded DESC, lower(username), sid;
 

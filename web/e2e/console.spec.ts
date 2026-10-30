@@ -203,6 +203,44 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       // Users moved into Overview and the client certificates into Hardware; the tab follows the URL.
       await page.getByRole("tab", { name: "Overview" }).click();
       await expect(page.getByRole("heading", { name: "User profiles" })).toBeVisible();
+
+      // Removing a user profile (D157). The dev agent reports no profiles, so the list and the device's answers are played back here:
+      // the button is there for an idle profile, off for someone signed in, asks first, and only then sends the request.
+      const profilePosts: string[] = [];
+      await page.route(/\/api\/v1\/devices\/[0-9a-f-]{36}\/users$/, (route) =>
+        route.fulfill({
+          json: {
+            items: [
+              { sid: "S-1-5-21-1-2-3-1105", username: "old.user", domain: "CONTOSO", profile_path: "C:\\Users\\old.user", last_logon_at: "2026-01-02T10:00:00Z", loaded: false, is_admin: false },
+              { sid: "S-1-5-21-1-2-3-1106", username: "here.now", domain: "CONTOSO", profile_path: "C:\\Users\\here.now", last_logon_at: "2026-10-30T10:00:00Z", loaded: true, is_admin: false },
+            ],
+          },
+        }),
+      );
+      await page.route(/\/remove-profile$/, async (route) => {
+        profilePosts.push(route.request().postData() ?? "");
+        await route.fulfill({ status: 202, json: { job_id: "00000000-0000-7000-8000-000000000001" } });
+      });
+      await page.route(/\/api\/v1\/jobs\/00000000-0000-7000-8000-000000000001$/, (route) =>
+        route.fulfill({ json: { id: "00000000-0000-7000-8000-000000000001", status: "succeeded", result: { message: "removed the profile of CONTOSO\\old.user (C:\\Users\\old.user); the account itself was not deleted" } } }),
+      );
+      await page.reload();
+      await expect(page.getByRole("heading", { name: "User profiles" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Remove the profile of CONTOSO\\old.user" })).toBeEnabled();
+      await expect(page.getByRole("button", { name: /^Signed in now: sign them out/ })).toBeDisabled();
+      await page.getByRole("button", { name: "Remove the profile of CONTOSO\\old.user" }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByText("It cannot be undone.")).toBeVisible();
+      await expect(dialog.getByText("The account itself is not deleted")).toBeVisible();
+      await dialog.getByRole("button", { name: "Cancel" }).click();
+      expect(profilePosts).toHaveLength(0);
+      await page.getByRole("button", { name: "Remove the profile of CONTOSO\\old.user" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Remove profile" }).click();
+      await expect(page.getByText(/the account itself was not deleted/).first()).toBeVisible({ timeout: 15_000 });
+      expect(profilePosts).toEqual(['{"confirm":true}']);
+      await page.unroute(/\/api\/v1\/devices\/[0-9a-f-]{36}\/users$/);
+      await page.unroute(/\/remove-profile$/);
+      await page.reload();
       await page.getByRole("tab", { name: "Hardware" }).click();
       await expect(page).toHaveURL(/\?tab=hardware$/);
       await expect(page.getByRole("heading", { name: "Device certificate" })).toBeVisible();

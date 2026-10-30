@@ -119,7 +119,7 @@ func (l lane) handles(t agentv1.JobType) bool { return l == laneAll || laneOf(t)
 func interruptedByRestart(t agentv1.JobType) bool {
 	switch t {
 	case agentv1.JobType_JOB_TYPE_SOFTWARE_INSTALL, agentv1.JobType_JOB_TYPE_SOFTWARE_UPDATE, agentv1.JobType_JOB_TYPE_SOFTWARE_UNINSTALL,
-		agentv1.JobType_JOB_TYPE_WU_INSTALL, agentv1.JobType_JOB_TYPE_AGENT_UPDATE, agentv1.JobType_JOB_TYPE_RUN_SCRIPT:
+		agentv1.JobType_JOB_TYPE_WU_INSTALL, agentv1.JobType_JOB_TYPE_AGENT_UPDATE, agentv1.JobType_JOB_TYPE_RUN_SCRIPT, agentv1.JobType_JOB_TYPE_PROFILE_DELETE:
 		return true
 	}
 	return false
@@ -289,6 +289,16 @@ func (e *Engine) Accept(se *agentv1.SignedEnvelope, env *agentv1.JobEnvelope) {
 			return
 		}
 		if err := ValidateWake(env.GetWake()); err != nil {
+			reject(err.Error(), agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		e.setState(r, agentv1.JobState_JOB_STATE_ACCEPTED, "", nil)
+	case agentv1.JobType_JOB_TYPE_PROFILE_DELETE:
+		if env.TargetUserSid != "" {
+			reject("profile removal is machine-scope", agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		if err := ValidateProfileDelete(env.GetProfileDelete()); err != nil {
 			reject(err.Error(), agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
 			return
 		}
@@ -552,6 +562,8 @@ func (e *Engine) runJob(ctx context.Context, r *Record, env *agentv1.JobEnvelope
 		out = e.uninstall(jctx, r, env)
 	case agentv1.JobType_JOB_TYPE_WU_SCAN:
 		out = e.wuScan(jctx, env)
+	case agentv1.JobType_JOB_TYPE_PROFILE_DELETE:
+		out = e.profileDelete(env)
 	case agentv1.JobType_JOB_TYPE_WU_INSTALL:
 		out = e.wuInstall(jctx, env)
 	case agentv1.JobType_JOB_TYPE_WU_HIDE:

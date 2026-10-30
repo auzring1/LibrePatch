@@ -135,6 +135,12 @@ func (s *Service) ApplyUpdate(ctx context.Context, dev dbq.Device, u *agentv1.Jo
 				}
 			}
 		}
+		// A profile that was removed is no longer in the device's list; the next inventory would say so, this says it now (D157).
+		if job.Type == "profile_delete" && status == "succeeded" {
+			if sid := profileSID(job.Body); sid != "" {
+				_ = q.DeleteDeviceUser(ctx, dbq.DeleteDeviceUserParams{DeviceID: dev.ID, Sid: sid})
+			}
+		}
 		// A device that finished an install from a file has that file in its cache and can be offered as a peer for it (D126).
 		if (job.Type == "software_install" || job.Type == "software_update") && (status == "succeeded" || status == "succeeded_reboot") {
 			if err := notePeerContent(ctx, q, dev.ID, job.Body, s.now()); err != nil {

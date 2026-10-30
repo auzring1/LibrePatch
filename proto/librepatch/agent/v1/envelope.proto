@@ -29,6 +29,7 @@ enum JobType {
   JOB_TYPE_WAKE = 12;     // send Wake-on-LAN packets for other devices on this one's network (D125)
   JOB_TYPE_RUN_SCRIPT = 14;  // run an administrator's script as SYSTEM; only on an agent whose owner switched scripts on (D127)
   JOB_TYPE_INSPECT = 13;  // read-only view: running programs, services or recent event log entries (D125)
+  JOB_TYPE_PROFILE_DELETE = 15;  // remove one user's Windows profile the proper way (D157)
 }
 
 message JobEnvelope {
@@ -59,6 +60,7 @@ message JobEnvelope {
     WakeBody wake = 29;
     InspectBody inspect = 30;
     RunScriptBody run_script = 31;
+    ProfileDeleteBody profile_delete = 32;
   }
 }
 
@@ -284,6 +286,15 @@ message InspectBody {
   uint32 max_level = 3;         // EVENTS: 1 critical .. 5 verbose; 0 = 3 (warnings and worse)
   uint32 since_minutes = 4;     // EVENTS: look back this far, 1..10080; 0 = 1440
   uint32 max_events = 5;        // EVENTS: 1..200; 0 = 100
+}
+
+// ProfileDeleteBody asks the device to remove one user's profile with Windows' own profile deletion (registry entry, profile
+// folder and the user's hive, as Settings and "User Profiles" do it), not by deleting a folder (D157). Only the SID is acted on:
+// the folder is whatever Windows has recorded for that SID, never a path from the server. The agent refuses a profile that is in
+// use (signed in, or its hive loaded), a built-in account, and the account the computer signs in to automatically.
+message ProfileDeleteBody {
+  string sid = 1;        // the user's SID (S-1-5-21-... or S-1-12-1-...)
+  string username = 2;   // for the log only: DOMAIN\name as the console showed it
 }
 
 enum ScriptInterpreter {

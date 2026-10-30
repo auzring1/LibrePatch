@@ -30,3 +30,23 @@ func TestScriptPermissionsAreAdministratorOnlyOrgWideAndNeverInATokenScope(t *te
 		}
 	}
 }
+
+// Removing a person's profile deletes their files on a computer: administrators only, never through an API token (D157). A
+// site-scoped administrator may do it for the devices of their own site, like the other device-page actions.
+func TestRemovingAProfileIsForAdministratorsOnlyAndNeverATokenScope(t *testing.T) {
+	org, site := uuid.New(), uuid.New()
+	if !NewAccess(org, []Grant{{Role: RoleAdmin, ScopeType: ScopeOrg, ScopeID: org}}).OrgHas(PermDevicesProfiles) {
+		t.Error("an administrator lacks devices:profiles")
+	}
+	for _, role := range []string{RoleOperator, RoleReadOnly} {
+		if NewAccess(org, []Grant{{Role: role, ScopeType: ScopeOrg, ScopeID: org}}).OrgHas(PermDevicesProfiles) {
+			t.Errorf("%s may remove profiles", role)
+		}
+	}
+	if TokenScopable(PermDevicesProfiles) {
+		t.Error("devices:profiles can be put in an API token")
+	}
+	if !siteScopable[PermDevicesProfiles] || !NewAccess(org, []Grant{{Role: RoleAdmin, ScopeType: ScopeSite, ScopeID: site}}).SiteHas(site, PermDevicesProfiles) {
+		t.Error("a site administrator can remove profiles on their own site's devices")
+	}
+}
