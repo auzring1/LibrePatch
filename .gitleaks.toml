@@ -21,4 +21,9 @@ regexes = [
   # A made-up master key in web/src/pages/masterKeyFile.test.ts (a1b2c3d4 e5f6a7b8 ... in groups). It opens nothing; the test
   # only checks the text of the download file.
   '''a1b2c3d4-e5f6a7b8-c9d0e1f2-a3b4c5d6-e7f8a9b0-c1d2e3f4-a5b6c7d8-e9f0a1b2''',
+  # Made-up MSIX/AppX package full names in internal/server/deploy/msix_test.go ("Name_version_arch__publisherid", the form
+  # Windows prints for an installed package). Package names, not credentials; the second is what an earlier commit of that
+  # test used, with Microsoft's real publisher id, which the scanner also takes for a key.
+  '''Contoso\.Other_1\.0\.0\.0_x64__contosopub001''',
+  '''Contoso\.Other_1\.0\.0\.0_x64__8wekyb3d8bbwe''',
 ]

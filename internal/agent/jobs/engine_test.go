@@ -259,7 +259,7 @@ func TestRejections(t *testing.T) {
 		"user without sid": func(e *agentv1.JobEnvelope, b *agentv1.InstallBody) {
 			b.Scope = agentv1.InstallScope_INSTALL_SCOPE_USER
 		},
-		"msix": func(e *agentv1.JobEnvelope, b *agentv1.InstallBody) {
+		"msix without a package file or identity": func(e *agentv1.JobEnvelope, b *agentv1.InstallBody) {
 			b.Installer.Type = agentv1.InstallerType_INSTALLER_TYPE_MSIX
 		},
 		"huge timeout": func(e *agentv1.JobEnvelope, b *agentv1.InstallBody) { b.TimeoutS = 99999 },

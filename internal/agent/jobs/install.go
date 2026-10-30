@@ -43,8 +43,14 @@ func (e *Engine) install(ctx context.Context, r *Record, env *agentv1.JobEnvelop
 		}
 	}
 
-	// 2. Already satisfied? (install: present; update: present at the target version.)
-	det, known, derr := e.Detect(b.Detection, scope, sid)
+	// 2. Already satisfied? (install: present; update: present at the target version.) An MSIX/AppX package is judged by its
+	// own script, which asks Windows (D151).
+	var det Detection
+	var known bool
+	var derr error
+	if t != installer.MSIX {
+		det, known, derr = e.Detect(b.Detection, scope, sid)
+	}
 	if derr != nil {
 		e.log().Warn("pre-detection failed", "job", r.JobID, "err", derr)
 	} else if known && det.Present {
@@ -129,7 +135,7 @@ func (e *Engine) install(ctx context.Context, r *Record, env *agentv1.JobEnvelop
 			}
 			return fail("the installer's signature does not match the pinned signer (%s)", sigNote)
 		}
-	} else if sig.Signed && !sig.Valid {
+	} else if sig.Signed && !sig.Valid && t != installer.MSIX {
 		return fail("the installer has an invalid digital signature: %s", sig.Detail)
 	}
 
@@ -146,6 +152,16 @@ func (e *Engine) install(ctx context.Context, r *Record, env *agentv1.JobEnvelop
 			return fail("%v", perr)
 		}
 		rr = RunResult{ExitCode: 0, LogTail: msg}
+	case installer.MSIX:
+		// Windows itself refuses a package whose signature it does not trust, so an unverifiable signature here is only a note.
+		var merr error
+		rr, merr = e.installMSIX(ctx, b, dir, file, timeout)
+		if merr != nil {
+			if ctx.Err() != nil {
+				return &outcome{res: &agentv1.JobResult{}, cancelled: true}
+			}
+			return fail("could not install the MSIX package: %v", merr)
+		}
 	default:
 		path, rt := file, t
 		if t == installer.Zip {
@@ -224,7 +240,11 @@ func (e *Engine) install(ctx context.Context, r *Record, env *agentv1.JobEnvelop
 		return &outcome{res: res, reason: "installer_failed"}
 	}
 
-	// 8. Post-detection: success without the product present is not success.
+	// 8. Post-detection: success without the product present is not success. (The MSIX script has already checked.)
+	if t == installer.MSIX {
+		res.DetectionPassed, res.InstalledVersion = true, b.Version
+		return &outcome{res: res}
+	}
 	d2, known2, derr2 := e.Detect(b.Detection, scope, sid)
 	res.DetectionPassed = !known2 || (derr2 == nil && d2.Present)
 	res.InstalledVersion = d2.Version
