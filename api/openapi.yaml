@@ -310,7 +310,7 @@ paths:
         With `uninstall_agent` the device is first told, with a signed job, to uninstall its agent, and is revoked as soon as it reports it
         is doing so (or, if it goes silent while uninstalling, ten minutes later). A revoked device cannot connect, so it could not be
         told anything afterwards; that is why the revoke follows the uninstall. An offline device gets the job when it comes online, for
-        up to 30 days. Until then the device stays active with `revoke_pending` true. A plain revoke (without `uninstall_agent`) also
+        up to 28 days. Until then the device stays active with `revoke_pending` true. A plain revoke (without `uninstall_agent`) also
         drops a request that is still waiting.
       parameters: [{ $ref: "#/components/parameters/ID" }]
       requestBody:

@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/auzring1/librepatch/gen/dbq"
 	agentv1 "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1"
+	"github.com/auzring1/librepatch/internal/shared/envelope"
 )
 
 // revokeFixture is an active, online device with one valid certificate, and a record of the connections that were cut.
@@ -151,5 +153,12 @@ func TestRevokingRightAwayDropsAWaitingRequest(t *testing.T) {
 	}
 	if _, err := f.svc.RequestRevokeWithUninstall(ctx, f.org, f.user, d.ID, "", "x"); !errors.Is(err, ErrNotActive) {
 		t.Fatalf("a revoked device has no agent to ask: %v", err)
+	}
+}
+
+// An agent refuses a signed job that lives longer than the protocol allows, so the request must fit.
+func TestTheUninstallRequestFitsTheProtocolsMaximumLifetime(t *testing.T) {
+	if agentUninstallExpiry+time.Minute > envelope.MaxLifetime {
+		t.Fatalf("%v plus the minute the issue time is set back is over %v: the agent would refuse it as expired", agentUninstallExpiry, envelope.MaxLifetime)
 	}
 }

@@ -212,7 +212,7 @@ export function DevicePage() {
         <Stack>
           <Text size="sm">
             {uninstallAgent && d?.status === "active"
-              ? "The computer is told to uninstall its agent first, and is revoked as soon as it has: it can never reconnect with its current identity. If it is offline, this waits until it connects (up to 30 days)."
+              ? "The computer is told to uninstall its agent first, and is revoked as soon as it has: it can never reconnect with its current identity. If it is offline, this waits until it connects (up to 28 days)."
               : "The device is disconnected immediately and can never reconnect with its current identity. To manage it again, reinstall the agent with a new enrollment token."}
           </Text>
           {d?.status === "active" && (

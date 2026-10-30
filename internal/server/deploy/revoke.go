@@ -21,7 +21,9 @@ var ErrAlreadyRevoked = errors.New("deploy: the device is already revoked or ret
 
 // agentUninstallExpiry is how long an "uninstall the agent, then revoke" request waits for the device to come online. After that
 // the request is dropped and the device stays as it was; the administrator can revoke it without the uninstall.
-const agentUninstallExpiry = 30 * 24 * time.Hour
+// It is 28 days, not 30: a signed job may live at most 30 days counted from a minute before it is signed (envelope.MaxLifetime),
+// and an agent refuses a longer one as expired.
+const agentUninstallExpiry = 28 * 24 * time.Hour
 
 // stuckUninstallAfter is how long an agent that is uninstalling itself may stay silent before the server takes the job as done: an
 // agent that removed itself cannot say so.
@@ -72,7 +74,7 @@ func (s *Service) RevokeDevice(ctx context.Context, org uuid.UUID, by *uuid.UUID
 
 // RequestRevokeWithUninstall tells the agent to uninstall itself and revokes the device once it has. The device is not revoked yet:
 // a revoked device cannot connect, so it could no longer be told anything. An offline device gets the job when it comes online
-// (for up to 30 days). The device page shows the request as pending, and "Revoke now" skips the uninstall.
+// (for up to 28 days). The device page shows the request as pending, and "Revoke now" skips the uninstall.
 func (s *Service) RequestRevokeWithUninstall(ctx context.Context, org, user, device uuid.UUID, ip, reason string) (uuid.UUID, error) {
 	d, err := s.activeDevice(ctx, org, device)
 	if err != nil {
