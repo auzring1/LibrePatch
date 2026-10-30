@@ -52,8 +52,12 @@ func (p *devPlatform) OSBuild() uint32                       { return 99999 }
 func (p *devPlatform) AppxPackages(string) ([]string, error) { return nil, nil }
 func (p *devPlatform) SessionEvents() <-chan struct{}        { return sessionSig }
 func (p *devPlatform) HasSession(string) bool                { return true }
-func (p *devPlatform) TrustedExecutable(string) error        { return nil }
-func (p *devPlatform) MsiExec() string                       { return "msiexec.exe" }
+func (p *devPlatform) PathGone(string) bool                  { return false }
+func (p *devPlatform) DeleteUninstallEntry(installer.Scope, string, string) error {
+	return ErrUnsupported
+}
+func (p *devPlatform) TrustedExecutable(string) error { return nil }
+func (p *devPlatform) MsiExec() string                { return "msiexec.exe" }
 
 func (p *devPlatform) Env(_ installer.Scope, _ string, name string) string {
 	if strings.EqualFold(name, "PROGRAMFILES") {

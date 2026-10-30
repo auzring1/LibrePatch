@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/windows/registry"
+
 	"github.com/auzring1/librepatch/internal/shared/installer"
 )
 
@@ -129,5 +131,72 @@ func TestWinUninstallRootsAndEnv(t *testing.T) {
 	}
 	if _, exists, err := p.FileVersion(filepath.Join(os.Getenv("SystemRoot"), "System32", "kernel32.dll")); err != nil || !exists {
 		t.Errorf("FileVersion(kernel32): %v %v", exists, err)
+	}
+}
+
+func TestWinPathGoneIsOnlyTrueWhenCertain(t *testing.T) {
+	p := NewPlatform(t.TempDir()).(*winPlatform)
+	sys := filepath.Join(os.Getenv("SystemRoot"), "System32", "kernel32.dll")
+	if p.PathGone(sys) {
+		t.Error("an existing file is not gone")
+	}
+	if !p.PathGone(filepath.Join(os.Getenv("SystemRoot"), "System32", "librepatch-no-such-file.exe")) {
+		t.Error("a missing file on the system drive is gone")
+	}
+	for _, unsure := range []string{`\\no-such-host\share\x.exe`, `relative\x.exe`, `x.exe`, ``, `C:`, `\\?\C:\no-such-file.exe`} {
+		if p.PathGone(unsure) {
+			t.Errorf("%q is not certain, so it must not count as gone", unsure)
+		}
+	}
+}
+
+// The key is created under HKLM, so this needs an elevated session (the Windows CI runner is one).
+func TestWinDeleteUninstallEntryRemovesOnlyThatKey(t *testing.T) {
+	elevated(t)
+	p := NewPlatform(t.TempDir())
+	const name = "LibrePatchTestStaleEntry"
+	path := uninstallPathNative + `\` + name
+	k, _, err := registry.CreateKey(registry.LOCAL_MACHINE, path, registry.ALL_ACCESS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = k.SetStringValue("DisplayName", "Stale test entry")
+	sub, _, err := registry.CreateKey(k, "Nested", registry.ALL_ACCESS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = sub.Close()
+	_ = k.Close()
+	// A neighbour that must survive.
+	other, _, err := registry.CreateKey(registry.LOCAL_MACHINE, uninstallPathNative+`\`+name+"Neighbour", registry.ALL_ACCESS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = other.Close()
+	defer func() { _ = registry.DeleteKey(registry.LOCAL_MACHINE, uninstallPathNative+`\`+name+"Neighbour") }()
+
+	for _, bad := range []string{"", `..\Uninstall`, `a\b`, "a/b"} {
+		if err := p.DeleteUninstallEntry(installer.Machine, "", bad); err == nil {
+			t.Errorf("%q must be refused", bad)
+		}
+	}
+	if err := p.DeleteUninstallEntry(installer.Machine, "", name); err != nil {
+		t.Fatal(err)
+	}
+	if k, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.READ); err == nil {
+		_ = k.Close()
+		t.Error("the key (with its subkey) should be gone")
+	}
+	if k, err := registry.OpenKey(registry.LOCAL_MACHINE, uninstallPathNative+`\`+name+"Neighbour", registry.READ); err != nil {
+		t.Errorf("the neighbouring key was removed: %v", err)
+	} else {
+		_ = k.Close()
+	}
+	if err := p.DeleteUninstallEntry(installer.Machine, "", name); err != nil {
+		t.Errorf("a key that is already gone is not an error: %v", err)
+	}
+	// A user who is not signed in: the registry cannot be changed.
+	if err := p.DeleteUninstallEntry(installer.User, "S-1-5-21-1-2-3-9999", name); err != ErrNoSession {
+		t.Errorf("an unloaded hive gives ErrNoSession, got %v", err)
 	}
 }

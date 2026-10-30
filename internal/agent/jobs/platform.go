@@ -101,6 +101,13 @@ type Platform interface {
 	// machine = HKLM 64+32 views; user = that user's hive (HKCU view). Callers close them.
 	UninstallRoots(scope installer.Scope, sid string) (roots []inventory.RegNode, err error)
 	AppxPackages(sid string) ([]string, error)
+	// PathGone reports whether path is certainly absent: an absolute path on a local fixed drive that does not exist.
+	// A network path, a removable or unmounted drive, or any error other than "not found" is not certain, so false.
+	PathGone(path string) bool
+	// DeleteUninstallEntry removes the one Uninstall subkey named key (and what is under it, nothing else) for the scope:
+	// both HKLM views for machine scope, the user's hive for user scope. A user whose hive is not loaded (not signed in)
+	// gives ErrNoSession. A key that is already gone is not an error.
+	DeleteUninstallEntry(scope installer.Scope, sid, key string) error
 	// OpenLocked reopens path read-only with sharing denied for writers and deleters.
 	OpenLocked(path string) (LockedFile, error)
 	VerifySignature(path string) (Signature, error)
