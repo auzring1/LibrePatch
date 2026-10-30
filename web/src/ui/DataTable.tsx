@@ -95,6 +95,12 @@ export interface DataTableProps<T> {
    * adopts it and does not remember the layout (a drill-down must not become the next visit's default).
    */
   preset?: { filters?: { id: string; value: string }[]; search?: string };
+  /**
+   * What the rows belong to, for a table that is shown again for something else (the device a tab is about). The search, the
+   * sort and the filters belong to what is being looked at, so they are not remembered between visits and start afresh when
+   * the scope changes; the column layout (shown, order, widths, page size) is still shared by every scope.
+   */
+  scope?: string;
 }
 
 interface Layout {
@@ -142,7 +148,11 @@ const text = (v: unknown) => (v === null || v === undefined ? "" : v instanceof 
 export function DataTable<T>(p: DataTableProps<T>) {
   const { columns } = p;
   const { density, setDensity, views, saveViews } = useAppearance();
-  const saved = useMemo(() => loadLayout(p.id), [p.id]);
+  const scoped = p.scope !== undefined;
+  const saved = useMemo(() => {
+    const l = loadLayout(p.id);
+    return scoped ? { hidden: l.hidden, order: l.order, sizes: l.sizes, pageSize: l.pageSize } : l; // a scoped table never restores what was searched or sorted
+  }, [p.id, scoped]);
   const defaults = useMemo(
     () => ({
       hidden: columns.filter((c) => c.defaultHidden).map((c) => c.id),
@@ -185,17 +195,35 @@ export function DataTable<T>(p: DataTableProps<T>) {
     [boxW, columns, visibility, sizes, p.selectable, p.rowActions],
   );
 
+  // Another thing to look at (a different device): start from a clean search, sort and filters.
+  const firstScope = useRef(true);
+  useEffect(() => {
+    if (firstScope.current) {
+      firstScope.current = false;
+      return;
+    }
+    if (!scoped) return;
+    setSorting(defaults.sorting);
+    setFilters([]);
+    setSearch("");
+    setRowSelection({});
+    setActiveView("");
+    setPagination((x) => ({ ...x, pageIndex: 0 }));
+  }, [p.scope, scoped, defaults]);
+
   // Keep the layout across visits on this device.
   useEffect(() => {
     if (presetKey) return;
     const hidden = Object.entries(visibility).filter(([, v]) => v === false).map(([k]) => k);
-    const l: Layout = { sorting, hidden, order, sizes, filters, search, pageSize: pagination.pageSize };
+    const l: Layout = scoped
+      ? ({ hidden, order, sizes, pageSize: pagination.pageSize } as Layout)
+      : { sorting, hidden, order, sizes, filters, search, pageSize: pagination.pageSize };
     try {
       window.localStorage.setItem(layoutKey(p.id), JSON.stringify(l));
     } catch {
       /* private mode */
     }
-  }, [p.id, sorting, visibility, order, sizes, filters, search, pagination.pageSize, presetKey]);
+  }, [p.id, scoped, sorting, visibility, order, sizes, filters, search, pagination.pageSize, presetKey]);
 
   const isSelectable = useCallback((row: T) => (typeof p.selectable === "function" ? p.selectable(row) : !!p.selectable), [p.selectable]);
 

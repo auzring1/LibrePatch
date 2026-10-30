@@ -80,6 +80,7 @@ export function ActivityTab({ id, hostname }: { id: string; hostname: string }) 
   return (
     <DataTable<AuditEntry>
       id="device-activity"
+      scope={id}
       label="Device activity"
       data={q.data?.items ?? NONE}
       loading={q.isLoading}
