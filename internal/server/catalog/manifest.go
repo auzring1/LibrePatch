@@ -71,6 +71,8 @@ type installerFields struct {
 		} `yaml:"PackageDependencies"`
 	} `yaml:"Dependencies"`
 	ElevationRequirement string `yaml:"ElevationRequirement"`
+	// PackageFamilyName names an MSIX/AppX package ("Microsoft.WindowsTerminal_8wekyb3d8bbwe").
+	PackageFamilyName string `yaml:"PackageFamilyName"`
 }
 
 type rawManifest struct {
@@ -246,6 +248,7 @@ func merge(def, in installerFields) installerFields {
 	out.ProductCode = pick(in.ProductCode, def.ProductCode)
 	out.MinimumOSVersion = pick(in.MinimumOSVersion, def.MinimumOSVersion)
 	out.ElevationRequirement = pick(in.ElevationRequirement, def.ElevationRequirement)
+	out.PackageFamilyName = pick(in.PackageFamilyName, def.PackageFamilyName)
 	out.InstallerSwitches.Silent = pick(in.InstallerSwitches.Silent, def.InstallerSwitches.Silent)
 	out.InstallerSwitches.SilentWithProgress = pick(in.InstallerSwitches.SilentWithProgress, def.InstallerSwitches.SilentWithProgress)
 	out.InstallerSwitches.Custom = pick(in.InstallerSwitches.Custom, def.InstallerSwitches.Custom)
@@ -337,7 +340,18 @@ func normalize(p *Parsed, r installerFields) (Installer, error) {
 	in.FileName = fileNameFromURL(u, in.Type)
 
 	if t == installer.MSIX {
-		in.Unsupported = "MSIX/AppX installation is not supported in this version"
+		// MSIX/AppX packages are installed for the whole computer by the agent (D151), whatever scope the manifest names.
+		in.Scope = "machine"
+		if _, ok := installer.AppxNameFromFamily(r.PackageFamilyName); !ok && in.Unsupported == "" {
+			in.Unsupported = "the manifest has no usable PackageFamilyName, which the agent needs to find the MSIX package"
+		}
+		if !installer.IsMSIXFileName(in.FileName) {
+			ext := ".msix"
+			if strings.Contains(strings.ToLower(u.Path), "bundle") {
+				ext = ".msixbundle"
+			}
+			in.FileName = strings.TrimRight(in.FileName, ". ") + ext
+		}
 	}
 	if t == installer.Zip {
 		nt, ok := mapType(r.NestedInstallerType)
@@ -424,8 +438,13 @@ func fileNameFromURL(u *url.URL, typ string) string {
 
 // detectionFor derives a default detection rule from the product code.
 func detectionFor(p *Parsed, in Installer, r installerFields) []Detection {
-	if in.Unsupported != "" && in.Type == "msix" {
-		return nil
+	if in.Type == "msix" {
+		// The agent looks the package up by its identity name, in the registrations Windows keeps for all users (D151).
+		name, ok := installer.AppxNameFromFamily(r.PackageFamilyName)
+		if !ok {
+			return nil
+		}
+		return []Detection{{Kind: "appx", Key: installer.AppxDetectionKey(name), Version: p.Version, Cmp: "ge"}}
 	}
 	ver := p.Version
 	for _, e := range r.AppsAndFeaturesEntries {
