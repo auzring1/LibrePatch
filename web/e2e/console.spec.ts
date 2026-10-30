@@ -555,7 +555,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await page.getByRole("tab", { name: "Jobs" }).click();
       const failed = page.getByRole("table", { name: "Device jobs" }).getByRole("row", { name: /Uninstall the agent, then revoke the device/ });
       await expect(failed).toBeVisible({ timeout: 15_000 });
-      await expect(failed.getByText("Failed")).toBeVisible({ timeout: 30_000 });
+      await expect(failed.getByText("Failed", { exact: true })).toBeVisible({ timeout: 30_000 });
       await expect(page.getByText(/^Revoked: /)).toHaveCount(0);
       // Revoking without the uninstall is one click away.
       await page.getByRole("button", { name: "More actions" }).click();
