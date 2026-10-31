@@ -660,6 +660,46 @@ func (q *Queries) ListEnrollmentTokens(ctx context.Context, orgID uuid.UUID) ([]
 	return items, nil
 }
 
+const listStuckAgentUninstalls = `-- name: ListStuckAgentUninstalls :many
+SELECT j.id, j.org_id, j.device_id, j.body FROM jobs j JOIN devices d ON d.id = j.device_id
+WHERE j.type = 'agent_uninstall' AND j.status IN ('accepted', 'running') AND j.started_at IS NOT NULL AND j.started_at < $1 AND d.status = 'active'
+LIMIT 50
+`
+
+type ListStuckAgentUninstallsRow struct {
+	ID       uuid.UUID
+	OrgID    uuid.UUID
+	DeviceID uuid.UUID
+	Body     []byte
+}
+
+// An agent that is told to uninstall itself may be gone before it can say so. Its job is taken as done once it has been running a
+// while, and the device is revoked then.
+func (q *Queries) ListStuckAgentUninstalls(ctx context.Context, startedAt *time.Time) ([]ListStuckAgentUninstallsRow, error) {
+	rows, err := q.db.Query(ctx, listStuckAgentUninstalls, startedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStuckAgentUninstallsRow{}
+	for rows.Next() {
+		var i ListStuckAgentUninstallsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.DeviceID,
+			&i.Body,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markAllDevicesOffline = `-- name: MarkAllDevicesOffline :exec
 UPDATE devices SET online = false WHERE online
 `
@@ -667,6 +707,19 @@ UPDATE devices SET online = false WHERE online
 func (q *Queries) MarkAllDevicesOffline(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, markAllDevicesOffline)
 	return err
+}
+
+const openAgentUninstall = `-- name: OpenAgentUninstall :one
+SELECT id FROM jobs WHERE device_id = $1 AND type = 'agent_uninstall' AND status IN ('queued', 'sent', 'accepted', 'waiting', 'running')
+ORDER BY created_at DESC LIMIT 1
+`
+
+// The job that is uninstalling the agent of a device that is being revoked, while it is still open (D158).
+func (q *Queries) OpenAgentUninstall(ctx context.Context, deviceID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, openAgentUninstall, deviceID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const revokeDevice = `-- name: RevokeDevice :execrows

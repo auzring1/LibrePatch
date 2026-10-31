@@ -98,3 +98,15 @@ SET hardware = $2, hardware_rev = $3, hardware_updated_at = $4, hostname = $5, o
     os_build = $7, arch = $8, serial = $9, pending_reboot = $10
 -- Hardware is a full snapshot sent in order on one stream: latest wins.
 WHERE id = $1;
+
+-- name: OpenAgentUninstall :one
+-- The job that is uninstalling the agent of a device that is being revoked, while it is still open (D158).
+SELECT id FROM jobs WHERE device_id = $1 AND type = 'agent_uninstall' AND status IN ('queued', 'sent', 'accepted', 'waiting', 'running')
+ORDER BY created_at DESC LIMIT 1;
+
+-- name: ListStuckAgentUninstalls :many
+-- An agent that is told to uninstall itself may be gone before it can say so. Its job is taken as done once it has been running a
+-- while, and the device is revoked then.
+SELECT j.id, j.org_id, j.device_id, j.body FROM jobs j JOIN devices d ON d.id = j.device_id
+WHERE j.type = 'agent_uninstall' AND j.status IN ('accepted', 'running') AND j.started_at IS NOT NULL AND j.started_at < $1 AND d.status = 'active'
+LIMIT 50;

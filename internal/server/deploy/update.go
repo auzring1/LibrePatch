@@ -160,6 +160,10 @@ func (s *Service) ApplyUpdate(ctx context.Context, dev dbq.Device, u *agentv1.Jo
 		return nil
 	}
 	s.publish(job.OrgID, "job.updated", job.DeviceID, job.ID, derefID(job.DeploymentID))
+	// The agent said it is uninstalling itself: this is the moment to revoke the device (D158).
+	if job.Type == "agent_uninstall" && status == "succeeded" {
+		s.finishUninstallRevoke(ctx, job.OrgID, job.DeviceID, job.Body)
+	}
 	if terminal(status) {
 		if s.AfterTerminal != nil {
 			s.AfterTerminal(ctx, job, status, u)
@@ -352,6 +356,7 @@ func (s *Service) Retry(ctx context.Context, org, user, jobID uuid.UUID, ip stri
 func (s *Service) Sweep(ctx context.Context) {
 	q := dbq.New(s.Pool)
 	now := s.now()
+	s.sweepAgentUninstalls(ctx)
 	rows, err := q.ExpireJobs(ctx, &now)
 	if err != nil {
 		s.log().Error("expire jobs", "err", err)

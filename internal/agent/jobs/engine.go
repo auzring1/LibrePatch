@@ -293,6 +293,16 @@ func (e *Engine) Accept(se *agentv1.SignedEnvelope, env *agentv1.JobEnvelope) {
 			return
 		}
 		e.setState(r, agentv1.JobState_JOB_STATE_ACCEPTED, "", nil)
+	case agentv1.JobType_JOB_TYPE_AGENT_UNINSTALL:
+		if env.TargetUserSid != "" {
+			reject("removing the agent is machine-scope", agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		if err := ValidateAgentUninstall(env.GetAgentUninstall()); err != nil {
+			reject(err.Error(), agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
+			return
+		}
+		e.setState(r, agentv1.JobState_JOB_STATE_ACCEPTED, "", nil)
 	case agentv1.JobType_JOB_TYPE_PROFILE_DELETE:
 		if env.TargetUserSid != "" {
 			reject("profile removal is machine-scope", agentv1.SecurityEventKind_SECURITY_EVENT_KIND_UNSPECIFIED)
@@ -564,6 +574,8 @@ func (e *Engine) runJob(ctx context.Context, r *Record, env *agentv1.JobEnvelope
 		out = e.wuScan(jctx, env)
 	case agentv1.JobType_JOB_TYPE_PROFILE_DELETE:
 		out = e.profileDelete(env)
+	case agentv1.JobType_JOB_TYPE_AGENT_UNINSTALL:
+		out = e.agentUninstall()
 	case agentv1.JobType_JOB_TYPE_WU_INSTALL:
 		out = e.wuInstall(jctx, env)
 	case agentv1.JobType_JOB_TYPE_WU_HIDE:

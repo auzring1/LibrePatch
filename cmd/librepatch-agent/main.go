@@ -59,6 +59,9 @@ func main() {
 		err = cmdInstall(os.Args[2:])
 	case "uninstall":
 		err = install.Uninstall(os.Stdout)
+	case "self-uninstall":
+		// Internal: started by the service when the device is revoked with "uninstall the agent" (D158).
+		err = cmdSelfUninstall(os.Args[2:])
 	case "status":
 		err = cmdStatus(os.Args[2:])
 	case "run":
