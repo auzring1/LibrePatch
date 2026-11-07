@@ -1,0 +1,40 @@
+# Console and REST API behind YOUR OWN reverse proxy (for example nginx, Traefik or a NAS's built-in proxy).
+# Select it with LIBREPATCH_BEHIND_PROXY=true in the settings block of the compose file (docs/RUNBOOK.md, "Behind your own
+# reverse proxy"). Your proxy terminates browser TLS; this Caddy speaks plain HTTP to it and must never be reachable
+# by browsers directly (bind it to loopback: LIBREPATCH_HTTP_BIND=127.0.0.1 and LIBREPATCH_HTTP_PORT=8080).
+#
+# Agents connect to the server's gateway on :8443 directly (mTLS terminated by the server itself) and never pass
+# through this proxy or yours.
+{
+	admin off
+	# Read-only container: never try to install Caddy's root into a system store.
+	skip_install_trust
+	# TLS is your proxy's job; do not try to obtain certificates.
+	auto_https off
+	servers {
+		# Believe X-Forwarded-For (the real browser address) only from your proxy. The list is
+		# LIBREPATCH_UPSTREAM_PROXIES; anyone else's header is replaced by the address they connect from.
+		trusted_proxies static {$LIBREPATCH_UPSTREAM_PROXIES}
+		trusted_proxies_strict
+	}
+}
+
+# No host name here on purpose: the proxy may rewrite the Host header, and nothing else listens on this port.
+:80 {
+	encode zstd gzip
+	# Installer and agent-release uploads are the only large request bodies.
+	@upload path /api/v1/catalog/content /api/v1/agent-releases
+	request_body @upload {
+		max_size 2GB
+	}
+	@api not path /api/v1/catalog/content /api/v1/agent-releases
+	request_body @api {
+		max_size 1MB
+	}
+	reverse_proxy server:8080 {
+		# Caddy keeps your proxy's X-Forwarded-For and appends the address it saw; the server walks the list from
+		# the right and stops at the first address that is not in LIBREPATCH_TRUSTED_PROXIES.
+		header_down -Server
+	}
+	header -Server
+}

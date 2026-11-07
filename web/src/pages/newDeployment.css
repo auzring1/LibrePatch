@@ -1,0 +1,16 @@
+/* The deployment wizard: sections on the left, a sticky summary on the right (stacked on narrow screens). */
+.lp-wizard { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--lp-space-4); align-items: start; }
+.lp-wizard__main { display: flex; flex-direction: column; gap: var(--lp-space-4); min-width: 0; }
+.lp-wizard__summary { min-width: 0; }
+.lp-wizard__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--lp-space-2); font-size: var(--lp-text-sm); }
+.lp-wizard__list li { display: flex; gap: var(--lp-space-2); align-items: flex-start; }
+.lp-wizard__list svg { flex: none; margin-top: 2px; }
+.lp-wizard__ok { color: var(--lp-success-fg); }
+.lp-wizard__todo { color: var(--lp-warning-fg); }
+.lp-wizard__facts { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--lp-space-1) var(--lp-space-3); font-size: var(--lp-text-sm); }
+.lp-wizard__facts dt { color: var(--lp-text-muted); }
+.lp-wizard__facts dd { margin: 0; overflow-wrap: anywhere; }
+@media (min-width: 1000px) {
+  .lp-wizard { grid-template-columns: minmax(0, 1fr) 340px; }
+  .lp-wizard__summary { position: sticky; top: var(--lp-space-4); }
+}

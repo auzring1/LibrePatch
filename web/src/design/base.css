@@ -1,0 +1,50 @@
+/* Global element styles built on the tokens. */
+:root {
+  color-scheme: var(--lp-scheme, light);
+  font-family: var(--lp-font-sans);
+  font-feature-settings: "cv11", "ss01"; /* Inter: single-storey a, open digits */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+html body {
+  background: var(--lp-bg);
+  color: var(--lp-text);
+  font-family: var(--lp-font-sans);
+  font-size: var(--lp-text-md);
+  line-height: var(--lp-leading-normal);
+  margin: 0;
+}
+
+code, kbd, samp, pre { font-family: var(--lp-font-mono); }
+::selection { background: var(--lp-accent-subtle); color: var(--lp-accent-subtle-text); }
+
+/* Visible keyboard focus everywhere, in every theme. */
+:where(a, button, input, select, textarea, summary, [tabindex], [role="button"], [role="tab"], [role="menuitem"], [role="option"]):focus-visible,
+.mantine-focus-auto:focus-visible,
+.mantine-focus-always:focus {
+  outline: 2px solid var(--lp-focus);
+  outline-offset: 2px;
+  border-radius: var(--lp-radius-sm);
+}
+:where(input, select, textarea):focus-visible { outline-offset: 0; }
+
+/* Thin themed scrollbars. */
+* { scrollbar-width: thin; scrollbar-color: var(--lp-border-strong) transparent; }
+
+.lp-visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+.lp-skip-link {
+  position: absolute; left: var(--lp-space-3); top: -48px; z-index: calc(var(--lp-z-overlay) + 10);
+  background: var(--lp-accent); color: var(--lp-on-accent); padding: var(--lp-space-2) var(--lp-space-4);
+  border-radius: var(--lp-radius-md); font-weight: var(--lp-weight-semibold);
+  transition: top var(--lp-motion-fast) var(--lp-ease);
+}
+.lp-skip-link:focus { top: var(--lp-space-3); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

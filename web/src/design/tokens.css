@@ -1,0 +1,83 @@
+/* Design tokens that do not change with the theme: type, spacing, radius, elevation, motion, layout.
+   Colors live in themes/*.css as semantic tokens (surface, text, border, accent, status...). Components use only
+   these tokens, never raw colors. */
+:root {
+  /* Typography: Inter, bundled with the console (no CDN). */
+  --lp-font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --lp-font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --lp-text-xs: 0.75rem;   /* 12 */
+  --lp-text-sm: 0.8125rem; /* 13 */
+  --lp-text-md: 0.875rem;  /* 14: body */
+  --lp-text-lg: 1rem;      /* 16 */
+  --lp-text-xl: 1.125rem;  /* 18 */
+  --lp-text-2xl: 1.375rem; /* 22 */
+  --lp-text-3xl: 1.75rem;  /* 28 */
+  --lp-leading-tight: 1.25;
+  --lp-leading-normal: 1.5;
+  --lp-weight-regular: 400;
+  --lp-weight-medium: 500;
+  --lp-weight-semibold: 600;
+  --lp-weight-bold: 700;
+
+  /* Spacing: a 4px grid. */
+  --lp-space-1: 0.25rem;
+  --lp-space-2: 0.5rem;
+  --lp-space-3: 0.75rem;
+  --lp-space-4: 1rem;
+  --lp-space-5: 1.25rem;
+  --lp-space-6: 1.5rem;
+  --lp-space-8: 2rem;
+  --lp-space-10: 2.5rem;
+  --lp-space-12: 3rem;
+
+  /* Radius */
+  --lp-radius-sm: 4px;
+  --lp-radius-md: 6px;
+  --lp-radius-lg: 8px;
+  --lp-radius-xl: 12px;
+  --lp-radius-pill: 999px;
+
+  /* Elevation: the shadow color comes from the theme (--lp-shadow-rgb). */
+  --lp-shadow-1: 0 1px 2px rgb(var(--lp-shadow-rgb) / 0.08), 0 0 0 1px rgb(var(--lp-shadow-rgb) / 0.03);
+  --lp-shadow-2: 0 2px 8px rgb(var(--lp-shadow-rgb) / 0.12), 0 1px 2px rgb(var(--lp-shadow-rgb) / 0.08);
+  --lp-shadow-3: 0 12px 32px rgb(var(--lp-shadow-rgb) / 0.22), 0 2px 6px rgb(var(--lp-shadow-rgb) / 0.12);
+
+  /* Motion: reduced when the person asks for it. */
+  --lp-motion-fast: 100ms;
+  --lp-motion-base: 160ms;
+  --lp-motion-slow: 260ms;
+  --lp-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Layout */
+  --lp-topbar-h: 56px;
+  --lp-nav-w: 236px;
+  --lp-content-max: 1680px;
+  --lp-z-nav: 100;
+  --lp-z-topbar: 200;
+  --lp-z-overlay: 300;
+
+  /* Interaction states derived from the accent (the accent itself is layered on by accent.ts). */
+  --lp-accent-hover: color-mix(in srgb, var(--lp-accent) 88%, var(--lp-text));
+  --lp-accent-active: color-mix(in srgb, var(--lp-accent) 78%, var(--lp-text));
+
+  /* Density: tables and dense lists. Set by data-density on the root element. */
+  --lp-row-h: 48px;
+  --lp-cell-py: 0.625rem;
+  --lp-cell-px: 0.75rem;
+  --lp-control-h: 36px;
+}
+
+:root[data-density="compact"] {
+  --lp-row-h: 36px;
+  --lp-cell-py: 0.25rem;
+  --lp-cell-px: 0.625rem;
+  --lp-control-h: 30px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --lp-motion-fast: 0ms;
+    --lp-motion-base: 0ms;
+    --lp-motion-slow: 0ms;
+  }
+}

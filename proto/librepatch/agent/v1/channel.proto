@@ -1,0 +1,199 @@
+syntax = "proto3";
+
+package librepatch.agent.v1;
+
+import "librepatch/agent/v1/envelope.proto";
+import "librepatch/agent/v1/inventory.proto";
+
+option go_package = "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1;agentv1";
+
+// AgentChannelService requires a verified device client certificate.
+// See docs/PROTOCOL.md §4.2.
+service AgentChannelService {
+  rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
+  // Streams stored content (custom packages, optional cache) to a device that
+  // has a live job referencing the hash. See docs/PROTOCOL.md §8.
+  rpc FetchContent(FetchContentRequest) returns (stream FetchContentResponse);
+  // Also allowed with an expired certificate inside the renewal grace period.
+  rpc RenewCertificate(RenewCertificateRequest) returns (RenewCertificateResponse);
+}
+
+// ConnectRequest is one agent -> server message.
+message ConnectRequest {
+  oneof msg {
+    Hello hello = 1;
+    Heartbeat heartbeat = 2;
+    InventoryReport inventory = 3;
+    SecurityEvent security_event = 4;
+    JobUpdate job_update = 5;
+  }
+}
+
+// ConnectResponse is one server -> agent message.
+message ConnectResponse {
+  oneof msg {
+    HelloAck hello_ack = 1;
+    Ack ack = 2;
+    ResyncRequest resync = 3;
+    GoAway go_away = 4;
+    SignedEnvelope job_offer = 5;
+  }
+}
+
+message Hello {
+  string device_id = 1;
+  string agent_version = 2;
+  string boot_id = 3;
+  repeated string capabilities = 4;
+  // Last acknowledged revision per inventory section.
+  map<string, uint64> revs = 5;
+  uint32 outbox_pending = 6;
+  int64 cert_not_after = 7;
+  string local_policy_hash = 8;
+}
+
+message HelloAck {
+  int64 server_time = 1;
+  repeated bytes job_signing_certs_der = 2;
+  // Root-signed revocation statements (PROTOCOL §5).
+  repeated SigningKeyRevocation signing_key_revocations = 3;
+  repeated InventorySection resync_sections = 4;
+  uint32 heartbeat_interval_s = 5;
+  // Server suggests renewal when the certificate is inside the renewal window.
+  bool renew_certificate = 6;
+  PeerCachePolicy peer_cache = 7;
+}
+
+// PeerCachePolicy is the organization's choice about sharing downloaded installers between computers on one network
+// (D126). An agent whose local configuration says "never" ignores it.
+message PeerCachePolicy {
+  bool enabled = 1;
+  uint32 port = 2;        // TCP port to listen on, 1024..65535
+  uint32 max_mb = 3;      // size of the cache, 256..20480
+}
+
+message SigningKeyRevocation {
+  bytes key_id = 1;
+  int64 revoked_at = 2;
+  // ECDSA signature by the root key over "librepatch/revoke/v1\x00" || key_id || be64(revoked_at).
+  bytes signature = 3;
+}
+
+message Heartbeat {
+  uint64 uptime_s = 1;
+  bool pending_reboot = 2;
+  uint64 system_drive_free_bytes = 3;
+  string logged_on_user = 4;
+  bool queued_file_deletes = 5; // files are queued for deletion at the next boot (see HardwareInventory)
+  uint32 peer_port = 6;         // the port this agent shares downloads on (D126); 0 = not sharing
+  // 7 and 8 carried signed-in sessions with lock state and idle time (D162, withdrawn in D163). Never reuse them.
+  reserved 7, 8;
+  reserved "sessions", "sessions_reported";
+}
+
+message Ack {
+  uint64 seq = 1;
+}
+
+message ResyncRequest {
+  InventorySection section = 1;
+}
+
+message GoAway {
+  uint32 retry_after_s = 1;
+  string reason = 2;
+}
+
+enum SecurityEventKind {
+  SECURITY_EVENT_KIND_UNSPECIFIED = 0;
+  SECURITY_EVENT_KIND_BAD_SIGNATURE = 1;
+  SECURITY_EVENT_KIND_WRONG_DEVICE = 2;
+  SECURITY_EVENT_KIND_REPLAY = 3;
+  SECURITY_EVENT_KIND_EXPIRED = 4;
+  SECURITY_EVENT_KIND_POLICY_CEILING = 5;
+  SECURITY_EVENT_KIND_HASH_MISMATCH = 6;
+  SECURITY_EVENT_KIND_SIGNER_MISMATCH = 7;
+  SECURITY_EVENT_KIND_BAD_SIGNING_CERT = 8;
+}
+
+message SecurityEvent {
+  uint64 seq = 1;
+  SecurityEventKind kind = 2;
+  string detail = 3;
+}
+
+message RenewCertificateRequest {
+  bytes csr_der = 1;
+}
+
+message RenewCertificateResponse {
+  bytes client_cert_der = 1;
+  bytes issuing_ca_der = 2;
+}
+
+// JobState is the agent-side lifecycle (docs/ARCHITECTURE.md §5).
+enum JobState {
+  JOB_STATE_UNSPECIFIED = 0;
+  JOB_STATE_ACCEPTED = 1;            // verified and persisted
+  JOB_STATE_WAITING = 2;             // not_before, window, preconditions or user logon
+  JOB_STATE_RUNNING = 3;
+  JOB_STATE_SUCCEEDED = 4;
+  JOB_STATE_SUCCEEDED_REBOOT = 5;
+  JOB_STATE_FAILED = 6;
+  JOB_STATE_EXPIRED = 7;
+  JOB_STATE_CANCELLED = 8;
+  JOB_STATE_REJECTED = 9;            // failed verification or policy ceiling
+}
+
+// JobUpdate reports progress or a result. Sent through the agent's outbox, so it
+// survives reconnects; the server acknowledges with Ack{seq}.
+message JobUpdate {
+  uint64 seq = 1;
+  string job_id = 2;
+  uint32 attempt = 3;
+  JobState state = 4;
+  string reason = 5;                 // short machine-friendly reason, e.g. "waiting_user_logon"
+  JobResult result = 6;              // present for terminal states
+}
+
+message JobResult {
+  JobOutcome outcome = 1;
+  int32 exit_code = 2;
+  bool detection_passed = 3;
+  bool reboot_required = 4;
+  string installed_version = 5;
+  string message = 6;                // human-readable, bounded
+  string log_tail = 7;               // installer log tail, bounded to 16 KiB
+  int64 started_at = 8;
+  int64 finished_at = 9;
+  bool already_satisfied = 10;       // pre-check found the target state; nothing was run
+  repeated WuUpdateResult wu_results = 11;  // WU_INSTALL: one entry per requested update
+  string data_json = 12;             // INSPECT: the requested view as JSON, at most 256 KiB
+}
+
+enum WuResult {
+  WU_RESULT_UNSPECIFIED = 0;
+  WU_RESULT_INSTALLED = 1;
+  WU_RESULT_INSTALLED_REBOOT = 2;     // installed, restart required to finish
+  WU_RESULT_FAILED = 3;
+  WU_RESULT_NOT_APPLICABLE = 4;       // the scan no longer offers it (already installed or superseded)
+  WU_RESULT_DOWNLOAD_FAILED = 5;
+}
+
+message WuUpdateResult {
+  string update_id = 1;
+  int32 revision = 2;
+  WuResult result = 3;
+  int32 hresult = 4;
+}
+
+message FetchContentRequest {
+  bytes sha256 = 1;
+  string job_id = 2;
+  uint64 offset = 3;                 // resume
+}
+
+message FetchContentResponse {
+  bytes data = 1;
+  uint64 total_size = 2;             // on the first chunk
+}

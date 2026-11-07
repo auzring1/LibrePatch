@@ -1,0 +1,586 @@
+# Release pipeline (docs/DECISIONS.md D79-D83, docs/RUNBOOK.md "Release manager",
+# docs/VERIFYING_RELEASES.md). Nothing here holds a key or certificate: signing is driven by repository
+# variables and OIDC trust configured by the owner (open decisions O5 and O7), inside the protected
+# `release` environment. With dry_run (the default for manual runs) no real signing identity is used,
+# nothing is published, no Sigstore entry is written, and the vendor manifest is signed with a throw-away key.
+#
+# Stages:  prepare -> gate (CI + Windows CI) -> build (reproducible) -> rebuild (independent check)
+#          -> sign-windows (Authenticode agent, MSI, Authenticode MSI) -> sign-manifest (KMS) ->
+#          image (build, push, cosign, SBOM, provenance) -> publish (SHA256SUMS, cosign, attestations, draft release)
+#
+# Repository variables (Settings > Secrets and variables > Actions > Variables), see docs/RUNBOOK.md:
+#   LIBREPATCH_AUTHENTICODE_PROVIDER   azure-artifact-signing | signtool
+#   LIBREPATCH_AUTHENTICODE_SUBJECT    the signer CN agents must see (pinned into the vendor manifest)
+#   LIBREPATCH_AUTHENTICODE_SUBJECTS   optional, '|'-separated CNs compiled into agent and server as the ONLY pinnable signers
+#                               (default: LIBREPATCH_AUTHENTICODE_SUBJECT; list old and new CN while rotating the certificate)
+#   LIBREPATCH_AZURE_CLIENT_ID, LIBREPATCH_AZURE_TENANT_ID, LIBREPATCH_AZURE_SUBSCRIPTION_ID     (OIDC federated credential, no secret)
+#   LIBREPATCH_ARTIFACT_SIGNING_ENDPOINT, LIBREPATCH_ARTIFACT_SIGNING_ACCOUNT, LIBREPATCH_ARTIFACT_SIGNING_PROFILE
+#   LIBREPATCH_SIGNTOOL_ARGS           certificate selection arguments for the signtool provider (names, not secrets)
+#   LIBREPATCH_KMS_PROVIDER            aws | azure   (vendor release key custody, decision O7)
+#   LIBREPATCH_AWS_ROLE_ARN, LIBREPATCH_AWS_REGION, LIBREPATCH_RELEASE_KMS_KEY_ID                (aws)
+#   LIBREPATCH_AKV_VAULT, LIBREPATCH_AKV_KEY [, LIBREPATCH_AKV_KEY_VERSION]                      (azure; see scripts/release-kms.sh caveat)
+# Secrets: none are required with OIDC. The signtool provider may read one (LIBREPATCH_SIGNTOOL_SECRET) for a KSP.
+#
+# NOT YET RUN: this workflow was written without a GitHub runner, a certificate or a KMS. Use a dry run first.
+name: release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: throw-away keys, nothing signed with a real identity, nothing published"
+        type: boolean
+        default: true
+      version:
+        description: "Dry run only: version to build (default 0.0.0-dryrun). A real release takes it from the tag."
+        type: string
+        default: ""
+      run_gate:
+        description: "Run the CI and Windows CI workflows first"
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.27.3"
+  NODE_VERSION: "22"
+  GOTOOLCHAIN: local
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      dry_run: ${{ steps.p.outputs.dry_run }}
+      version: ${{ steps.p.outputs.version }}
+      environment: ${{ steps.p.outputs.environment }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { fetch-depth: 0, persist-credentials: false }
+      - name: Decide dry run, version and environment; refuse unsafe real releases
+        id: p
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          IN_DRY: ${{ inputs.dry_run }}
+          IN_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          semver='^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
+          if [ "$EVENT" = push ]; then dry=false; else dry=$IN_DRY; fi
+          if [ "$dry" = false ]; then
+            [ "$REF_TYPE" = tag ] || { echo "::error::a real release runs only from a v* tag, not from $REF_TYPE $REF_NAME"; exit 1; }
+            [[ $REF_NAME =~ $semver ]] || { echo "::error::tag $REF_NAME is not a semantic version"; exit 1; }
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::the tagged commit is not on main"; exit 1; }
+            ver=${REF_NAME#v}
+            env=release
+          else
+            ver=${IN_VERSION:-0.0.0-dryrun}
+            ver=${ver#v}
+            [[ $ver =~ $semver ]] || { echo "::error::version '$ver' is not semantic"; exit 1; }
+            env=release-dryrun
+            echo "::notice::DRY RUN of version $ver: throw-away keys, nothing is published"
+          fi
+          { echo "dry_run=$dry"; echo "version=$ver"; echo "environment=$env"; } >> "$GITHUB_OUTPUT"
+
+  gate-ci:
+    needs: prepare
+    if: github.event_name == 'push' || inputs.run_gate
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  gate-windows:
+    needs: prepare
+    if: github.event_name == 'push' || inputs.run_gate
+    uses: ./.github/workflows/windows.yml
+    permissions:
+      contents: read
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      pubkeys: ${{ steps.keys.outputs.pubkeys }}
+      subjects: ${{ steps.keys.outputs.subjects }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "${{ env.GO_VERSION }}", cache: false }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "${{ env.NODE_VERSION }}" }
+      - name: "Release public keys (dry run: generate a throw-away pair)"
+        id: keys
+        env:
+          DRY: ${{ needs.prepare.outputs.dry_run }}
+          SUBJECT: ${{ vars.LIBREPATCH_AUTHENTICODE_SUBJECT }}
+          SUBJECTS: ${{ vars.LIBREPATCH_AUTHENTICODE_SUBJECTS }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY" = true ]; then
+            subjects="LibrePatch Dry Run"
+            mkdir -p "$RUNNER_TEMP/dryrun-key"
+            go run ./cmd/librepatch-release keygen --out "$RUNNER_TEMP/dryrun-key/release.key" >/dev/null
+            pub=$(tr -d '[:space:]' < "$RUNNER_TEMP/dryrun-key/release.pub")
+            echo "::warning::DRY RUN: the compiled-in release key is a throw-away; its private half is uploaded as a workflow artifact"
+          else
+            pub=$(grep -Ev '^[[:space:]]*(#|$)' release/release-public-keys.txt | tr -d '[:space:]' | paste -sd, - || true)
+            [ -n "$pub" ] || { echo "::error::release/release-public-keys.txt has no key: finish the key ceremony (docs/RUNBOOK.md) first"; exit 1; }
+            # The signer names compiled into agent and server: the allow-list variable, else the current signer.
+            subjects=${SUBJECTS:-$SUBJECT}
+            [ -n "$subjects" ] || { echo "::error::set LIBREPATCH_AUTHENTICODE_SUBJECT (and optionally LIBREPATCH_AUTHENTICODE_SUBJECTS, '|'-separated) before releasing"; exit 1; }
+          fi
+          echo "pubkeys=$pub" >> "$GITHUB_OUTPUT"
+          echo "subjects=$subjects" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: needs.prepare.outputs.dry_run == 'true'
+        with: { name: dryrun-key, path: "${{ runner.temp }}/dryrun-key/", retention-days: 1 }
+      - name: Reproducible build (Go binaries, web bundle, SBOMs)
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PUBKEYS: ${{ steps.keys.outputs.pubkeys }}
+          SUBJECTS: ${{ steps.keys.outputs.subjects }}
+        run: scripts/build-release.sh --version "$VERSION" --release-pubkeys "$PUBKEYS" --authenticode-subjects "$SUBJECTS" --out "$PWD/dist-release/out"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: unsigned, path: dist-release/out/, retention-days: 14 }
+
+  # A second, independent build on a fresh runner in a different directory must give identical digests.
+  rebuild:
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { path: elsewhere/checkout, persist-credentials: false }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "${{ env.GO_VERSION }}", cache: false }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "${{ env.NODE_VERSION }}" }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: unsigned, path: first-build }
+      - name: Rebuild and compare
+        working-directory: elsewhere/checkout
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PUBKEYS: ${{ needs.build.outputs.pubkeys }}
+          SUBJECTS: ${{ needs.build.outputs.subjects }}
+        run: |
+          set -euo pipefail
+          scripts/build-release.sh --version "$VERSION" --release-pubkeys "$PUBKEYS" --authenticode-subjects "$SUBJECTS" --out "$RUNNER_TEMP/second-build"
+          if diff -u "$GITHUB_WORKSPACE/first-build/unsigned-SHA256SUMS" "$RUNNER_TEMP/second-build/unsigned-SHA256SUMS"; then
+            echo "::notice::reproducible: the independent rebuild matches the first build"
+          else
+            echo "::error::the independent rebuild differs from the first build (see the diff above)"; exit 1
+          fi
+
+  sign-windows:
+    needs: [prepare, build, rebuild, gate-ci, gate-windows]
+    # Run when the gates passed or were deliberately skipped (manual dry run with run_gate=false).
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.rebuild.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.gate-ci.result) && contains(fromJSON('["success","skipped"]'), needs.gate-windows.result) }}
+    runs-on: windows-2025
+    environment: ${{ needs.prepare.outputs.environment }}
+    permissions:
+      contents: read
+      id-token: write   # OIDC to Azure (Artifact Signing); no stored credentials
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      DRY: ${{ needs.prepare.outputs.dry_run }}
+      PROVIDER: ${{ vars.LIBREPATCH_AUTHENTICODE_PROVIDER }}
+      SUBJECT: ${{ vars.LIBREPATCH_AUTHENTICODE_SUBJECT }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "${{ env.GO_VERSION }}", cache: false }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: unsigned, path: dist-release/out }
+      - name: Authenticode configuration
+        shell: pwsh
+        env:
+          AZ_CLIENT_ID: ${{ vars.LIBREPATCH_AZURE_CLIENT_ID }}
+          AZ_TENANT_ID: ${{ vars.LIBREPATCH_AZURE_TENANT_ID }}
+          AZ_SUBSCRIPTION_ID: ${{ vars.LIBREPATCH_AZURE_SUBSCRIPTION_ID }}
+          AS_ENDPOINT: ${{ vars.LIBREPATCH_ARTIFACT_SIGNING_ENDPOINT }}
+          AS_ACCOUNT: ${{ vars.LIBREPATCH_ARTIFACT_SIGNING_ACCOUNT }}
+          AS_PROFILE: ${{ vars.LIBREPATCH_ARTIFACT_SIGNING_PROFILE }}
+          ST_ARGS: ${{ vars.LIBREPATCH_SIGNTOOL_ARGS }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:DRY -eq 'true') {
+            Write-Host "::warning::DRY RUN: Authenticode signing is skipped (no certificate is used). The agent and the MSI below are UNSIGNED."
+            return
+          }
+          if ($env:PROVIDER -notin 'azure-artifact-signing', 'signtool') {
+            throw "LIBREPATCH_AUTHENTICODE_PROVIDER must be 'azure-artifact-signing' or 'signtool' (open decision O5, docs/RUNBOOK.md); it is '$($env:PROVIDER)'"
+          }
+          if (-not $env:SUBJECT) { throw "LIBREPATCH_AUTHENTICODE_SUBJECT is not set: the signer CN that agents will pin" }
+          $need = if ($env:PROVIDER -eq 'azure-artifact-signing') { 'AZ_CLIENT_ID','AZ_TENANT_ID','AZ_SUBSCRIPTION_ID','AS_ENDPOINT','AS_ACCOUNT','AS_PROFILE' } else { 'ST_ARGS' }
+          foreach ($n in $need) {
+            if (-not (Get-Item -Path "Env:$n" -ErrorAction SilentlyContinue).Value) { throw "a repository variable for $n is not set (see the header of release.yml)" }
+          }
+          Write-Host "Authenticode provider: $($env:PROVIDER), signer CN to be pinned: $($env:SUBJECT)"
+
+      # ---- provider: azure-artifact-signing (OIDC, no secrets) ----------------------------------------------
+      - name: Azure login (OIDC)
+        if: ${{ needs.prepare.outputs.dry_run == 'false' && vars.LIBREPATCH_AUTHENTICODE_PROVIDER == 'azure-artifact-signing' }}
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.LIBREPATCH_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.LIBREPATCH_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.LIBREPATCH_AZURE_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
+      - name: Sign the agent (Azure Artifact Signing)
+        if: ${{ needs.prepare.outputs.dry_run == 'false' && vars.LIBREPATCH_AUTHENTICODE_PROVIDER == 'azure-artifact-signing' }}
+        uses: Azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.LIBREPATCH_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.LIBREPATCH_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.LIBREPATCH_ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\dist-release\out\librepatch-agent_${{ needs.prepare.outputs.version }}_windows_amd64.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      # ---- provider: signtool (certificate in a cloud HSM / KSP, selected by LIBREPATCH_SIGNTOOL_ARGS) --------------------
+      - name: Sign the agent (signtool)
+        if: ${{ needs.prepare.outputs.dry_run == 'false' && vars.LIBREPATCH_AUTHENTICODE_PROVIDER == 'signtool' }}
+        shell: pwsh
+        env:
+          LIBREPATCH_SIGNTOOL_ARGS: ${{ vars.LIBREPATCH_SIGNTOOL_ARGS }}
+          LIBREPATCH_SIGNTOOL_SECRET: ${{ secrets.LIBREPATCH_SIGNTOOL_SECRET }}
+        run: ./scripts/authenticode.ps1 -Action Sign -Files "dist-release\out\librepatch-agent_$($env:VERSION)_windows_amd64.exe"
+
+      - name: Verify the agent signature and the pinned signer
+        if: ${{ needs.prepare.outputs.dry_run == 'false' }}
+        shell: pwsh
+        run: ./scripts/authenticode.ps1 -Action Verify -Subject $env:SUBJECT -Files "dist-release\out\librepatch-agent_$($env:VERSION)_windows_amd64.exe"
+
+      # The agent is signed BEFORE it goes into the MSI; build.ps1 embeds it unchanged.
+      - name: Build the MSI (WiX v7, ICE validation)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force dist-release\msi | Out-Null
+          ./installer/windows/build.ps1 `
+            -AgentExe "dist-release\out\librepatch-agent_$($env:VERSION)_windows_amd64.exe" `
+            -Version $env:VERSION `
+            -Output "$PWD\dist-release\msi\librepatch-agent_$($env:VERSION)_windows_x64.msi"
+
+      - name: Sign the MSI (Azure Artifact Signing)
+        if: ${{ needs.prepare.outputs.dry_run == 'false' && vars.LIBREPATCH_AUTHENTICODE_PROVIDER == 'azure-artifact-signing' }}
+        uses: Azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.LIBREPATCH_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.LIBREPATCH_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.LIBREPATCH_ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\dist-release\msi\librepatch-agent_${{ needs.prepare.outputs.version }}_windows_x64.msi
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Sign the MSI (signtool)
+        if: ${{ needs.prepare.outputs.dry_run == 'false' && vars.LIBREPATCH_AUTHENTICODE_PROVIDER == 'signtool' }}
+        shell: pwsh
+        env:
+          LIBREPATCH_SIGNTOOL_ARGS: ${{ vars.LIBREPATCH_SIGNTOOL_ARGS }}
+          LIBREPATCH_SIGNTOOL_SECRET: ${{ secrets.LIBREPATCH_SIGNTOOL_SECRET }}
+        run: ./scripts/authenticode.ps1 -Action Sign -Files "dist-release\msi\librepatch-agent_$($env:VERSION)_windows_x64.msi"
+      - name: Verify the MSI signature and the pinned signer
+        if: ${{ needs.prepare.outputs.dry_run == 'false' }}
+        shell: pwsh
+        run: ./scripts/authenticode.ps1 -Action Verify -Subject $env:SUBJECT -Files "dist-release\msi\librepatch-agent_$($env:VERSION)_windows_x64.msi"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-signed
+          path: |
+            dist-release/out/librepatch-agent_${{ needs.prepare.outputs.version }}_windows_amd64.exe
+            dist-release/msi/librepatch-agent_${{ needs.prepare.outputs.version }}_windows_x64.msi
+          retention-days: 14
+
+  # The vendor release manifest (decision D68): the pipeline obtains the bytes to sign, a KMS signs them
+  # through OIDC, the bundle is attached and verified against the compiled-in public key.
+  sign-manifest:
+    needs: [prepare, build, sign-windows]
+    runs-on: ubuntu-24.04
+    environment: ${{ needs.prepare.outputs.environment }}
+    permissions:
+      contents: read
+      id-token: write   # OIDC to AWS / Azure
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      DRY: ${{ needs.prepare.outputs.dry_run }}
+      KMS_PROVIDER: ${{ vars.LIBREPATCH_KMS_PROVIDER }}
+      SUBJECT: ${{ vars.LIBREPATCH_AUTHENTICODE_SUBJECT }}
+      COMPILED_KEYS: ${{ needs.build.outputs.pubkeys }}
+      LIBREPATCH_RELEASE_MIN_VERSION: ${{ vars.LIBREPATCH_RELEASE_MIN_VERSION }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: unsigned, path: dist-release/out }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: windows-signed, path: dist-release/signed }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.prepare.outputs.dry_run == 'true'
+        with: { name: dryrun-key, path: dist-release/dryrun-key }
+      - name: Select the signer
+        id: signer
+        run: |
+          set -euo pipefail
+          if [ "$DRY" = true ]; then
+            echo "provider=dryrun" >> "$GITHUB_OUTPUT"
+            echo "subject=LibrePatch Dry Run" >> "$GITHUB_OUTPUT"
+            echo "::warning::DRY RUN: the vendor manifest is signed with a throw-away key, not a KMS"
+          else
+            case "$KMS_PROVIDER" in aws|azure) ;; *) echo "::error::LIBREPATCH_KMS_PROVIDER must be 'aws' or 'azure' (open decision O7, docs/RUNBOOK.md)"; exit 1 ;; esac
+            [ -n "$SUBJECT" ] || { echo "::error::LIBREPATCH_AUTHENTICODE_SUBJECT is not set"; exit 1; }
+            echo "provider=$KMS_PROVIDER" >> "$GITHUB_OUTPUT"
+            echo "subject=$SUBJECT" >> "$GITHUB_OUTPUT"
+          fi
+      - name: AWS credentials (OIDC)
+        if: ${{ needs.prepare.outputs.dry_run == 'false' && vars.LIBREPATCH_KMS_PROVIDER == 'aws' }}
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.LIBREPATCH_AWS_ROLE_ARN }}
+          aws-region: ${{ vars.LIBREPATCH_AWS_REGION }}
+      - name: Azure login (OIDC)
+        if: ${{ needs.prepare.outputs.dry_run == 'false' && vars.LIBREPATCH_KMS_PROVIDER == 'azure' }}
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.LIBREPATCH_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.LIBREPATCH_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.LIBREPATCH_AZURE_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
+      - name: Manifest, bytes to sign, KMS signature, bundle
+        env:
+          PROVIDER: ${{ steps.signer.outputs.provider }}
+          MANIFEST_SUBJECT: ${{ steps.signer.outputs.subject }}
+          LIBREPATCH_RELEASE_KMS_KEY_ID: ${{ vars.LIBREPATCH_RELEASE_KMS_KEY_ID }}
+          LIBREPATCH_AKV_VAULT: ${{ vars.LIBREPATCH_AKV_VAULT }}
+          LIBREPATCH_AKV_KEY: ${{ vars.LIBREPATCH_AKV_KEY }}
+          LIBREPATCH_AKV_KEY_VERSION: ${{ vars.LIBREPATCH_AKV_KEY_VERSION }}
+        run: |
+          set -euo pipefail
+          tool="$PWD/dist-release/out/librepatch-release_${VERSION}_linux_amd64"
+          chmod +x "$tool"
+          exe=$(find dist-release/signed -name "librepatch-agent_${VERSION}_windows_amd64.exe" | head -1)
+          [ -n "$exe" ] || { echo "::error::signed agent not found in the windows-signed artifact"; exit 1; }
+          sde=$(git log -1 --format=%ct)
+          work=dist-release/manifest
+          mkdir -p "$work"
+          "$tool" manifest --exe "$exe" --version "$VERSION" --os windows --arch amd64 \
+            --authenticode-subject "$MANIFEST_SUBJECT" --released-at "$sde" \
+            ${LIBREPATCH_RELEASE_MIN_VERSION:+--min-version "$LIBREPATCH_RELEASE_MIN_VERSION"} \
+            --out "$work/manifest.json"
+          "$tool" tosign --manifest "$work/manifest.json" --out "$work/tosign.bin"
+          if [ "$PROVIDER" = dryrun ]; then
+            export LIBREPATCH_DRYRUN_KEY="$PWD/dist-release/dryrun-key/release.key" LIBREPATCH_RELEASE_BIN="$tool"
+          fi
+          scripts/release-kms.sh "$PROVIDER" sign --in "$work/tosign.bin" --out "$work/sig.bin"
+          pub=$(scripts/release-kms.sh "$PROVIDER" pubkey)
+          # The key that signed must be one of the keys compiled into this build.
+          case ",${COMPILED_KEYS}," in *",$pub,"*) ;; *) echo "::error::the KMS key $pub is not among the compiled-in release keys"; exit 1 ;; esac
+          "$tool" attach --manifest "$work/manifest.json" --signature "$work/sig.bin" --pub "$pub" \
+            --out "dist-release/manifest/librepatch-agent_${VERSION}_windows_amd64.lprel"
+          echo "$pub" > "$work/pub.hex"
+          "$tool" verify --bundle "dist-release/manifest/librepatch-agent_${VERSION}_windows_amd64.lprel" --exe "$exe" --pub "$work/pub.hex"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: manifest
+          path: dist-release/manifest/librepatch-agent_${{ needs.prepare.outputs.version }}_windows_amd64.lprel
+          retention-days: 14
+
+  image:
+    needs: [prepare, build, rebuild, gate-ci, gate-windows]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.rebuild.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.gate-ci.result) && contains(fromJSON('["success","skipped"]'), needs.gate-windows.result) }}
+    runs-on: ubuntu-24.04
+    environment: ${{ needs.prepare.outputs.environment }}
+    permissions:
+      contents: read
+      packages: write       # push to ghcr.io
+      id-token: write       # keyless cosign + provenance
+      attestations: write   # provenance attestation
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      DRY: ${{ needs.prepare.outputs.dry_run }}
+      LIBREPATCH_RELEASE_PUBKEYS: ${{ needs.build.outputs.pubkeys }}
+      SUBJECTS: ${{ needs.build.outputs.subjects }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: unsigned, path: dist-release/out }
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        if: needs.prepare.outputs.dry_run == 'false'
+      - name: Dry run - build the image as an OCI archive only (nothing is pushed or signed)
+        if: needs.prepare.outputs.dry_run == 'true'
+        run: |
+          set -euo pipefail
+          scripts/build-image.sh --version "$VERSION" --commit "${GITHUB_SHA:0:12}" --source-date-epoch "$(git log -1 --format=%ct)" \
+            --require-authenticode true --authenticode-subjects "$SUBJECTS" --go-version "$GO_VERSION" \
+            --oci-out "$RUNNER_TEMP/server-image.oci.tar" --digest-file "$RUNNER_TEMP/digest.txt"
+          echo "::notice::DRY RUN image digest $(cat "$RUNNER_TEMP/digest.txt") (not pushed)"
+      - name: Build and push the image
+        id: build
+        if: needs.prepare.outputs.dry_run == 'false'
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}-server"
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+          scripts/build-image.sh --version "$VERSION" --commit "${GITHUB_SHA:0:12}" --source-date-epoch "$(git log -1 --format=%ct)" \
+            --require-authenticode true --authenticode-subjects "$SUBJECTS" --go-version "$GO_VERSION" \
+            --push "$image:$VERSION" --digest-file "$RUNNER_TEMP/digest.txt"
+          digest=$(cat "$RUNNER_TEMP/digest.txt")
+          { echo "image=$image"; echo "digest=$digest"; } >> "$GITHUB_OUTPUT"
+      - name: The server binary inside the image must equal the released server binary
+        if: needs.prepare.outputs.dry_run == 'false'
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          id=$(docker create "$IMAGE@$DIGEST")
+          docker cp "$id:/librepatch-server" "$RUNNER_TEMP/image-server"
+          docker rm "$id" >/dev/null
+          a=$(sha256sum "$RUNNER_TEMP/image-server" | cut -d' ' -f1)
+          b=$(sha256sum "dist-release/out/librepatch-server_${VERSION}_linux_amd64" | cut -d' ' -f1)
+          [ "$a" = "$b" ] || { echo "::error::image binary $a differs from the released binary $b"; exit 1; }
+      - name: SBOM of the image
+        if: needs.prepare.outputs.dry_run == 'false'
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ steps.build.outputs.image }}@${{ steps.build.outputs.digest }}
+          format: cyclonedx-json
+          output-file: librepatch-server_${{ needs.prepare.outputs.version }}_image.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Sign the image and attach the SBOM (cosign keyless, by digest)
+        if: needs.prepare.outputs.dry_run == 'false'
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "$IMAGE@$DIGEST"
+          cosign attest --yes --type cyclonedx --predicate "librepatch-server_${VERSION}_image.cdx.json" "$IMAGE@$DIGEST"
+          cosign verify "$IMAGE@$DIGEST" \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+          printf '%s@%s\n' "$IMAGE" "$DIGEST" > image-ref.txt
+      - name: Build provenance for the image
+        if: needs.prepare.outputs.dry_run == 'false'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.build.outputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: needs.prepare.outputs.dry_run == 'false'
+        with:
+          name: image-meta
+          path: |
+            image-ref.txt
+            librepatch-server_${{ needs.prepare.outputs.version }}_image.cdx.json
+          retention-days: 14
+
+  publish:
+    needs: [prepare, build, sign-windows, sign-manifest, image]
+    if: ${{ !cancelled() && needs.sign-windows.result == 'success' && needs.sign-manifest.result == 'success' && needs.image.result == 'success' }}
+    runs-on: ubuntu-24.04
+    environment: ${{ needs.prepare.outputs.environment }}
+    permissions:
+      contents: write       # draft GitHub release
+      id-token: write       # keyless cosign + provenance
+      attestations: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      DRY: ${{ needs.prepare.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: unsigned, path: dist-release/final }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: windows-signed, path: dist-release/signed }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: manifest, path: dist-release/manifest }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.prepare.outputs.dry_run == 'false'
+        with: { name: image-meta, path: dist-release/final }
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        if: needs.prepare.outputs.dry_run == 'false'
+      - name: Assemble the release directory and write SHA256SUMS
+        run: |
+          set -euo pipefail
+          final=dist-release/final
+          # The signed agent replaces the unsigned one; the MSI and the vendor bundle are added.
+          find dist-release/signed -type f -exec cp {} "$final/" \;
+          cp dist-release/manifest/*.lprel "$final/"
+          chmod +x "$final"/librepatch-release_* "$final"/librepatch-server_*_linux_amd64 2>/dev/null || true
+          # Everything except the signed agent must still be byte-identical to the reproducible build.
+          agent="librepatch-agent_${VERSION}_windows_amd64.exe"
+          grep -v "  ${agent}$" "$final/unsigned-SHA256SUMS" > "$RUNNER_TEMP/expected"
+          (cd "$final" && sha256sum -c "$RUNNER_TEMP/expected")
+          scripts/release-checksums.sh "$final"
+          cat "$final/SHA256SUMS"
+      - name: Verify the assembled release (checksums, vendor bundle, SBOM shape)
+        env:
+          PUBKEYS: ${{ needs.build.outputs.pubkeys }}
+        run: scripts/verify-release.sh --dir dist-release/final --skip-cosign --skip-attestations --pub "$PUBKEYS"
+      - name: Dry run summary
+        if: needs.prepare.outputs.dry_run == 'true'
+        run: |
+          echo "::warning::DRY RUN: not signed with cosign, no provenance, no release created. Files:"
+          ls -l dist-release/final
+      - name: Sign SHA256SUMS (cosign keyless)
+        if: needs.prepare.outputs.dry_run == 'false'
+        run: cosign sign-blob --yes --bundle dist-release/final/SHA256SUMS.sigstore.json dist-release/final/SHA256SUMS
+      - name: Provenance for every released file (SLSA build provenance, GitHub attestations)
+        if: needs.prepare.outputs.dry_run == 'false'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist-release/final/SHA256SUMS
+      - name: SBOM attestations (cosign, one per binary)
+        if: needs.prepare.outputs.dry_run == 'false'
+        working-directory: dist-release/final
+        run: |
+          set -euo pipefail
+          for sbom in *.cdx.json; do
+            subject=${sbom%.cdx.json}
+            [ -f "$subject" ] || continue
+            cosign attest-blob --yes --type cyclonedx --predicate "$sbom" --bundle "$subject.sbom.sigstore.json" "$subject"
+          done
+      - name: Verify what was just signed
+        if: needs.prepare.outputs.dry_run == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBKEYS: ${{ needs.build.outputs.pubkeys }}
+        run: scripts/verify-release.sh --dir dist-release/final --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" --pub "$PUBKEYS"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ needs.prepare.outputs.version }}
+          path: dist-release/final/
+          retention-days: ${{ needs.prepare.outputs.dry_run == 'true' && 7 || 90 }}
+      - name: Create a DRAFT GitHub release (a person publishes it after checking)
+        if: needs.prepare.outputs.dry_run == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "LibrePatch $VERSION" --generate-notes dist-release/final/*

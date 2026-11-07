@@ -1,0 +1,220 @@
+# The whole LibrePatch stack in ONE file: the three images are PULLED from the registry, nothing else is needed.
+# TO INSTALL: edit ONLY the "YOUR SETTINGS" block below (at least the host name), then start it:
+#   docker compose up -d          (or paste this file into a new stack in a graphical container manager)
+# More: docs/RUNBOOK.md, "Install from the published images".
+# (For maintainers: this file is generated from deploy/docker-compose.yml by scripts/gen-image-compose.sh; change the source.)
+name: librepatch
+
+# ====================================== YOUR SETTINGS ======================================
+# The text after ":-" is the value used when nothing else sets it. Edit those values here, or leave this block alone and
+# put LIBREPATCH_... lines in deploy/.env (a value in .env wins). Nothing else in this file normally needs to change.
+x-settings:
+  # DNS name of this server. Browsers use https://<name>, agents connect to <name>:<gateway port>. REQUIRED.
+  hostname: &hostname ${LIBREPATCH_HOSTNAME:-change-me.example.com}
+  # Browser TLS: "internal" (Caddy's own CA, for LAN installs) or an e-mail address (Let's Encrypt, ports 80 and 443 must be reachable).
+  caddy_tls: &caddy_tls ${LIBREPATCH_CADDY_TLS:-internal}
+  # true when your own reverse proxy (for example nginx, Traefik or a NAS's built-in proxy) does the browser TLS: Caddy then speaks plain HTTP.
+  # In that mode also use 127.0.0.1:8080 as the HTTP port below and a free number such as 8444 as the HTTPS port.
+  behind_proxy: &behind_proxy ${LIBREPATCH_BEHIND_PROXY:-false}
+  # Host ports for the console: <port> or <address>:<port>. Defaults: 80 and 443.
+  http_publish: &http_publish ${LIBREPATCH_HTTP_PORT:-80}:80
+  https_publish: &https_publish ${LIBREPATCH_HTTPS_PORT:-443}:443
+  # What people type after the host name when the HTTPS port is not 443, for example :8444 (leave empty otherwise).
+  public_port_suffix: &public_port_suffix ${LIBREPATCH_PUBLIC_PORT_SUFFIX:-}
+  # Agent gateway (mTLS, never proxied). Agents dial <host name>:<this port>.
+  gateway_port: &gateway_port ${LIBREPATCH_GATEWAY_PORT:-8443}
+  # Optional: a different name agents should dial, and extra certificate names or IPs (comma-separated).
+  gateway_hostname: &gateway_hostname ${LIBREPATCH_GATEWAY_HOSTNAME:-}
+  gateway_sans: &gateway_sans ${LIBREPATCH_GATEWAY_SANS:-}
+  # Behind your own reverse proxy only: the address(es) of that proxy as Caddy sees them. Default: the stack's own network.
+  upstream_proxies: &upstream_proxies ${LIBREPATCH_UPSTREAM_PROXIES:-${LIBREPATCH_FRONTEND_SUBNET:-172.31.250.0/24}}
+  # Public key(s) your agents trust for automatic updates (filled in by the release; see docs/RUNBOOK.md, 5c).
+  release_public_keys: &release_public_keys ${LIBREPATCH_RELEASE_PUBLIC_KEYS:-}
+# ===========================================================================================
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+  # No "logging:" block on purpose: the Docker host's own default applies, which some graphical container
+  # managers need to show a container's log in their window. Limit log size once on the Docker host in
+  # /etc/docker/daemon.json (docs/RUNBOOK.md, "Log size").
+
+
+services:
+  caddy:
+    <<: *hardening
+    image: ${LIBREPATCH_REGISTRY:-ghcr.io/auzring1}/librepatch-caddy:${LIBREPATCH_VERSION:-latest}
+    pull_policy: always
+    depends_on:
+      server: { condition: service_healthy }
+    ports:
+      - *http_publish
+      - *https_publish
+    environment:
+      LIBREPATCH_HOSTNAME: *hostname
+      LIBREPATCH_CADDY_TLS: *caddy_tls
+      LIBREPATCH_BEHIND_PROXY: *behind_proxy
+      # Only used when behind your own proxy: the addresses whose X-Forwarded-For header Caddy believes.
+      LIBREPATCH_UPSTREAM_PROXIES: *upstream_proxies
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    networks:
+      frontend:
+        # Fixed address: the server trusts X-Forwarded-For only from this IP.
+        ipv4_address: ${LIBREPATCH_CADDY_IP:-172.31.250.10}
+
+  server:
+    <<: *hardening
+    image: ${LIBREPATCH_REGISTRY:-ghcr.io/auzring1}/librepatch-server:${LIBREPATCH_VERSION:-latest}
+    pull_policy: always
+    depends_on:
+      postgres: { condition: service_healthy }
+      # Migrations run in the "maintenance" service, which alone holds the schema-owner credential (docs/THREAT-MODEL.md T-SRV-4):
+      # the server only gets the DML-only app role. The server starts once maintenance reports healthy (migrations done).
+      maintenance: { condition: service_healthy }
+    ports:
+      # Agent gateway: mTLS terminated by the server itself (never proxied).
+      - target: 8443
+        published: *gateway_port
+    environment:
+      # The server derives its public addresses from these (https://<name><suffix> and <name>:<gateway port>).
+      LIBREPATCH_HOSTNAME: *hostname
+      LIBREPATCH_PUBLIC_PORT_SUFFIX: *public_port_suffix
+      LIBREPATCH_GATEWAY_HOSTNAME: *gateway_hostname
+      LIBREPATCH_GATEWAY_PORT: *gateway_port
+      LIBREPATCH_GATEWAY_SANS: *gateway_sans
+      # Caddy, plus (behind your own reverse proxy only) the addresses of that proxy as Caddy sees them.
+      LIBREPATCH_TRUSTED_PROXIES: ${LIBREPATCH_CADDY_IP:-172.31.250.10}/32
+      LIBREPATCH_UPSTREAM_PROXIES: *upstream_proxies
+      LIBREPATCH_DATABASE_URL_FILE: /run/librepatch/app/database_url
+      LIBREPATCH_MIGRATE_ON_START: "false"
+      LIBREPATCH_MASTER_KEY_FILE: /run/librepatch/key/master_key
+      LIBREPATCH_LOG_LEVEL: ${LIBREPATCH_LOG_LEVEL:-info}
+      # Uploaded (custom) installers; winget packages are never stored here.
+      LIBREPATCH_CONTENT_DIR: /var/lib/librepatch/content
+      LIBREPATCH_WINGET_SOURCE: ${LIBREPATCH_WINGET_SOURCE:-github}
+      LIBREPATCH_WINGET_INDEX_URL: ${LIBREPATCH_WINGET_INDEX_URL:-}
+      LIBREPATCH_RELEASE_PUBLIC_KEYS: *release_public_keys
+      # The server fetches the agent installers from the release that matches its version and offers them in the console
+      # (decision D112). "off" turns that off; the base URL names a mirror of the release downloads (https).
+      LIBREPATCH_AGENT_DOWNLOADS: ${LIBREPATCH_AGENT_DOWNLOADS:-github}
+      LIBREPATCH_AGENT_DOWNLOAD_BASE_URL: ${LIBREPATCH_AGENT_DOWNLOAD_BASE_URL:-}
+    volumes:
+      - content:/var/lib/librepatch/content
+      # Secrets are created by the stack itself (docs/RUNBOOK.md, "Secrets"): the server may read its own database login
+      # and the master key, and nothing else. The schema-owner login is not mounted here (docs/THREAT-MODEL.md T-SRV-4).
+      - secrets_app:/run/librepatch/app:ro
+      - secrets_key:/run/librepatch/key:ro
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    user: "65532:65532"
+    networks: [frontend, backend]
+    healthcheck:
+      test: ["CMD", "/librepatch-server", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # Applies database migrations (and creates the master key on the first start), then stays running and idle, so that
+  # container managers show every container as up (decision D111). It is also the way to run the commands that
+  # need the schema-owner connection (backup, restore), which the running server cannot do; those run in a separate
+  # one-off container that replaces this command:
+  #   docker compose -f deploy/docker-compose.yml run --rm --no-deps -T maintenance backup --out - --recipient age1...
+  maintenance:
+    <<: *hardening
+    image: ${LIBREPATCH_REGISTRY:-ghcr.io/auzring1}/librepatch-server:${LIBREPATCH_VERSION:-latest}
+    pull_policy: always
+    command: ["maintenance"]
+    healthcheck:
+      # Healthy once the migrations are done (the command creates this file); the server waits for that.
+      test: ["CMD", "/librepatch-server", "healthcheck"]
+      interval: 3s
+      timeout: 3s
+      retries: 100
+      start_period: 5s
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      # Same configuration parser as the server; it needs the host name to start.
+      LIBREPATCH_HOSTNAME: *hostname
+      LIBREPATCH_PUBLIC_PORT_SUFFIX: *public_port_suffix
+      LIBREPATCH_GATEWAY_HOSTNAME: *gateway_hostname
+      LIBREPATCH_GATEWAY_PORT: *gateway_port
+      LIBREPATCH_DATABASE_URL_FILE: /run/librepatch/app/database_url
+      LIBREPATCH_MIGRATE_DATABASE_URL_FILE: /run/librepatch/owner/migrate_database_url
+      LIBREPATCH_MASTER_KEY_FILE: /run/librepatch/key/master_key
+      # The first run of a new stack creates the master key (and never replaces one); the console then asks the first
+      # administrator to save it (decision D109).
+      LIBREPATCH_MASTER_KEY_AUTOGEN: "true"
+      LIBREPATCH_LOG_LEVEL: ${LIBREPATCH_LOG_LEVEL:-info}
+      LIBREPATCH_CONTENT_DIR: /var/lib/librepatch/content
+      LIBREPATCH_HEALTH_FILE: /tmp/maintenance-ready
+    volumes:
+      - content:/var/lib/librepatch/content
+      - secrets_app:/run/librepatch/app:ro
+      - secrets_owner:/run/librepatch/owner:ro
+      - secrets_key:/run/librepatch/key
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    user: "65532:65532"
+    networks: [backend]
+
+  postgres:
+    <<: *hardening
+    image: ${LIBREPATCH_REGISTRY:-ghcr.io/auzring1}/librepatch-postgres:${LIBREPATCH_VERSION:-latest}
+    pull_policy: always
+    # No ports: reachable only from the server on the internal backend network.
+    environment:
+      POSTGRES_DB: librepatch
+      # The bootstrap superuser is used only by the init script (01-roles.sh), which creates the
+      # non-superuser schema owner librepatch_owner and the runtime role librepatch_app.
+      POSTGRES_USER: librepatch_admin
+      POSTGRES_PASSWORD_FILE: /run/librepatch/pg/postgres_admin_password
+      # Network logins require SCRAM; the local socket is only reachable inside the container.
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    # The image's wrapper creates the database passwords on the very first start (decision D109) and then runs the
+    # official entrypoint; the role setup script is inside the image too (decision D110).
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - secrets_pg:/run/librepatch/pg
+      - secrets_app:/run/librepatch/app
+      - secrets_owner:/run/librepatch/owner
+    read_only: true
+    tmpfs: [/tmp, /var/run/postgresql]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    shm_size: 256m
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U librepatch_admin -d librepatch"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+networks:
+  frontend:
+    ipam:
+      config:
+        - subnet: ${LIBREPATCH_FRONTEND_SUBNET:-172.31.250.0/24}
+  backend:
+    internal: true
+
+volumes:
+  content:
+  pgdata:
+  # Created by the stack on its first start; "down -v" removes them together with the database.
+  secrets_pg:      # database passwords: the database container only
+  secrets_app:     # the runtime database login: server and maintenance
+  secrets_owner:   # the schema-owner login: maintenance only
+  secrets_key:     # the master key: written by maintenance, read by the server
+  caddy_data:
+  caddy_config:

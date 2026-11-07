@@ -1,0 +1,164 @@
+/* Maps Mantine's variables onto the semantic tokens (src/design/themes/*.css), so every Mantine component, and every
+   existing `color="red"` style prop, follows the active theme. Generated once by hand-rolled script; edit freely.
+   The selector is one step more specific than Mantine's own `:root[data-mantine-color-scheme]` so order does not matter. */
+html:root[data-theme] {
+  --mantine-color-body: var(--lp-surface);
+  --mantine-color-text: var(--lp-text);
+  --mantine-color-bright: var(--lp-text);
+  --mantine-color-dimmed: var(--lp-text-muted);
+  --mantine-color-placeholder: var(--lp-text-muted);
+  --mantine-color-error: var(--lp-danger-fg);
+  --mantine-color-anchor: var(--lp-accent-text);
+  --mantine-color-default: var(--lp-surface);
+  --mantine-color-default-hover: var(--lp-surface-hover);
+  --mantine-color-default-color: var(--lp-text);
+  --mantine-color-default-border: var(--lp-border-strong);
+  --mantine-color-disabled: var(--lp-surface-sunken);
+  --mantine-color-disabled-color: var(--lp-text-muted);
+  --mantine-color-disabled-border: var(--lp-border);
+  --mantine-primary-color-filled: var(--lp-accent);
+  --mantine-primary-color-filled-hover: var(--lp-accent-hover);
+  --mantine-primary-color-light: var(--lp-accent-subtle);
+  --mantine-primary-color-light-hover: color-mix(in srgb, var(--lp-accent-subtle) 82%, var(--lp-accent-subtle-text));
+  --mantine-primary-color-light-color: var(--lp-accent-subtle-text);
+  --mantine-primary-color-contrast: var(--lp-on-accent);
+  --mantine-primary-color-text: var(--lp-accent-text);
+  --mantine-color-brand-filled: var(--lp-accent);
+  --mantine-color-brand-filled-hover: var(--lp-accent-hover);
+  --mantine-color-brand-light: var(--lp-accent-subtle);
+  --mantine-color-brand-light-hover: color-mix(in srgb, var(--lp-accent-subtle) 82%, var(--lp-accent-subtle-text));
+  --mantine-color-brand-light-color: var(--lp-accent-subtle-text);
+  --mantine-color-brand-outline: var(--lp-accent-text);
+  --mantine-color-brand-outline-hover: var(--lp-accent-subtle);
+  --mantine-color-brand-text: var(--lp-accent-text);
+
+  --mantine-color-red-filled: var(--lp-danger-solid);
+  --mantine-color-red-filled-hover: color-mix(in srgb, var(--lp-danger-solid) 86%, var(--lp-text));
+  --mantine-color-red-light: var(--lp-danger-bg);
+  --mantine-color-red-light-hover: color-mix(in srgb, var(--lp-danger-bg) 84%, var(--lp-danger-fg));
+  --mantine-color-red-light-color: var(--lp-danger-fg);
+  --mantine-color-red-outline: var(--lp-danger-fg);
+  --mantine-color-red-outline-hover: var(--lp-danger-bg);
+  --mantine-color-red-text: var(--lp-danger-fg);
+
+  --mantine-color-pink-filled: var(--lp-danger-solid);
+  --mantine-color-pink-filled-hover: color-mix(in srgb, var(--lp-danger-solid) 86%, var(--lp-text));
+  --mantine-color-pink-light: var(--lp-danger-bg);
+  --mantine-color-pink-light-hover: color-mix(in srgb, var(--lp-danger-bg) 84%, var(--lp-danger-fg));
+  --mantine-color-pink-light-color: var(--lp-danger-fg);
+  --mantine-color-pink-outline: var(--lp-danger-fg);
+  --mantine-color-pink-outline-hover: var(--lp-danger-bg);
+  --mantine-color-pink-text: var(--lp-danger-fg);
+
+  --mantine-color-orange-filled: var(--lp-important-solid);
+  --mantine-color-orange-filled-hover: color-mix(in srgb, var(--lp-important-solid) 86%, var(--lp-text));
+  --mantine-color-orange-light: var(--lp-important-bg);
+  --mantine-color-orange-light-hover: color-mix(in srgb, var(--lp-important-bg) 84%, var(--lp-important-fg));
+  --mantine-color-orange-light-color: var(--lp-important-fg);
+  --mantine-color-orange-outline: var(--lp-important-fg);
+  --mantine-color-orange-outline-hover: var(--lp-important-bg);
+  --mantine-color-orange-text: var(--lp-important-fg);
+
+  --mantine-color-yellow-filled: var(--lp-warning-solid);
+  --mantine-color-yellow-filled-hover: color-mix(in srgb, var(--lp-warning-solid) 86%, var(--lp-text));
+  --mantine-color-yellow-light: var(--lp-warning-bg);
+  --mantine-color-yellow-light-hover: color-mix(in srgb, var(--lp-warning-bg) 84%, var(--lp-warning-fg));
+  --mantine-color-yellow-light-color: var(--lp-warning-fg);
+  --mantine-color-yellow-outline: var(--lp-warning-fg);
+  --mantine-color-yellow-outline-hover: var(--lp-warning-bg);
+  --mantine-color-yellow-text: var(--lp-warning-fg);
+
+  --mantine-color-lime-filled: var(--lp-warning-solid);
+  --mantine-color-lime-filled-hover: color-mix(in srgb, var(--lp-warning-solid) 86%, var(--lp-text));
+  --mantine-color-lime-light: var(--lp-warning-bg);
+  --mantine-color-lime-light-hover: color-mix(in srgb, var(--lp-warning-bg) 84%, var(--lp-warning-fg));
+  --mantine-color-lime-light-color: var(--lp-warning-fg);
+  --mantine-color-lime-outline: var(--lp-warning-fg);
+  --mantine-color-lime-outline-hover: var(--lp-warning-bg);
+  --mantine-color-lime-text: var(--lp-warning-fg);
+
+  --mantine-color-green-filled: var(--lp-success-solid);
+  --mantine-color-green-filled-hover: color-mix(in srgb, var(--lp-success-solid) 86%, var(--lp-text));
+  --mantine-color-green-light: var(--lp-success-bg);
+  --mantine-color-green-light-hover: color-mix(in srgb, var(--lp-success-bg) 84%, var(--lp-success-fg));
+  --mantine-color-green-light-color: var(--lp-success-fg);
+  --mantine-color-green-outline: var(--lp-success-fg);
+  --mantine-color-green-outline-hover: var(--lp-success-bg);
+  --mantine-color-green-text: var(--lp-success-fg);
+
+  --mantine-color-teal-filled: var(--lp-success-solid);
+  --mantine-color-teal-filled-hover: color-mix(in srgb, var(--lp-success-solid) 86%, var(--lp-text));
+  --mantine-color-teal-light: var(--lp-success-bg);
+  --mantine-color-teal-light-hover: color-mix(in srgb, var(--lp-success-bg) 84%, var(--lp-success-fg));
+  --mantine-color-teal-light-color: var(--lp-success-fg);
+  --mantine-color-teal-outline: var(--lp-success-fg);
+  --mantine-color-teal-outline-hover: var(--lp-success-bg);
+  --mantine-color-teal-text: var(--lp-success-fg);
+
+  --mantine-color-blue-filled: var(--lp-info-solid);
+  --mantine-color-blue-filled-hover: color-mix(in srgb, var(--lp-info-solid) 86%, var(--lp-text));
+  --mantine-color-blue-light: var(--lp-info-bg);
+  --mantine-color-blue-light-hover: color-mix(in srgb, var(--lp-info-bg) 84%, var(--lp-info-fg));
+  --mantine-color-blue-light-color: var(--lp-info-fg);
+  --mantine-color-blue-outline: var(--lp-info-fg);
+  --mantine-color-blue-outline-hover: var(--lp-info-bg);
+  --mantine-color-blue-text: var(--lp-info-fg);
+
+  --mantine-color-cyan-filled: var(--lp-info-solid);
+  --mantine-color-cyan-filled-hover: color-mix(in srgb, var(--lp-info-solid) 86%, var(--lp-text));
+  --mantine-color-cyan-light: var(--lp-info-bg);
+  --mantine-color-cyan-light-hover: color-mix(in srgb, var(--lp-info-bg) 84%, var(--lp-info-fg));
+  --mantine-color-cyan-light-color: var(--lp-info-fg);
+  --mantine-color-cyan-outline: var(--lp-info-fg);
+  --mantine-color-cyan-outline-hover: var(--lp-info-bg);
+  --mantine-color-cyan-text: var(--lp-info-fg);
+
+  --mantine-color-indigo-filled: var(--lp-info-solid);
+  --mantine-color-indigo-filled-hover: color-mix(in srgb, var(--lp-info-solid) 86%, var(--lp-text));
+  --mantine-color-indigo-light: var(--lp-info-bg);
+  --mantine-color-indigo-light-hover: color-mix(in srgb, var(--lp-info-bg) 84%, var(--lp-info-fg));
+  --mantine-color-indigo-light-color: var(--lp-info-fg);
+  --mantine-color-indigo-outline: var(--lp-info-fg);
+  --mantine-color-indigo-outline-hover: var(--lp-info-bg);
+  --mantine-color-indigo-text: var(--lp-info-fg);
+
+  --mantine-color-violet-filled: var(--lp-low-solid);
+  --mantine-color-violet-filled-hover: color-mix(in srgb, var(--lp-low-solid) 86%, var(--lp-text));
+  --mantine-color-violet-light: var(--lp-low-bg);
+  --mantine-color-violet-light-hover: color-mix(in srgb, var(--lp-low-bg) 84%, var(--lp-low-fg));
+  --mantine-color-violet-light-color: var(--lp-low-fg);
+  --mantine-color-violet-outline: var(--lp-low-fg);
+  --mantine-color-violet-outline-hover: var(--lp-low-bg);
+  --mantine-color-violet-text: var(--lp-low-fg);
+
+  --mantine-color-grape-filled: var(--lp-low-solid);
+  --mantine-color-grape-filled-hover: color-mix(in srgb, var(--lp-low-solid) 86%, var(--lp-text));
+  --mantine-color-grape-light: var(--lp-low-bg);
+  --mantine-color-grape-light-hover: color-mix(in srgb, var(--lp-low-bg) 84%, var(--lp-low-fg));
+  --mantine-color-grape-light-color: var(--lp-low-fg);
+  --mantine-color-grape-outline: var(--lp-low-fg);
+  --mantine-color-grape-outline-hover: var(--lp-low-bg);
+  --mantine-color-grape-text: var(--lp-low-fg);
+
+  --mantine-color-gray-filled: var(--lp-neutral-solid);
+  --mantine-color-gray-filled-hover: color-mix(in srgb, var(--lp-neutral-solid) 86%, var(--lp-text));
+  --mantine-color-gray-light: var(--lp-neutral-bg);
+  --mantine-color-gray-light-hover: color-mix(in srgb, var(--lp-neutral-bg) 84%, var(--lp-neutral-fg));
+  --mantine-color-gray-light-color: var(--lp-neutral-fg);
+  --mantine-color-gray-outline: var(--lp-neutral-fg);
+  --mantine-color-gray-outline-hover: var(--lp-neutral-bg);
+  --mantine-color-gray-text: var(--lp-neutral-fg);
+
+  --mantine-color-dark-filled: var(--lp-neutral-solid);
+  --mantine-color-dark-filled-hover: color-mix(in srgb, var(--lp-neutral-solid) 86%, var(--lp-text));
+  --mantine-color-dark-light: var(--lp-neutral-bg);
+  --mantine-color-dark-light-hover: color-mix(in srgb, var(--lp-neutral-bg) 84%, var(--lp-neutral-fg));
+  --mantine-color-dark-light-color: var(--lp-neutral-fg);
+  --mantine-color-dark-outline: var(--lp-neutral-fg);
+  --mantine-color-dark-outline-hover: var(--lp-neutral-bg);
+  --mantine-color-dark-text: var(--lp-neutral-fg);
+
+}
+
+/* A link inside a sentence must be told apart by more than color (WCAG 1.4.1). */
+.mantine-Anchor-root:not([data-underline="never"]) { text-decoration: underline; text-underline-offset: 2px; }

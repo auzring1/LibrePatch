@@ -1,0 +1,97 @@
+{
+  "resultsPerPage": 5,
+  "startIndex": 0,
+  "totalResults": 5,
+  "format": "NVD_CVE",
+  "version": "2.0",
+  "timestamp": "2026-10-19T10:00:00.000",
+  "vulnerabilities": [
+    {
+      "cve": {
+        "id": "CVE-2026-0001",
+        "sourceIdentifier": "chrome-cve-admin@google.com",
+        "published": "2026-09-30T20:15:00.123",
+        "lastModified": "2026-10-02T14:00:00.000",
+        "vulnStatus": "Analyzed",
+        "descriptions": [
+          {"lang": "es", "value": "Confusión de tipos en V8"},
+          {"lang": "en", "value": "Type confusion in V8 in Google Chrome prior to 130.0.6723.58 allowed a remote attacker to exploit heap corruption."}
+        ],
+        "metrics": {
+          "cvssMetricV31": [
+            {"source": "nvd@nist.gov", "type": "Primary", "cvssData": {"version": "3.1", "baseScore": 8.8, "baseSeverity": "HIGH"}}
+          ]
+        },
+        "configurations": [
+          {"nodes": [
+            {"operator": "OR", "negate": false, "cpeMatch": [
+              {"vulnerable": true, "criteria": "cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*", "versionEndExcluding": "130.0.6723.58", "matchCriteriaId": "A"}
+            ]}
+          ]}
+        ]
+      }
+    },
+    {
+      "cve": {
+        "id": "CVE-2026-0002",
+        "published": "2026-10-08T17:15:00.000",
+        "lastModified": "2026-10-09T10:00:00.000",
+        "vulnStatus": "Analyzed",
+        "descriptions": [{"lang": "en", "value": "Windows elevation of privilege vulnerability."}],
+        "metrics": {
+          "cvssMetricV31": [{"cvssData": {"baseScore": 7.8, "baseSeverity": "HIGH"}}]
+        },
+        "configurations": [
+          {"nodes": [
+            {"operator": "AND", "negate": false,
+             "cpeMatch": [],
+             "children": [
+               {"operator": "OR", "negate": false, "cpeMatch": [
+                 {"vulnerable": true, "criteria": "cpe:2.3:o:microsoft:windows_11_24h2:*:*:*:*:*:*:x64:*", "versionStartIncluding": "10.0.26100.0", "versionEndExcluding": "10.0.26100.2033"},
+                 {"vulnerable": true, "criteria": "cpe:2.3:o:microsoft:windows_10_22h2:*:*:*:*:*:*:x64:*", "versionEndExcluding": "10.0.19045.5555"}
+               ]},
+               {"operator": "OR", "negate": false, "cpeMatch": [
+                 {"vulnerable": false, "criteria": "cpe:2.3:h:intel:core_i7:-:*:*:*:*:*:*:*"}
+               ]}
+             ]}
+          ]}
+        ]
+      }
+    },
+    {
+      "cve": {
+        "id": "CVE-2026-0003",
+        "published": "2026-05-01T00:00:00.000",
+        "lastModified": "2026-05-02T00:00:00.000",
+        "vulnStatus": "Analyzed",
+        "descriptions": [{"lang": "en", "value": "Exact versions and an escaped product name."}],
+        "metrics": {"cvssMetricV2": [{"cvssData": {"baseScore": 5.0}, "baseSeverity": "MEDIUM"}]},
+        "configurations": [
+          {"nodes": [{"operator": "OR", "cpeMatch": [
+            {"vulnerable": true, "criteria": "cpe:2.3:a:notepad-plus-plus:notepad\\+\\+:8.1.1:*:*:*:*:*:*:*"},
+            {"vulnerable": true, "criteria": "cpe:2.3:a:notepad-plus-plus:notepad\\+\\+:8.1.2:*:*:*:*:*:*:*"},
+            {"vulnerable": true, "criteria": "cpe:2.3:a:othervendor:otherproduct:1.0:*:*:*:*:*:*:*"}
+          ]}]}
+        ]
+      }
+    },
+    {
+      "cve": {
+        "id": "CVE-2026-0004",
+        "published": "2026-05-01T00:00:00.000",
+        "lastModified": "2026-05-03T00:00:00.000",
+        "vulnStatus": "Rejected",
+        "descriptions": [{"lang": "en", "value": "** REJECT ** DO NOT USE THIS CANDIDATE NUMBER."}]
+      }
+    },
+    {
+      "cve": {
+        "id": "CVE-2026-0005",
+        "published": "2026-05-01T00:00:00.000",
+        "lastModified": "2026-05-03T00:00:00.000",
+        "vulnStatus": "Awaiting Analysis",
+        "descriptions": [{"lang": "en", "value": "Not analyzed yet: no configurations, no score."}]
+      }
+    }
+  ]
+}

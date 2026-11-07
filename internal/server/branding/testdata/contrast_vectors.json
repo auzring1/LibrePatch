@@ -1,0 +1,23 @@
+{
+  "comment": "Reference WCAG 2.1 contrast ratios (rounded to 2 places). Shared by the Go tests and the web tests so the two implementations cannot drift.",
+  "ratios": [
+    {"a": "#000000", "b": "#ffffff", "ratio": 21.0},
+    {"a": "#ffffff", "b": "#ffffff", "ratio": 1.0},
+    {"a": "#767676", "b": "#ffffff", "ratio": 4.54},
+    {"a": "#777777", "b": "#ffffff", "ratio": 4.48},
+    {"a": "#ff0000", "b": "#ffffff", "ratio": 4.0},
+    {"a": "#ffff00", "b": "#ffffff", "ratio": 1.07},
+    {"a": "#1971c2", "b": "#ffffff", "ratio": 5.02},
+    {"a": "#1971c2", "b": "#1a1b1e", "ratio": 3.43}
+  ],
+  "accents": [
+    {"accent": "#1971c2", "secondary": "", "ok": true},
+    {"accent": "", "secondary": "", "ok": true},
+    {"accent": "#0b7285", "secondary": "#e8590c", "ok": true},
+    {"accent": "#ffd43b", "secondary": "", "ok": false, "why": "white text on yellow"},
+    {"accent": "#777777", "secondary": "", "ok": false, "why": "4.48 against white is just under AA"},
+    {"accent": "#111111", "secondary": "", "ok": false, "why": "fine on white, invisible on the dark theme"},
+    {"accent": "#1971c2", "secondary": "#ffff99", "ok": false, "why": "secondary invisible on light"},
+    {"accent": "#1971c2", "secondary": "#222222", "ok": false, "why": "secondary invisible on dark"}
+  ]
+}

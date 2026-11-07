@@ -1,0 +1,14 @@
+{
+  "products": [
+    {"name": "google chrome", "vendor": "google", "product": "chrome"},
+    {"name": "mozilla firefox", "vendor": "mozilla", "product": "firefox"},
+    {"name": "microsoft edge", "vendor": "microsoft", "product": "edge_chromium"},
+    {"name": "7-zip", "vendor": "7-zip", "product": "7-zip"},
+    {"name": "vlc media player", "vendor": "videolan", "product": "vlc_media_player"},
+    {"name": "notepad++", "vendor": "notepad-plus-plus", "product": "notepad++"},
+    {"name": "git", "vendor": "git-scm", "product": "git"},
+    {"name": "putty", "vendor": "putty", "product": "putty"},
+    {"name": "winscp", "vendor": "winscp", "product": "winscp"},
+    {"name": "wireshark", "vendor": "wireshark", "product": "wireshark"}
+  ]
+}

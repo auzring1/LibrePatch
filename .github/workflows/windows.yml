@@ -1,0 +1,482 @@
+name: windows
+on:
+  push:
+    branches: [main, "phase-*"]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.27.3"
+  GOTOOLCHAIN: local
+
+jobs:
+  agent:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "${{ env.GO_VERSION }}" }
+
+      - name: Start the runner's PostgreSQL
+        shell: pwsh
+        run: |
+          $svc = Get-Service -Name "postgresql*" | Select-Object -First 1
+          Set-Service -Name $svc.Name -StartupType Manual
+          Start-Service -Name $svc.Name
+          "LIBREPATCH_TEST_PG_URL=postgres://$($env:PGUSER):$($env:PGPASSWORD)@127.0.0.1:5432/postgres?sslmode=disable" >> $env:GITHUB_ENV
+
+      - name: Agent unit tests (CNG/TPM key store, Windows hardware collector)
+        run: go test -count=1 -v ./internal/agent/...
+
+      - name: In-process end-to-end test with real CNG keys
+        env: { LIBREPATCH_REQUIRE_DB: "1" }
+        run: go test -count=1 ./test/e2e/
+
+      - name: Build agent (size budget 17 MiB) and server
+        shell: pwsh
+        run: |
+          go build -trimpath -ldflags "-s -w" -o librepatch-agent.exe ./cmd/librepatch-agent
+          go build -o librepatch-server.exe ./cmd/librepatch-server
+          $size = (Get-Item librepatch-agent.exe).Length
+          Write-Host "agent size: $size bytes"
+          if ($size -gt 17825792) { throw "agent binary over the 17 MiB budget" }
+
+      - name: Real service install, enrollment, ACL checks and uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "$env:PGBIN\psql.exe" -h 127.0.0.1 -U $env:PGUSER -c "CREATE DATABASE librepatch_ci"
+          $key = -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
+          $env:LIBREPATCH_DEV_MODE = "true"
+          $env:LIBREPATCH_PUBLIC_URL = "http://localhost:18080"
+          $env:LIBREPATCH_HTTP_ADDR = "127.0.0.1:18080"
+          $env:LIBREPATCH_GATEWAY_ADDR = "127.0.0.1:18443"
+          $env:LIBREPATCH_GATEWAY_PUBLIC_ADDR = "localhost:18443"
+          $env:LIBREPATCH_DATABASE_URL = "postgres://$($env:PGUSER):$($env:PGPASSWORD)@127.0.0.1:5432/librepatch_ci?sslmode=disable"
+          $env:LIBREPATCH_MASTER_KEY = $key
+          $server = Start-Process -FilePath .\librepatch-server.exe -ArgumentList serve -PassThru -NoNewWindow `
+            -RedirectStandardError server.err -RedirectStandardOutput server.out
+          $token = $null
+          for ($i = 0; $i -lt 60 -and -not $token; $i++) {
+            Start-Sleep -Seconds 1
+            $m = Select-String -Path server.err, server.out -Pattern '^\s{6}([A-Za-z0-9_-]{20,})\s*$' -ErrorAction SilentlyContinue
+            if ($m) { $token = $m.Matches[0].Groups[1].Value }
+          }
+          if (-not $token) { Get-Content server.err, server.out; throw "no setup token" }
+          $enroll = go run ./test/tools/bootstrap -url http://localhost:18080 -setup-token $token
+          if ($LASTEXITCODE -ne 0) { throw "bootstrap failed" }
+
+          .\librepatch-agent.exe install --token $enroll.Trim()
+          if ($LASTEXITCODE -ne 0) { Get-Content "$env:ProgramData\LibrePatch\logs\agent.log" -ErrorAction SilentlyContinue; throw "install failed" }
+          & "$env:ProgramFiles\LibrePatch\Agent\slot-a\librepatch-agent.exe" status
+          $status = Get-Content "$env:ProgramData\LibrePatch\status.json" | ConvertFrom-Json
+          if ($status.state -ne "connected") { Get-Content "$env:ProgramData\LibrePatch\logs\agent.log"; throw "agent not connected: $($status.state)" }
+
+          # Software and user inventory reached the server (real registry, MSI, AppX collectors).
+          $psql = "$env:PGBIN\psql.exe"
+          $n = 0
+          for ($i = 0; $i -lt 40 -and $n -lt 5; $i++) {
+            Start-Sleep -Seconds 2
+            $n = [int](& $psql -h 127.0.0.1 -U $env:PGUSER -d librepatch_ci -tAc "SELECT coalesce(max(software_count),0) FROM devices")
+          }
+          Write-Host "software items reported: $n"
+          & $psql -h 127.0.0.1 -U $env:PGUSER -d librepatch_ci -c "SELECT source, scope, count(*) FROM software_installs GROUP BY 1,2 ORDER BY 1,2"
+          & $psql -h 127.0.0.1 -U $env:PGUSER -d librepatch_ci -c "SELECT username, domain, loaded, is_admin FROM device_users"
+          & $psql -h 127.0.0.1 -U $env:PGUSER -d librepatch_ci -c "SELECT hardware->'disks' AS disks FROM devices"
+          if ($n -lt 5) { Get-Content "$env:ProgramData\LibrePatch\logs\agent.log"; throw "software inventory missing ($n items)" }
+          $u = [int](& $psql -h 127.0.0.1 -U $env:PGUSER -d librepatch_ci -tAc "SELECT count(*) FROM device_users")
+          if ($u -lt 1) { throw "no user profiles reported" }
+
+          # Service runs as LocalSystem with a quoted path.
+          $svc = Get-CimInstance Win32_Service -Filter "Name='LibrePatchAgent'"
+          if ($svc.StartName -ne "LocalSystem") { throw "service account is $($svc.StartName)" }
+          if (-not $svc.PathName.StartsWith('"')) { throw "service path is not quoted: $($svc.PathName)" }
+          # Data directory: protected DACL, only SYSTEM and Administrators.
+          $acl = Get-Acl "$env:ProgramData\LibrePatch"
+          if (-not $acl.AreAccessRulesProtected) { throw "data dir inherits ACEs" }
+          $who = $acl.Access | ForEach-Object { $_.IdentityReference.Value } | Sort-Object -Unique
+          Write-Host "data dir ACL: $($who -join ', ')"
+          foreach ($w in $who) { if ($w -notin @('NT AUTHORITY\SYSTEM','BUILTIN\Administrators')) { throw "unexpected ACE for $w" } }
+          # The enrollment secret was erased from disk.
+          if (Select-String -Path "$env:ProgramData\LibrePatch\config.json" -Pattern enrollment_token -Quiet) { throw "token left on disk" }
+          # No listening sockets owned by the agent.
+          $agentPid = (Get-CimInstance Win32_Service -Filter "Name='LibrePatchAgent'").ProcessId
+          $listen = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object OwningProcess -eq $agentPid
+          if ($listen) { throw "agent is listening on a port" }
+          # Memory budget (informational until Phase 6 load testing).
+          $ws = (Get-Process -Id $agentPid).WorkingSet64
+          Write-Host "agent working set: $([math]::Round($ws/1MB,1)) MiB"
+
+          .\librepatch-agent.exe uninstall
+          if (Get-Service LibrePatchAgent -ErrorAction SilentlyContinue) { throw "service still present" }
+          if (Test-Path "$env:ProgramData\LibrePatch") { throw "data dir still present" }
+          Stop-Process -Id $server.Id
+
+  # Software deployment on a real Windows service. Informational until it has been
+  # observed passing on a VM and a runner: it needs outbound
+  # access to GitHub and the vendor download of 7-Zip.
+  deploy:
+    runs-on: windows-2025
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "${{ env.GO_VERSION }}" }
+
+      - name: Start the runner's PostgreSQL
+        shell: pwsh
+        run: |
+          $svc = Get-Service -Name "postgresql*" | Select-Object -First 1
+          Set-Service -Name $svc.Name -StartupType Manual
+          Start-Service -Name $svc.Name
+
+      - name: Platform tests (Authenticode, Job Objects, staging ACLs, locked files)
+        run: go test -count=1 -v -run 'TestWin' ./internal/agent/jobs/
+
+      - name: Remove the runner's own 7-Zip (the winget scenario installs it and needs a clean image)
+        shell: pwsh
+        run: |
+          $pf = Join-Path $env:ProgramFiles "7-Zip"
+          if (Test-Path "$pf\Uninstall.exe") {
+            Start-Process "$pf\Uninstall.exe" -ArgumentList "/S" -Wait
+          } else {
+            $keys = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+            $e = Get-ItemProperty $keys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "7-Zip*" } | Select-Object -First 1
+            if ($e -and $e.PSChildName -match '^\{') { Start-Process msiexec.exe -ArgumentList "/x", $e.PSChildName, "/qn" -Wait }
+          }
+          # The uninstaller can leave the folder behind; the scenario only looks for 7z.exe.
+          Remove-Item "$pf\7z.exe" -Force -ErrorAction SilentlyContinue
+          if (Test-Path "$pf\7z.exe") { throw "7z.exe is still there" }
+
+      - name: Install the agent, then run the deployment scenarios
+        shell: pwsh
+        env:
+          # The winget-7zip scenario lists package versions through the GitHub API; without a token the shared runner
+          # addresses hit the anonymous rate limit. The workflow's own read-only token is enough for public repositories.
+          LIBREPATCH_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "$env:PGBIN\psql.exe" -h 127.0.0.1 -U $env:PGUSER -c "CREATE DATABASE librepatch_deploy"
+          $key = -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
+          $env:LIBREPATCH_DEV_MODE = "true"
+          $env:LIBREPATCH_PUBLIC_URL = "http://localhost:18080"
+          $env:LIBREPATCH_HTTP_ADDR = "127.0.0.1:18080"
+          $env:LIBREPATCH_GATEWAY_ADDR = "127.0.0.1:18443"
+          $env:LIBREPATCH_GATEWAY_PUBLIC_ADDR = "localhost:18443"
+          $env:LIBREPATCH_DATABASE_URL = "postgres://$($env:PGUSER):$($env:PGPASSWORD)@127.0.0.1:5432/librepatch_deploy?sslmode=disable"
+          $env:LIBREPATCH_MASTER_KEY = $key
+          $env:LIBREPATCH_CONTENT_DIR = "$env:RUNNER_TEMP\lp-content"
+          go build -o librepatch-server.exe ./cmd/librepatch-server
+          go build -trimpath -o librepatch-agent.exe ./cmd/librepatch-agent
+          go build -o deploycheck.exe ./test/tools/deploycheck
+          $server = Start-Process -FilePath .\librepatch-server.exe -ArgumentList serve -PassThru -NoNewWindow `
+            -RedirectStandardError server.err -RedirectStandardOutput server.out
+          $token = $null
+          for ($i = 0; $i -lt 60 -and -not $token; $i++) {
+            Start-Sleep -Seconds 1
+            $m = Select-String -Path server.err, server.out -Pattern '^\s{6}([A-Za-z0-9_-]{20,})\s*$' -ErrorAction SilentlyContinue
+            if ($m) { $token = $m.Matches[0].Groups[1].Value }
+          }
+          if (-not $token) { Get-Content server.err, server.out; throw "no setup token" }
+          $enroll = go run ./test/tools/bootstrap -url http://localhost:18080 -setup-token $token -totp-out totp.txt
+          if ($LASTEXITCODE -ne 0) { throw "bootstrap failed" }
+          .\librepatch-agent.exe install --token $enroll.Trim()
+          if ($LASTEXITCODE -ne 0) { throw "install failed" }
+          $failed = @()
+          foreach ($s in @("unsigned-pinned", "winget-7zip")) {
+            .\deploycheck.exe -url http://localhost:18080 -totp-file totp.txt -scenario $s
+            if ($LASTEXITCODE -ne 0) { $failed += $s }
+          }
+          Get-Content "$env:ProgramData\LibrePatch\logs\agent.log" -Tail 80 -ErrorAction SilentlyContinue
+          .\librepatch-agent.exe uninstall
+          Stop-Process -Id $server.Id
+          if ($failed.Count -gt 0) { Get-Content server.err, server.out -Tail 60; throw "scenarios failed: $($failed -join ', ')" }
+
+  # Windows Update Agent on a real machine: read-only (policy, pending reboot, scan). Informational
+  # until observed passing; installs and restarts are only exercised by hand on a test VM
+  # (docs/TRY-ON-A-TEST-VM.md).
+  wu:
+    runs-on: windows-2025
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "${{ env.GO_VERSION }}" }
+      - name: WUA scan, policy detection and reboot detection (read-only)
+        run: go test -count=1 -v -run 'TestWin' ./internal/agent/wu/
+
+  # The agent MSI (WiX v7, installer/windows). Informational until it has been observed passing on a
+  # runner: it builds the MSI, runs the ICE validation, then drives a real msiexec install, upgrade and
+  # uninstall against a local server (docs/RUNBOOK.md section 4, docs/THREAT-MODEL.md 9d.b).
+  msi:
+    runs-on: windows-2025
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "${{ env.GO_VERSION }}" }
+
+      - name: Source tests (WiX sources parsed as XML, version mapping, install --if-not-installed)
+        run: go test -count=1 ./installer/... ./internal/agent/install/
+
+      - name: Start the runner's PostgreSQL
+        shell: pwsh
+        run: |
+          $svc = Get-Service -Name "postgresql*" | Select-Object -First 1
+          Set-Service -Name $svc.Name -StartupType Manual
+          Start-Service -Name $svc.Name
+
+      - name: Build two agent versions and their MSIs (WiX v7 from .config/dotnet-tools.json), then validate (ICE)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          dotnet --info | Select-Object -First 6
+          New-Item -ItemType Directory -Force dist | Out-Null
+          foreach ($v in @("0.1.0", "0.1.1")) {
+            go build -trimpath -ldflags "-s -w -X github.com/auzring1/librepatch/internal/shared/version.Version=$v" -o "dist\librepatch-agent-$v.exe" ./cmd/librepatch-agent
+            if ($LASTEXITCODE -ne 0) { throw "agent build $v failed" }
+            ./installer/windows/build.ps1 -AgentExe "dist\librepatch-agent-$v.exe" -Version $v -Output "$PWD\dist\librepatch-agent-$v.msi"
+          }
+          go build -o librepatch-server.exe ./cmd/librepatch-server
+          if ($LASTEXITCODE -ne 0) { throw "server build failed" }
+
+      - name: Install, failure and rollback, upgrade, uninstall with msiexec
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $psql = "$env:PGBIN\psql.exe"
+          & $psql -h 127.0.0.1 -U $env:PGUSER -c "CREATE DATABASE librepatch_msi"
+          $key = -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
+          $env:LIBREPATCH_DEV_MODE = "true"
+          $env:LIBREPATCH_PUBLIC_URL = "http://localhost:18080"
+          $env:LIBREPATCH_HTTP_ADDR = "127.0.0.1:18080"
+          $env:LIBREPATCH_GATEWAY_ADDR = "127.0.0.1:18443"
+          $env:LIBREPATCH_GATEWAY_PUBLIC_ADDR = "localhost:18443"
+          $env:LIBREPATCH_DATABASE_URL = "postgres://$($env:PGUSER):$($env:PGPASSWORD)@127.0.0.1:5432/librepatch_msi?sslmode=disable"
+          $env:LIBREPATCH_MASTER_KEY = $key
+          $server = Start-Process -FilePath .\librepatch-server.exe -ArgumentList serve -PassThru -NoNewWindow `
+            -RedirectStandardError server.err -RedirectStandardOutput server.out
+          $setup = $null
+          for ($i = 0; $i -lt 60 -and -not $setup; $i++) {
+            Start-Sleep -Seconds 1
+            $m = Select-String -Path server.err, server.out -Pattern '^\s{6}([A-Za-z0-9_-]{20,})\s*$' -ErrorAction SilentlyContinue
+            if ($m) { $setup = $m.Matches[0].Groups[1].Value }
+          }
+          if (-not $setup) { Get-Content server.err, server.out; throw "no setup token" }
+          $enroll = (go run ./test/tools/bootstrap -url http://localhost:18080 -setup-token $setup).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $enroll.StartsWith("LP1.")) { throw "bootstrap failed" }
+
+          $v1 = "$PWD\dist\librepatch-agent-0.1.0.msi"
+          $v2 = "$PWD\dist\librepatch-agent-0.1.1.msi"
+          $data = "$env:ProgramData\LibrePatch"
+          $pf = $env:ProgramFiles
+
+          function Invoke-Msi([string]$Args_) {
+            $p = Start-Process -FilePath msiexec.exe -ArgumentList $Args_ -Wait -PassThru
+            return $p.ExitCode
+          }
+          function Assert-Clean([string]$When) {
+            for ($i = 0; $i -lt 30 -and (Get-Service LibrePatchAgent -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Seconds 1 }
+            if (Get-Service LibrePatchAgent -ErrorAction SilentlyContinue) { throw "${When}: service still present" }
+            foreach ($d in @($data, "$pf\LibrePatch", "$pf\LibrePatchSetup")) {
+              if (Test-Path $d) { throw "${When}: $d still present" }
+            }
+          }
+          function Test-LogLeak([string]$Path, [string]$Secret) {
+            # msiexec writes ANSI or UTF-16 depending on version: look for the secret in both encodings.
+            # Windows Installer itself prints the install action's data (with the token) on one known line even for
+            # hidden properties (DECISIONS D103, accepted by the owner). That line is ignored; the token anywhere
+            # else in the log is a failure.
+            $bytes = [System.IO.File]::ReadAllBytes($Path)
+            if ($bytes.Length -lt 2000) { throw "$Path is suspiciously small ($($bytes.Length) bytes): no verbose log" }
+            $leaked = $false
+            foreach ($text in @([System.Text.Encoding]::Latin1.GetString($bytes), [System.Text.Encoding]::Unicode.GetString($bytes))) {
+              foreach ($line in ($text -split "`r?`n")) {
+                if (-not $line.Contains($Secret)) { continue }
+                if ($line -match 'CustomActionSchedule\(Action=InstallAgent,') { Write-Host "known and accepted (D103): the install action's data is in ${Path}"; continue }
+                $leaked = $true
+                Write-Host ("LEAK in ${Path}: " + $line.Replace($Secret, "<TOKEN>").Trim())
+              }
+            }
+            return $leaked
+          }
+
+          # Diagnostic: which properties does the built MSI declare hidden? (Windows Installer masks only those in logs.)
+          function Show-MsiProperty([string]$Msi, [string]$Name) {
+            $wi = New-Object -ComObject WindowsInstaller.Installer
+            $db = $wi.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $null, $wi, @($Msi, 0))
+            $view = $db.GetType().InvokeMember("OpenView", "InvokeMethod", $null, $db, @("SELECT Value FROM Property WHERE Property='$Name'"))
+            $view.GetType().InvokeMember("Execute", "InvokeMethod", $null, $view, $null) | Out-Null
+            $rec = $view.GetType().InvokeMember("Fetch", "InvokeMethod", $null, $view, $null)
+            if ($rec) { Write-Host "MSI property ${Name} = $($rec.GetType().InvokeMember('StringData', 'GetProperty', $null, $rec, @(1)))" }
+            else { Write-Host "MSI property ${Name} is not in the Property table" }
+          }
+          Show-MsiProperty $v1 "MsiHiddenProperties"
+          $leaks = @()
+
+          # 1. Failures must exit 1603 and leave nothing behind.
+          $bad = @{
+            "malformed token"      = "SERVER=localhost:18443 TOKEN=LP1.not-a-real-token"
+            "missing TOKEN"        = "SERVER=localhost:18443"
+            "missing SERVER"       = "TOKEN=$enroll"
+            "metacharacter in SERVER" = "SERVER=localhost:18443&calc TOKEN=$enroll"
+            "unknown job type"     = "SERVER=localhost:18443 TOKEN=$enroll ALLOWEDJOBS=nonsense"
+            "server unreachable"   = "SERVER=127.0.0.1:1 TOKEN=$enroll"
+          }
+          foreach ($k in $bad.Keys) {
+            $rc = Invoke-Msi "/i `"$v1`" /qn $($bad[$k]) /l*v `"$PWD\fail.log`""
+            Write-Host "failure case '$k': msiexec exit $rc"
+            if ($rc -ne 1603) { Get-Content "$data\logs\agent.log" -Tail 30 -ErrorAction SilentlyContinue; throw "'$k' exited $rc, expected 1603" }
+            if (Test-LogLeak "$PWD\fail.log" $enroll) { $leaks += "failed install '$k': the token is in the MSI log" }
+            Assert-Clean "after failed install '$k'"
+          }
+
+          # 2. Silent install.
+          $rc = Invoke-Msi "/i `"$v1`" /qn SERVER=localhost:18443 TOKEN=$enroll ALLOWEDJOBS=inventory,wu_scan /l*v `"$PWD\msi.log`""
+          if ($rc -ne 0) { Get-Content "$data\logs\agent.log" -Tail 40 -ErrorAction SilentlyContinue; throw "install exited $rc" }
+          if ((Get-Service LibrePatchAgent).Status -ne "Running") { throw "service is not running" }
+          $status = Get-Content "$data\status.json" | ConvertFrom-Json
+          if ($status.state -ne "connected") { Get-Content "$data\logs\agent.log" -Tail 40; throw "agent not connected: $($status.state)" }
+          $deviceId = $status.device_id
+          $n = [int](& $psql -h 127.0.0.1 -U $env:PGUSER -d librepatch_msi -tAc "SELECT count(*) FROM devices")
+          if ($n -ne 1) { throw "expected 1 device, found $n" }
+          $cfg = Get-Content "$data\config.json" -Raw
+          if ($cfg -notmatch 'inventory' -or $cfg -notmatch 'wu_scan') { throw "ALLOWEDJOBS did not reach config.json" }
+          if ($cfg -match 'enrollment_token') { throw "token left in config.json" }
+          if (-not (Test-Path "$pf\LibrePatch\Agent\slot-a\librepatch-agent.exe")) { throw "slot-a binary missing" }
+          if (Test-LogLeak "$PWD\msi.log" $enroll) { $leaks += "the enrollment token is in msi.log" }
+          elseif (Test-LogLeak "$PWD\msi.log" $enroll.Substring(6, 24)) { $leaks += "part of the enrollment token is in msi.log" }
+
+          # 3. Major upgrade of an enrolled machine: no properties, no new token, same device, still running.
+          $rc = Invoke-Msi "/i `"$v2`" /qn /l*v `"$PWD\upgrade.log`""
+          if ($rc -ne 0) { Get-Content "$data\logs\agent.log" -Tail 40 -ErrorAction SilentlyContinue; throw "upgrade exited $rc" }
+          if ((Get-Service LibrePatchAgent).Status -ne "Running") { throw "service stopped by the upgrade" }
+          if ((Get-Content "$data\status.json" | ConvertFrom-Json).device_id -ne $deviceId) { throw "device identity changed by the upgrade" }
+          $n = [int](& $psql -h 127.0.0.1 -U $env:PGUSER -d librepatch_msi -tAc "SELECT count(*) FROM devices")
+          if ($n -ne 1) { throw "upgrade re-enrolled: $n devices" }
+          $arp = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" | Where-Object DisplayName -eq "LibrePatch Agent"
+          if (@($arp).Count -ne 1) { throw "expected one LibrePatch Agent product after the upgrade, found $(@($arp).Count)" }
+          if (Test-LogLeak "$PWD\upgrade.log" $enroll) { $leaks += "the enrollment token is in upgrade.log" }
+
+          # 4. Uninstall removes service, data, program files and the staged copy.
+          $rc = Invoke-Msi "/x `"$v2`" /qn /l*v `"$PWD\uninstall.log`""
+          if ($rc -ne 0) { throw "uninstall exited $rc" }
+          Assert-Clean "after uninstall"
+
+          # 5. /qb (basic UI) works too, then clean up.
+          $rc = Invoke-Msi "/i `"$v1`" /qb SERVER=localhost:18443 TOKEN=$enroll"
+          if ($rc -ne 0) { throw "/qb install exited $rc" }
+          if ((Get-Service LibrePatchAgent).Status -ne "Running") { throw "service is not running after /qb install" }
+          $rc = Invoke-Msi "/x `"$v1`" /qb"
+          if ($rc -ne 0) { throw "/qb uninstall exited $rc" }
+          Assert-Clean "after /qb uninstall"
+          Stop-Process -Id $server.Id
+          if ($leaks.Count -gt 0) { throw ("The enrollment token reached the Windows Installer log:`n" + ($leaks -join "`n")) }
+
+      - name: Collect logs
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force logs | Out-Null
+          foreach ($f in "msi.log", "fail.log", "upgrade.log", "uninstall.log", "server.err", "server.out") {
+            if (Test-Path $f) { Copy-Item $f logs\ }
+          }
+          if (Test-Path "$env:ProgramData\LibrePatch\logs\agent.log") { Copy-Item "$env:ProgramData\LibrePatch\logs\agent.log" logs\ }
+          Get-ChildItem dist -Filter *.msi | ForEach-Object { Copy-Item $_.FullName logs\ }
+
+      # The logs are only uploaded after the token check above has passed or failed; the enrollment
+      # token belongs to a throw-away local server, so they carry no usable secret either way.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: msi-logs
+          path: logs/
+          retention-days: 7
+
+  # Agent self-update on a real Windows service: update to a good release, then to a deliberately
+  # broken one and check the machine goes back to the good version by itself. Informational until
+  # it has been observed passing (docs/TRY-ON-A-TEST-VM.md section 5 is the manual equivalent).
+  selfupdate:
+    runs-on: windows-2025
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "${{ env.GO_VERSION }}" }
+
+      - name: Start the runner's PostgreSQL
+        shell: pwsh
+        run: |
+          $svc = Get-Service -Name "postgresql*" | Select-Object -First 1
+          Set-Service -Name $svc.Name -StartupType Manual
+          Start-Service -Name $svc.Name
+
+      - name: Update, then roll back
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "$env:PGBIN\psql.exe" -h 127.0.0.1 -U $env:PGUSER -c "CREATE DATABASE librepatch_selfupdate"
+          # A throw-away release key; the agents are built to trust it and the server is told to accept it.
+          go build -o librepatch-release.exe ./cmd/librepatch-release
+          .\librepatch-release.exe keygen --out release.key | Out-Null
+          $pub = (Get-Content release.pub -Raw).Trim()
+          function Build($v, $pkg, $out) {
+            $f = "-s -w -X github.com/auzring1/librepatch/internal/shared/version.Version=$v -X github.com/auzring1/librepatch/internal/shared/release.PublicKeysHex=$pub"
+            go build -trimpath -ldflags $f -o $out $pkg
+            if ($LASTEXITCODE -ne 0) { throw "build $v failed" }
+          }
+          New-Item -ItemType Directory -Force rel | Out-Null
+          Build "0.9.0" ./cmd/librepatch-agent librepatch-agent.exe
+          Build "0.9.1" ./cmd/librepatch-agent rel/librepatch-agent-0.9.1.exe
+          Build "0.9.2" ./test/tools/brokenagent rel/librepatch-agent-0.9.2.exe
+          foreach ($v in "0.9.1", "0.9.2") {
+            .\librepatch-release.exe sign --key release.key --exe "rel/librepatch-agent-$v.exe" --version $v --out "rel/librepatch-agent-$v.lprel" | Out-Null
+          }
+          $key = -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
+          $env:LIBREPATCH_DEV_MODE = "true"
+          $env:LIBREPATCH_PUBLIC_URL = "http://localhost:18080"
+          $env:LIBREPATCH_HTTP_ADDR = "127.0.0.1:18080"
+          $env:LIBREPATCH_GATEWAY_ADDR = "127.0.0.1:18443"
+          $env:LIBREPATCH_GATEWAY_PUBLIC_ADDR = "localhost:18443"
+          $env:LIBREPATCH_DATABASE_URL = "postgres://$($env:PGUSER):$($env:PGPASSWORD)@127.0.0.1:5432/librepatch_selfupdate?sslmode=disable"
+          $env:LIBREPATCH_MASTER_KEY = $key
+          $env:LIBREPATCH_CONTENT_DIR = "$env:RUNNER_TEMP\lp-content"
+          $env:LIBREPATCH_RELEASE_PUBLIC_KEYS = $pub
+          go build -o librepatch-server.exe ./cmd/librepatch-server
+          go build -o deploycheck.exe ./test/tools/deploycheck
+          $server = Start-Process -FilePath .\librepatch-server.exe -ArgumentList serve -PassThru -NoNewWindow `
+            -RedirectStandardError server.err -RedirectStandardOutput server.out
+          $token = $null
+          for ($i = 0; $i -lt 60 -and -not $token; $i++) {
+            Start-Sleep -Seconds 1
+            $m = Select-String -Path server.err, server.out -Pattern '^\s{6}([A-Za-z0-9_-]{20,})\s*$' -ErrorAction SilentlyContinue
+            if ($m) { $token = $m.Matches[0].Groups[1].Value }
+          }
+          if (-not $token) { Get-Content server.err, server.out; throw "no setup token" }
+          $enroll = go run ./test/tools/bootstrap -url http://localhost:18080 -setup-token $token -totp-out totp.txt
+          if ($LASTEXITCODE -ne 0) { throw "bootstrap failed" }
+          .\librepatch-agent.exe install --token $enroll.Trim()
+          if ($LASTEXITCODE -ne 0) { throw "install failed" }
+          # Shorten the safety net so the rollback case does not take ten minutes.
+          Stop-Service LibrePatchAgent
+          $cfgPath = "$env:ProgramData\LibrePatch\config.json"
+          $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+          $cfg | Add-Member -NotePropertyName update_rollback_minutes -NotePropertyValue 2 -Force
+          $cfg | ConvertTo-Json | Set-Content $cfgPath
+          Start-Service LibrePatchAgent
+          $failed = $false
+          .\deploycheck.exe -url http://localhost:18080 -totp-file totp.txt -scenario agent-update -release-dir rel
+          if ($LASTEXITCODE -ne 0) { $failed = $true }
+          Get-Content "$env:ProgramData\LibrePatch\logs\agent.log" -Tail 120 -ErrorAction SilentlyContinue
+          Get-Content "$env:ProgramData\LibrePatch\logs\rollback-check.log" -ErrorAction SilentlyContinue
+          schtasks /Query /TN "\LibrePatch\rollback-check" 2>&1 | Out-Host
+          .\librepatch-agent.exe uninstall
+          Stop-Process -Id $server.Id
+          if ($failed) { Get-Content server.err, server.out -Tail 60; throw "agent-update scenario failed" }

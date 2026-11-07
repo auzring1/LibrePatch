@@ -1,0 +1,38 @@
+/* Small building blocks shared by the software, groups, catalog, package and policy pages. Semantic tokens only. */
+
+/* A button that looks like the table's primary link (opens a drawer or a dialog instead of navigating). */
+.lp-linkbtn { appearance: none; background: none; border: 0; padding: 0; margin: 0; font: inherit; color: var(--lp-text); font-weight: var(--lp-weight-semibold); text-align: left; cursor: pointer; }
+.lp-linkbtn:hover { color: var(--lp-accent-text); text-decoration: underline; }
+.lp-linkbtn:focus-visible { outline: 2px solid var(--lp-focus); outline-offset: 2px; border-radius: var(--lp-radius-sm); }
+
+/* A page whose list is searched on the server: the table's own client-side search box is replaced by the server one. */
+.lp-serversearch .lp-dt__searchbox:not(.lp-serversearch__box) { display: none; }
+.lp-serversearch__box { min-width: 260px; }
+
+/* Label/value pairs. */
+.lp-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--lp-space-4); margin: 0; }
+.lp-fields dt { color: var(--lp-text-muted); font-size: var(--lp-text-xs); font-weight: var(--lp-weight-medium); }
+.lp-fields dd { margin: 2px 0 0; word-break: break-word; }
+
+/* Vertical rhythm and section headings inside drawers, dialogs and cards. */
+.lp-subhead { margin: 0; font-size: var(--lp-text-md); font-weight: var(--lp-weight-semibold); }
+.lp-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lp-space-2); }
+.lp-hint { margin: 0; color: var(--lp-text-muted); font-size: var(--lp-text-sm); }
+.lp-block { display: flex; flex-direction: column; gap: var(--lp-space-3); }
+
+/* A compact table for short lists inside drawers and cards. */
+.lp-mini { width: 100%; border-collapse: collapse; font-size: var(--lp-text-sm); }
+.lp-mini th { text-align: left; padding: var(--lp-space-2) var(--lp-space-3); color: var(--lp-text-muted); font-weight: var(--lp-weight-semibold); font-size: var(--lp-text-xs); border-bottom: 1px solid var(--lp-border-strong); }
+.lp-mini td { padding: var(--lp-space-2) var(--lp-space-3); border-bottom: 1px solid var(--lp-border); }
+.lp-mini tr:last-child td { border-bottom: 0; }
+.lp-mini [data-align="right"] { text-align: right; }
+.lp-mini__scroll { overflow-x: auto; }
+
+/* The filter-rule editor. */
+.lp-filter { display: flex; flex-direction: column; gap: var(--lp-space-3); padding: var(--lp-space-3); border: 1px solid var(--lp-border); border-radius: var(--lp-radius-md); background: var(--lp-surface-sunken); }
+.lp-filter--root { background: var(--lp-surface); border-radius: var(--lp-radius-lg); box-shadow: var(--lp-shadow-1); }
+.lp-filter__row { display: flex; align-items: flex-start; gap: var(--lp-space-2); }
+.lp-filter__body { flex: 1; min-width: 0; }
+.lp-filter__cond { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--lp-space-2); }
+.lp-filter__label { padding-top: 6px; font-size: var(--lp-text-sm); font-weight: var(--lp-weight-medium); }
+.lp-filter__cond + .lp-filter__cond { margin-top: var(--lp-space-2); }

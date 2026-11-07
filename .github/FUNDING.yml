@@ -1,0 +1,7 @@
+# Shows a "Sponsor" button on the repository.
+github: [auzring1]
+# Other platforms can be added here, for example:
+# ko_fi: your-ko-fi-name
+# liberapay: your-liberapay-name
+# buy_me_a_coffee: your-name
+# custom: ["https://example.org/donate"]

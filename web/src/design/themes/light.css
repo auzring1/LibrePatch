@@ -1,0 +1,50 @@
+/* Theme "Light" (light). One file is one theme: add a file like this one and it appears in the picker.
+   Every pair below is checked against WCAG AA by src/design/themes.test.ts. */
+:root[data-theme="light"] {
+  --lp-theme-name: "Light";
+  --lp-scheme: light;
+  --lp-theme-order: 10;
+
+  /* Surfaces */
+  --lp-bg: #f3f5f8;
+  --lp-surface: #ffffff;
+  --lp-surface-raised: #ffffff;
+  --lp-surface-sunken: #eceff4;
+  --lp-surface-hover: #f0f3f7;
+  --lp-surface-selected: #e3eefb;
+
+  /* Text */
+  --lp-text: #141a22;
+  --lp-text-muted: #465162;
+
+  /* Borders and focus */
+  --lp-border: #dce1e8;
+  --lp-border-strong: #6f7a8a;
+  --lp-focus: #0b57d0;
+
+  /* Accent (defaults; the branding accent is layered on top at runtime, see accent.ts) */
+  --lp-accent: #1971c2;
+  --lp-on-accent: #ffffff;
+  --lp-accent-text: #14589b;
+  --lp-accent-subtle: #e3eefb;
+  --lp-accent-subtle-text: #14589b;
+  --lp-accent-border: #9bc0e8;
+
+  /* Fill text and shadow */
+  --lp-on-solid: #ffffff;
+  --lp-shadow-rgb: 16 24 40;
+
+  /* Status and severity: fg = text/icon, bg = pill tint, border, solid = fill for bars and dots */
+  --lp-success-fg: #116329; --lp-success-bg: #e2f4e7; --lp-success-border: #9ad2aa; --lp-success-solid: #1e7a34;
+  --lp-warning-fg: #7a4600; --lp-warning-bg: #fff0d1; --lp-warning-border: #efc16a; --lp-warning-solid: #9a5700;
+  --lp-danger-fg: #a31d24; --lp-danger-bg: #fde6e7; --lp-danger-border: #f1a3a7; --lp-danger-solid: #c92a2a;
+  --lp-info-fg: #0d5aa7; --lp-info-bg: #e3f0fc; --lp-info-border: #9bc7ee; --lp-info-solid: #1c6ec0;
+  --lp-neutral-fg: #364152; --lp-neutral-bg: #e8ecf1; --lp-neutral-border: #bfc7d2; --lp-neutral-solid: #5b6676;
+  --lp-critical-fg: #8f1017; --lp-critical-bg: #fbe0e2; --lp-critical-border: #ee9aa0; --lp-critical-solid: #b3141c;
+  --lp-important-fg: #8a3900; --lp-important-bg: #ffe8d4; --lp-important-border: #f0b184; --lp-important-solid: #b34700;
+  --lp-moderate-fg: #665000; --lp-moderate-bg: #fdf3c4; --lp-moderate-border: #e3cd5c; --lp-moderate-solid: #7d6200;
+  --lp-low-fg: #1f4f8f; --lp-low-bg: #e4edf9; --lp-low-border: #a9c3e6; --lp-low-solid: #2f65a8;
+
+  /* Chart series */
+  --lp-chart-1: #1c6ec0; --lp-chart-2: #c2410c; --lp-chart-3: #2b8a3e; --lp-chart-4: #7048c8; --lp-chart-5: #0b7285; --lp-chart-6: #a1177a;
+}

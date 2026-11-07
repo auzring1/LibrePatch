@@ -1,0 +1,5 @@
+# Vendor release public keys (Ed25519, 64 lowercase hex characters, one per line) compiled into every
+# official build of the agent and the server (docs/DECISIONS.md D68, D80; docs/RUNBOOK.md, release manager).
+# PUBLIC keys only. The list is empty until the owner completes the key ceremony (open decision O7);
+# an official build refuses to run with an empty list. Add the new key BEFORE retiring the old one
+# (rotation = a release that trusts both).

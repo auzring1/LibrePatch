@@ -1,0 +1,152 @@
+name: ci
+on:
+  push:
+    branches: [main, "phase-*"]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.27.3"
+  NODE_VERSION: "22"
+  GOTOOLCHAIN: local
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "${{ env.GO_VERSION }}" }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: npm, cache-dependency-path: web/package-lock.json }
+      - name: Install tools
+        run: make tools && echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: npm ci
+        run: cd web && npm ci --ignore-scripts --no-audit --no-fund # the lint job only type-checks; no package needs its install script for that
+      - name: Third-party actions are pinned to full commit SHAs
+        run: scripts/check-actions-pinned.sh
+      - name: Release scripts parse (bash -n)
+        run: for f in scripts/*.sh; do bash -n "$f"; done
+      - name: Generated code is up to date
+        run: make check-generated
+      - name: buf lint
+        run: buf lint
+      - name: gofmt
+        run: test -z "$(gofmt -l $(git ls-files '*.go' | grep -v '^gen/'))"
+      - name: vet, staticcheck, ineffassign, gosec, semgrep, typecheck
+        run: make lint
+      - name: govulncheck + npm audit
+        run: make vuln
+      - name: License allow-list
+        run: make licenses
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The checks that used to run one after the other in a single job now run side by side, so the slowest of them sets the
+  # time instead of their sum. The job called "test" at the end gathers them: it is the one name to require in branch protection.
+  go-tests:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_PASSWORD: ci }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      LIBREPATCH_TEST_PG_URL: postgres://postgres:ci@127.0.0.1:5432/postgres?sslmode=disable
+      LIBREPATCH_REQUIRE_DB: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "${{ env.GO_VERSION }}" }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: npm, cache-dependency-path: web/package-lock.json }
+      - name: Build web console
+        run: make web
+      - name: Go tests (unit, database, in-process end-to-end), race detector
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+
+  fuzz:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "${{ env.GO_VERSION }}" }
+      - name: Fuzz the input parsers (short)
+        run: make fuzz
+
+  browser:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_PASSWORD: ci }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      LIBREPATCH_TEST_PG_URL: postgres://postgres:ci@127.0.0.1:5432/postgres?sslmode=disable
+      LIBREPATCH_REQUIRE_DB: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "${{ env.GO_VERSION }}" }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: npm, cache-dependency-path: web/package-lock.json }
+      - name: Build web console
+        run: make web
+      - name: Web unit tests
+        run: cd web && npm test
+      - name: Agent size budget
+        run: make agent
+      - name: Browser end-to-end test
+        run: |
+          cd web && npx --no-install playwright install --with-deps chromium && cd ..
+          ./scripts/gui-e2e.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with: { name: playwright-results, path: web/test-results, retention-days: 7 }
+
+  test:
+    needs: [go-tests, fuzz, browser]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: All the test jobs passed
+        run: |
+          echo "go-tests: ${{ needs.go-tests.result }}, fuzz: ${{ needs.fuzz.result }}, browser: ${{ needs.browser.result }}"
+          test "${{ needs.go-tests.result }}" = success && test "${{ needs.fuzz.result }}" = success && test "${{ needs.browser.result }}" = success
+
+  compose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "${{ env.GO_VERSION }}" }
+      - name: Build image and run the docker-compose integration test
+        run: make test-compose
+      - name: SBOM (image)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: librepatch/server:dev
+          format: spdx-json
+          output-file: sbom-server-image.spdx.json
+      - name: SBOM (source)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom-source.spdx.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: sbom, path: "sbom-*.spdx.json", retention-days: 30 }

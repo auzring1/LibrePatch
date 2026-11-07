@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" width="1200" height="440" role="img" aria-labelledby="t d">
+  <title id="t">How LibrePatch works</title>
+  <desc id="d">Windows PCs running the LibrePatch agent connect over mutual TLS to the LibrePatch server on your own Docker host, which keeps its data in PostgreSQL. Administrators use the web console over HTTPS with two-factor sign-in.</desc>
+  <defs>
+    <radialGradient id="glow" cx="18%" cy="0%" r="75%">
+      <stop offset="0" stop-color="#14A394" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#14A394" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="srv" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#14403B"/>
+      <stop offset="1" stop-color="#0F2B28"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#5EEAD4"/>
+    </marker>
+    <style>
+      text { font-family: "Inter", "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif; }
+      .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 1.6px; fill: #7FA6A1; }
+      .h { font-size: 17px; font-weight: 700; fill: #F4F7F6; }
+      .s { font-size: 12.5px; fill: #8FB5B0; }
+      .chip { font-size: 12.5px; font-weight: 600; fill: #D7F5EF; }
+      .lbl { font-size: 12px; font-weight: 700; fill: #5EEAD4; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="440" rx="20" fill="#0B1F1D"/>
+  <rect width="1200" height="440" rx="20" fill="url(#glow)"/>
+  <rect x="0.5" y="0.5" width="1199" height="439" rx="19.5" fill="none" stroke="#1B4A45"/>
+
+  <!-- Windows PCs -->
+  <text x="40" y="50" class="eyebrow">YOUR WINDOWS PCS</text>
+  <g>
+    <rect x="40" y="70" width="260" height="84" rx="14" fill="#10302D" stroke="#1E4D48"/>
+    <rect x="60" y="92" width="40" height="28" rx="4" fill="none" stroke="#5EEAD4" stroke-width="2"/>
+    <path d="M72 128 H88 M80 120 V128" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round"/>
+    <text x="116" y="106" class="h">Windows 11</text>
+    <text x="116" y="127" class="s">LibrePatch agent</text>
+
+    <rect x="40" y="168" width="260" height="84" rx="14" fill="#10302D" stroke="#1E4D48"/>
+    <rect x="60" y="190" width="40" height="28" rx="4" fill="none" stroke="#5EEAD4" stroke-width="2"/>
+    <path d="M72 226 H88 M80 218 V226" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round"/>
+    <text x="116" y="204" class="h">Windows 10</text>
+    <text x="116" y="225" class="s">Small Go service</text>
+
+    <rect x="40" y="266" width="260" height="84" rx="14" fill="#10302D" stroke="#1E4D48"/>
+    <rect x="60" y="288" width="40" height="28" rx="4" fill="none" stroke="#5EEAD4" stroke-width="2"/>
+    <path d="M72 324 H88 M80 316 V324" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round"/>
+    <text x="116" y="302" class="h">Windows Server</text>
+    <text x="116" y="323" class="s">Inventory and jobs</text>
+  </g>
+
+  <!-- PCs <-> server -->
+  <g stroke="#5EEAD4" stroke-width="2" fill="none" marker-start="url(#arrow)" marker-end="url(#arrow)">
+    <path d="M304 112 H436"/>
+    <path d="M304 210 H436"/>
+    <path d="M304 308 H436"/>
+  </g>
+  <rect x="318" y="193" width="106" height="34" rx="17" fill="#0B1F1D" stroke="#1E4D48"/>
+  <text x="371" y="214" class="lbl" text-anchor="middle">mutual TLS</text>
+  <rect x="318" y="291" width="106" height="34" rx="17" fill="#0B1F1D" stroke="#1E4D48"/>
+  <text x="371" y="312" class="lbl" text-anchor="middle">signed jobs</text>
+
+  <!-- Server -->
+  <text x="440" y="50" class="eyebrow">YOUR SERVER, ONE DOCKER HOST</text>
+  <rect x="440" y="70" width="320" height="280" rx="18" fill="url(#srv)" stroke="#14A394" stroke-width="1.5"/>
+  <g transform="translate(462 88) scale(0.36)">
+    <path d="M60 8 L106 24 V58 C106 86 86 104 60 114 C34 104 14 86 14 58 V24 Z" fill="#14A394"/>
+    <g transform="rotate(-8 60 62)">
+      <rect x="36" y="38" width="48" height="48" rx="9" fill="#F5A524"/>
+      <rect x="41.5" y="43.5" width="37" height="37" rx="5.5" fill="none" stroke="#7A4B00" stroke-width="1.8" stroke-dasharray="3.4 3.4" stroke-linecap="round"/>
+      <path d="M60 73 V53 M51 62 L60 53 L69 62" fill="none" stroke="#0B3B37" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </g>
+  <text x="516" y="104" class="h">LibrePatch server</text>
+  <text x="516" y="124" class="s">Go, with the console built in</text>
+
+  <g>
+    <rect x="462" y="150" width="128" height="32" rx="16" fill="#0B1F1D" stroke="#1E4D48"/>
+    <text x="526" y="171" class="chip" text-anchor="middle">Agent gateway</text>
+    <rect x="602" y="150" width="140" height="32" rx="16" fill="#0B1F1D" stroke="#1E4D48"/>
+    <text x="672" y="171" class="chip" text-anchor="middle">REST API + SSE</text>
+    <rect x="462" y="192" width="100" height="32" rx="16" fill="#0B1F1D" stroke="#1E4D48"/>
+    <text x="512" y="213" class="chip" text-anchor="middle">Audit log</text>
+    <rect x="574" y="192" width="118" height="32" rx="16" fill="#0B1F1D" stroke="#1E4D48"/>
+    <text x="633" y="213" class="chip" text-anchor="middle">Job signing</text>
+    <rect x="462" y="234" width="144" height="32" rx="16" fill="#0B1F1D" stroke="#1E4D48"/>
+    <text x="534" y="255" class="chip" text-anchor="middle">winget index</text>
+    <rect x="618" y="234" width="124" height="32" rx="16" fill="#0B1F1D" stroke="#1E4D48"/>
+    <text x="680" y="255" class="chip" text-anchor="middle">Vulnerabilities</text>
+  </g>
+
+  <!-- PostgreSQL -->
+  <path d="M600 266 V284" stroke="#5EEAD4" stroke-width="2" stroke-dasharray="3 4"/>
+  <g>
+    <rect x="500" y="284" width="200" height="50" rx="12" fill="#0B1F1D" stroke="#1E4D48"/>
+    <ellipse cx="528" cy="298" rx="12" ry="5" fill="none" stroke="#F5A524" stroke-width="2"/>
+    <path d="M516 298 V320 C516 324 522 327 528 327 C534 327 540 324 540 320 V298" fill="none" stroke="#F5A524" stroke-width="2"/>
+    <text x="554" y="307" class="h" style="font-size:15px">PostgreSQL</text>
+    <text x="554" y="324" class="s" style="font-size:11.5px">inventory, jobs, audit</text>
+  </g>
+
+  <!-- server <-> console -->
+  <g stroke="#5EEAD4" stroke-width="2" fill="none" marker-start="url(#arrow)" marker-end="url(#arrow)">
+    <path d="M764 210 H896"/>
+  </g>
+  <rect x="778" y="193" width="104" height="34" rx="17" fill="#0B1F1D" stroke="#1E4D48"/>
+  <text x="830" y="214" class="lbl" text-anchor="middle">HTTPS + MFA</text>
+
+  <!-- Console -->
+  <text x="900" y="50" class="eyebrow">YOU, IN A BROWSER</text>
+  <rect x="900" y="70" width="260" height="280" rx="18" fill="#10302D" stroke="#1E4D48"/>
+  <rect x="900" y="70" width="260" height="30" rx="18" fill="#143A36"/>
+  <rect x="900" y="86" width="260" height="14" fill="#143A36"/>
+  <circle cx="920" cy="85" r="4" fill="#F5A524"/><circle cx="936" cy="85" r="4" fill="#5EEAD4"/><circle cx="952" cy="85" r="4" fill="#3C6D67"/>
+  <rect x="918" y="116" width="62" height="44" rx="8" fill="#0B1F1D" stroke="#1E4D48"/>
+  <rect x="990" y="116" width="62" height="44" rx="8" fill="#0B1F1D" stroke="#1E4D48"/>
+  <rect x="1062" y="116" width="80" height="44" rx="8" fill="#0B1F1D" stroke="#1E4D48"/>
+  <rect x="926" y="126" width="22" height="6" rx="3" fill="#5EEAD4"/><rect x="926" y="140" width="34" height="10" rx="3" fill="#F4F7F6" opacity="0.85"/>
+  <rect x="998" y="126" width="22" height="6" rx="3" fill="#5EEAD4"/><rect x="998" y="140" width="26" height="10" rx="3" fill="#F4F7F6" opacity="0.85"/>
+  <rect x="1070" y="126" width="22" height="6" rx="3" fill="#F5A524"/><rect x="1070" y="140" width="40" height="10" rx="3" fill="#F4F7F6" opacity="0.85"/>
+  <g fill="#14A394">
+    <rect x="922" y="262" width="22" height="50" rx="3"/><rect x="954" y="240" width="22" height="72" rx="3"/>
+    <rect x="986" y="224" width="22" height="88" rx="3"/><rect x="1018" y="206" width="22" height="106" rx="3"/>
+  </g>
+  <rect x="1050" y="236" width="22" height="76" rx="3" fill="#F5A524"/>
+  <g stroke="#1E4D48" stroke-width="2" stroke-linecap="round">
+    <path d="M922 180 H1138"/><path d="M922 194 H1100"/>
+  </g>
+  <text x="1030" y="334" class="s" text-anchor="middle" style="font-size:11.5px">Devices, updates, policies, reports</text>
+
+  <!-- footer -->
+  <text x="600" y="402" text-anchor="middle" style="font-family:'Inter','Segoe UI',system-ui,Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;fill:#5EEAD4">Everything stays on your network. No cloud service, no account, no telemetry.</text>
+</svg>

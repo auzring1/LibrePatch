@@ -1,0 +1,53 @@
+# Project rules enforcing docs/THREAT-MODEL.md §8. Run: semgrep --config .semgrep.yml --config p/golang --error
+rules:
+  - id: no-shell-execution
+    languages: [go]
+    severity: ERROR
+    message: >-
+      Never run cmd.exe/PowerShell/sh from LibrePatch code. Build argument arrays and
+      execute the target binary directly (docs/THREAT-MODEL.md T-LPE-4).
+    pattern-either:
+      - pattern: exec.Command("cmd", ...)
+      - pattern: exec.Command("cmd.exe", ...)
+      - pattern: exec.Command("powershell", ...)
+      - pattern: exec.Command("powershell.exe", ...)
+      - pattern: exec.Command("pwsh", ...)
+      - pattern: exec.Command("sh", ...)
+      - pattern: exec.Command("bash", ...)
+      - pattern: exec.CommandContext($CTX, "cmd", ...)
+      - pattern: exec.CommandContext($CTX, "cmd.exe", ...)
+      - pattern: exec.CommandContext($CTX, "powershell", ...)
+      - pattern: exec.CommandContext($CTX, "powershell.exe", ...)
+    paths:
+      exclude: ["test/", "*_test.go"]
+
+  - id: no-sql-string-building
+    languages: [go]
+    severity: ERROR
+    message: >-
+      SQL must be a constant (sqlc queries in db/queries or literal strings with
+      $n parameters). Never build SQL with fmt or concatenation (docs/THREAT-MODEL.md T-WEB-5).
+    patterns:
+      - pattern-either:
+          - pattern: $DB.Exec($CTX, fmt.Sprintf(...), ...)
+          - pattern: $DB.Query($CTX, fmt.Sprintf(...), ...)
+          - pattern: $DB.QueryRow($CTX, fmt.Sprintf(...), ...)
+          - pattern: $DB.Exec($CTX, $A + $B, ...)
+          - pattern: $DB.Query($CTX, $A + $B, ...)
+          - pattern: $DB.QueryRow($CTX, $A + $B, ...)
+    paths:
+      exclude: ["internal/testutil/", "test/", "*_test.go"]
+
+  - id: no-dangerously-set-inner-html
+    languages: [typescript]
+    severity: ERROR
+    message: Do not use dangerouslySetInnerHTML in the console (docs/THREAT-MODEL.md T-WEB-4).
+    pattern: <$X dangerouslySetInnerHTML={...} />
+
+  - id: no-insecure-tls
+    languages: [go]
+    severity: ERROR
+    message: InsecureSkipVerify must not be used except in the pinned-root verifier (internal/agent/core/tls.go).
+    pattern: "tls.Config{..., InsecureSkipVerify: true, ...}"
+    paths:
+      exclude: ["internal/agent/core/tls.go"]

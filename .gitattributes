@@ -1,0 +1,8 @@
+# Scripts run inside Linux containers or bash; never convert to CRLF on Windows checkouts.
+*.sh            text eol=lf
+deploy/**       text eol=lf
+Makefile        text eol=lf
+*.go            text eol=lf
+# Workflow files are read by tests that run on Windows runners (installer/windows/package_test.go).
+*.yml           text eol=lf
+*.yaml          text eol=lf

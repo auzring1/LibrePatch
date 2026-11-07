@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package librepatch.agent.v1;
+
+option go_package = "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1;agentv1";
+
+// Enrollment is served on the gateway listener WITHOUT a client certificate.
+// See docs/PROTOCOL.md §4.1.
+service EnrollmentService {
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+  // Called only while an enrollment is pending admin approval.
+  rpc EnrollStatus(EnrollStatusRequest) returns (EnrollStatusResponse);
+}
+
+message EnrollRequest {
+  // Secret part of the enrollment token (never the whole bundle).
+  string token = 1;
+  // PKCS#10 CSR (DER) signed by the device's new ECDSA P-256 key.
+  bytes csr_der = 2;
+  string hostname = 3;
+  string smbios_uuid = 4;
+  string serial = 5;
+  string os_build = 6;
+  string arch = 7;
+  string agent_version = 8;
+}
+
+enum EnrollStatus {
+  ENROLL_STATUS_UNSPECIFIED = 0;
+  ENROLL_STATUS_APPROVED = 1;
+  ENROLL_STATUS_PENDING = 2;
+  ENROLL_STATUS_REJECTED = 3;
+}
+
+message EnrollResponse {
+  EnrollResult result = 1;
+}
+
+message EnrollStatusResponse {
+  EnrollResult result = 1;
+}
+
+// EnrollResult is shared by Enroll and EnrollStatus.
+message EnrollResult {
+  EnrollStatus status = 1;
+  string device_id = 2;
+  string org_id = 3;
+  // Opaque secret used with EnrollStatus while pending.
+  string ticket = 4;
+  bytes client_cert_der = 5;
+  bytes issuing_ca_der = 6;
+  bytes root_ca_der = 7;
+  repeated bytes job_signing_certs_der = 8;
+  uint32 retry_after_s = 9;
+}
+
+message EnrollStatusRequest {
+  string ticket = 1;
+}

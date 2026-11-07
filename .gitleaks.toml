@@ -1,0 +1,29 @@
+# Secret scanning config (CI: gitleaks-action). Keep allow-list entries exact
+# and justified; never allow-list whole files or paths.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secrets"
+regexes = [
+  # Throwaway admin password used only by tests/demos against ephemeral databases.
+  '''Granite-Lantern-Pickle-42''',
+  # A placeholder in internal/server/backup/cli_test.go: an "age secret key" made only of the letter Q, used to check that
+  # a malformed recipient is refused without being echoed back.
+  '''AGE-SECRET-KEY-1Q+''',
+  # The character set of generated temporary passwords (internal/server/api/admin.go), not a credential.
+  '''abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789''',
+  # Prose in older versions of docs/PLAN.md ("Ed25519-signed license documents").
+  '''Ed25519-signed''',
+  # A made-up enrollment string in installer/windows/package_test.go: "LP1." plus the base64 of {"token":"x"}. It enrolls
+  # nothing; the test only checks which MSI properties are accepted.
+  '''LP1\.eyJ0b2tlbiI6IngifQ-_x''',
+  # A made-up master key in web/src/pages/masterKeyFile.test.ts (a1b2c3d4 e5f6a7b8 ... in groups). It opens nothing; the test
+  # only checks the text of the download file.
+  '''a1b2c3d4-e5f6a7b8-c9d0e1f2-a3b4c5d6-e7f8a9b0-c1d2e3f4-a5b6c7d8-e9f0a1b2''',
+  # Made-up MSIX/AppX package full names in internal/server/deploy/msix_test.go ("Name_version_arch__publisherid", the form
+  # Windows prints for an installed package). Package names, not credentials; the second is what an earlier commit of that
+  # test used, with Microsoft's real publisher id, which the scanner also takes for a key.
+  '''Contoso\.Other_1\.0\.0\.0_x64__contosopub001''',
+  '''Contoso\.Other_1\.0\.0\.0_x64__8wekyb3d8bbwe''',
+]

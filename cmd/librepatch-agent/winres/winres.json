@@ -1,0 +1,21 @@
+{
+  "RT_VERSION": {
+    "#1": {
+      "0000": {
+        "fixed": {"file_version": "0.0.0.0", "product_version": "0.0.0.0"},
+        "info": {
+          "0409": {
+            "CompanyName": "The LibrePatch contributors",
+            "FileDescription": "LibrePatch Agent",
+            "InternalName": "librepatch-agent",
+            "LegalCopyright": "Copyright (c) The LibrePatch contributors",
+            "OriginalFilename": "librepatch-agent.exe",
+            "ProductName": "LibrePatch",
+            "ProductVersion": "0.0.0-dev",
+            "FileVersion": "0.0.0.0"
+          }
+        }
+      }
+    }
+  }
+}

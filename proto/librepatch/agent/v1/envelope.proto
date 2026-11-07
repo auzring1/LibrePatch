@@ -1,0 +1,388 @@
+syntax = "proto3";
+
+package librepatch.agent.v1;
+
+option go_package = "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1;agentv1";
+
+// SignedEnvelope carries a job. The signature covers exactly `payload`
+// (a serialized JobEnvelope) prefixed with the domain separator
+// "librepatch/job/v1\x00". Agents verify before parsing. See docs/PROTOCOL.md §5.
+message SignedEnvelope {
+  bytes payload = 1;
+  bytes signature = 2;
+  bytes key_id = 3;
+}
+
+enum JobType {
+  JOB_TYPE_UNSPECIFIED = 0;
+  JOB_TYPE_INVENTORY_FULL = 1;
+  JOB_TYPE_SOFTWARE_INSTALL = 2;
+  JOB_TYPE_SOFTWARE_UNINSTALL = 3;
+  JOB_TYPE_SOFTWARE_UPDATE = 4;
+  JOB_TYPE_WU_SCAN = 5;
+  JOB_TYPE_WU_INSTALL = 6;
+  JOB_TYPE_WU_HIDE = 7;
+  JOB_TYPE_REBOOT = 8;
+  JOB_TYPE_AGENT_UPDATE = 9;
+  JOB_TYPE_CANCEL = 10;
+  JOB_TYPE_CONFIG = 11;
+  JOB_TYPE_WAKE = 12;     // send Wake-on-LAN packets for other devices on this one's network (D125)
+  JOB_TYPE_RUN_SCRIPT = 14;  // run an administrator's script as SYSTEM; only on an agent whose owner switched scripts on (D127)
+  JOB_TYPE_INSPECT = 13;  // read-only view: running programs, services or recent event log entries (D125)
+  JOB_TYPE_PROFILE_DELETE = 15;  // remove one user's Windows profile the proper way (D157)
+  JOB_TYPE_AGENT_UNINSTALL = 16; // the agent removes itself from the computer; sent when a device is revoked with "uninstall the agent" (D158)
+}
+
+message JobEnvelope {
+  uint32 version = 1;
+  string job_id = 2;
+  string org_id = 3;
+  string device_id = 4;
+  string target_user_sid = 5;
+  int64 issued_at = 6;
+  int64 not_before = 7;
+  int64 expires_at = 8;
+  bytes nonce = 9;
+  uint32 attempt = 10;
+  string deployment_id = 11;
+  JobType type = 13;
+  // Optional: the job must not start outside this window (evaluated on the device).
+  MaintenanceWindow window = 12;
+  oneof body {
+    InstallBody install = 20;
+    UninstallBody uninstall = 21;
+    WuScanBody wu_scan = 22;
+    WuInstallBody wu_install = 23;
+    WuHideBody wu_hide = 24;
+    RebootBody reboot = 25;
+    InventoryBody inventory = 26;
+    AgentUpdateBody agent_update = 27;
+    CancelBody cancel = 28;
+    WakeBody wake = 29;
+    InspectBody inspect = 30;
+    RunScriptBody run_script = 31;
+    ProfileDeleteBody profile_delete = 32;
+    AgentUninstallBody agent_uninstall = 33;
+  }
+}
+
+// MaintenanceWindow is evaluated in device-local time unless tz is set.
+message MaintenanceWindow {
+  repeated uint32 days = 1;      // 0 = Sunday .. 6 = Saturday; empty = every day
+  uint32 start_minute = 2;       // minutes after local midnight, 0..1439
+  uint32 duration_minutes = 3;   // 1..1440
+  string tz = 4;                 // IANA name; empty = device-local
+}
+
+enum InstallScope {
+  INSTALL_SCOPE_UNSPECIFIED = 0;
+  INSTALL_SCOPE_MACHINE = 1;
+  INSTALL_SCOPE_USER = 2;
+}
+
+enum InstallerType {
+  INSTALLER_TYPE_UNSPECIFIED = 0;
+  INSTALLER_TYPE_MSI = 1;
+  INSTALLER_TYPE_MSIX = 2;
+  INSTALLER_TYPE_INNO = 3;
+  INSTALLER_TYPE_NSIS = 4;
+  INSTALLER_TYPE_BURN = 5;
+  INSTALLER_TYPE_EXE = 6;
+  INSTALLER_TYPE_PORTABLE = 7;
+  INSTALLER_TYPE_ZIP = 8;
+}
+
+enum JobOutcome {
+  JOB_OUTCOME_UNSPECIFIED = 0;
+  JOB_OUTCOME_SUCCESS = 1;
+  JOB_OUTCOME_REBOOT_REQUIRED = 2;
+  JOB_OUTCOME_RETRYABLE = 3;
+  JOB_OUTCOME_FAILED = 4;
+}
+
+enum ContentSourceKind {
+  CONTENT_SOURCE_KIND_UNSPECIFIED = 0;
+  CONTENT_SOURCE_KIND_SERVER = 1;   // gateway FetchContent, authorized by this job
+  CONTENT_SOURCE_KIND_VENDOR = 2;   // HTTPS URL from the catalog
+  // Another agent on the same network that has the file in its cache (D126): "https://<private IPv4>:<port>". Peers
+  // authenticate each other with their device certificates; the SHA-256 still decides.
+  CONTENT_SOURCE_KIND_PEER = 3;
+}
+
+// ContentSource is untrusted: bytes must match Installer.sha256 whatever the origin.
+message ContentSource {
+  ContentSourceKind kind = 1;
+  string url = 2;  // vendor sources only
+}
+
+message SignerPin {
+  string subject = 1;            // expected certificate subject (CN/O), exact match
+  bytes thumbprint_sha256 = 2;   // optional pin of the leaf certificate
+}
+
+message Installer {
+  InstallerType type = 1;
+  InstallerType nested_type = 2;  // for ZIP: type of the installer inside
+  string nested_path = 3;         // for ZIP: relative path inside the archive
+  bytes sha256 = 4;               // 32 bytes, mandatory
+  uint64 size = 5;                // mandatory upper bound for the download
+  string file_name = 6;           // base name only
+  SignerPin signer_pin = 7;
+  repeated ContentSource sources = 8;
+  repeated string args = 9;       // pre-built argument tokens (validated by the agent again)
+  repeated int32 success_codes = 10;
+  map<int32, JobOutcome> code_map = 11;
+  string product_code = 12;       // MSI {GUID}
+}
+
+enum DetectionKind {
+  DETECTION_KIND_UNSPECIFIED = 0;
+  DETECTION_KIND_MSI_PRODUCT = 1;  // key = {GUID}
+  DETECTION_KIND_REGISTRY = 2;     // key = Uninstall subkey (hive chosen by scope); value_name optional
+  DETECTION_KIND_FILE = 3;         // key = path (allow-listed environment variables only)
+  DETECTION_KIND_APPX = 4;         // key = package family or name prefix
+}
+
+enum VersionCmp {
+  VERSION_CMP_UNSPECIFIED = 0;     // presence only
+  VERSION_CMP_EQ = 1;
+  VERSION_CMP_GE = 2;
+}
+
+message Detection {
+  DetectionKind kind = 1;
+  string key = 2;
+  string value_name = 3;
+  string version = 4;
+  VersionCmp cmp = 5;
+}
+
+message Preconditions {
+  uint32 min_free_mb = 1;
+  uint32 os_build_min = 2;
+}
+
+enum RebootAllow {
+  REBOOT_ALLOW_UNSPECIFIED = 0;
+  REBOOT_ALLOW_NEVER = 1;       // report "reboot required" only
+  // Restart when a reboot is required, at the first moment outside the active hours (with a short notice).
+  REBOOT_ALLOW_OUTSIDE_ACTIVE_HOURS = 2;
+  // Restart at deadline_at at the latest; signed-in users get notify_minutes of countdown.
+  REBOOT_ALLOW_DEADLINE = 3;
+  // Restart now, giving signed-in users notify_minutes of countdown (RebootBody only).
+  REBOOT_ALLOW_NOW = 4;
+}
+
+// ActiveHours are device-local minutes after midnight when the user is likely working. A range
+// that wraps midnight (start > end) is allowed. Equal values mean "no active hours".
+message ActiveHours {
+  uint32 start_minute = 1;
+  uint32 end_minute = 2;
+}
+
+// RebootPolicy says what the agent may do when an installation leaves the machine needing a restart.
+message RebootPolicy {
+  RebootAllow allow = 1;
+  ActiveHours active_hours = 2;
+  int64 deadline_at = 3;           // unix seconds; REBOOT_ALLOW_DEADLINE
+  uint32 notify_minutes = 4;       // countdown shown to signed-in users, 1..1440
+}
+
+// WuService chooses which update service a scan or install talks to.
+enum WuService {
+  WU_SERVICE_UNSPECIFIED = 0;
+  WU_SERVICE_DEFAULT = 1;           // whatever the machine is configured for (WSUS if policy sets one)
+  WU_SERVICE_WINDOWS_UPDATE = 2;    // Windows Update on the internet
+  WU_SERVICE_MICROSOFT_UPDATE = 3;  // Microsoft Update (Office and other Microsoft products as well)
+}
+
+message WuScanBody {
+  WuService service = 1;
+  bool include_drivers = 2;
+  // one_off: an administrator's single check against an explicit source (for example the internet
+  // although WSUS is configured). The agent must not remember these options for its own daily scan.
+  bool one_off = 3;
+}
+
+message WuUpdateRef {
+  string update_id = 1;             // UUID of the update identity
+  int32 revision = 2;               // 0 = whatever revision the scan finds
+}
+
+// WuInstallBody installs exactly the listed updates (found by a fresh scan, never by title).
+message WuInstallBody {
+  WuService service = 1;
+  bool include_drivers = 2;
+  repeated WuUpdateRef updates = 3;  // 1..200
+  RebootPolicy reboot = 4;
+  uint32 timeout_s = 5;
+  uint32 max_retries = 6;
+  uint32 retry_backoff_s = 7;
+  bool one_off = 8;                  // as in WuScanBody: do not remember service and drivers
+}
+
+message WuHideBody {
+  WuService service = 1;
+  repeated WuUpdateRef updates = 2;
+  bool hide = 3;                     // false = unhide
+}
+
+message RebootBody {
+  RebootPolicy reboot = 1;
+  string reason = 2;                 // shown to signed-in users, plain text, bounded
+}
+
+// InUseAction says what an installation does when programs it replaces are open. Silent is the default: nothing
+// here changes how an installation runs unless an administrator chose one of the other values.
+enum InUseAction {
+  IN_USE_ACTION_UNSPECIFIED = 0;  // same as IGNORE
+  IN_USE_ACTION_IGNORE = 1;       // install silently regardless (the installer deals with it)
+  IN_USE_ACTION_SKIP = 2;         // do not prompt; try again later until the programs are closed
+  IN_USE_ACTION_ASK = 3;          // ask the signed-in user; Yes closes the programs, No/no answer = try again later
+  IN_USE_ACTION_CLOSE = 4;        // warn the signed-in user, then close the programs
+}
+
+// RestartPrompt says what happens after an installer reports that it needs a restart.
+enum RestartPrompt {
+  RESTART_PROMPT_UNSPECIFIED = 0;  // same as NONE
+  RESTART_PROMPT_NONE = 1;         // only report "restart required" (the administrator restarts it)
+  RESTART_PROMPT_ASK = 2;          // ask the signed-in user; Yes restarts after a short countdown, No/no answer leaves it
+  RESTART_PROMPT_COUNTDOWN = 3;    // restart after a countdown that signed-in users see
+}
+
+// InstallPrompts are the optional messages to the signed-in user. Absent or all-default = fully silent.
+message InstallPrompts {
+  InUseAction in_use = 1;
+  // Image names (for example "chrome.exe") of the programs the installation replaces. No paths. Only programs
+  // running in a signed-in user's session are asked about or closed.
+  repeated string processes = 2;
+  uint32 ask_timeout_s = 3;       // how long the question (ASK) or the warning (CLOSE) is shown, 30..3600; 0 = 300
+  uint32 defer_minutes = 4;       // SKIP and ASK: wait this long before looking again, 5..1440; 0 = 60
+  RestartPrompt restart = 5;
+  uint32 restart_notify_minutes = 6;  // length of the restart countdown, 1..1440; 0 = 5
+}
+
+// WakeTarget is one sleeping computer: the MAC address of a network card and the IPv4 address it last had.
+message WakeTarget {
+  string mac = 1;        // aa:bb:cc:dd:ee:ff
+  string last_ip = 2;    // IPv4; the agent only sends on an interface whose network contains it
+}
+
+// WakeBody asks an online agent to send Wake-on-LAN "magic packets" on its own network. The agent never sends to
+// anything but the broadcast address of one of its own interfaces.
+message WakeBody {
+  repeated WakeTarget targets = 1;   // 1..4
+}
+
+enum InspectKind {
+  INSPECT_KIND_UNSPECIFIED = 0;
+  INSPECT_KIND_PROCESSES = 1;
+  INSPECT_KIND_SERVICES = 2;
+  INSPECT_KIND_EVENTS = 3;
+}
+
+// InspectBody asks for a read-only view of the device. The answer is JSON in JobResult.data_json, size-capped.
+message InspectBody {
+  InspectKind kind = 1;
+  string log = 2;               // EVENTS: System | Application | Setup (never Security)
+  uint32 max_level = 3;         // EVENTS: 1 critical .. 5 verbose; 0 = 3 (warnings and worse)
+  uint32 since_minutes = 4;     // EVENTS: look back this far, 1..10080; 0 = 1440
+  uint32 max_events = 5;        // EVENTS: 1..200; 0 = 100
+}
+
+// ProfileDeleteBody asks the device to remove one user's profile with Windows' own profile deletion (registry entry, profile
+// folder and the user's hive, as Settings and "User Profiles" do it), not by deleting a folder (D157). Only the SID is acted on:
+// the folder is whatever Windows has recorded for that SID, never a path from the server. The agent refuses a profile that is in
+// use (signed in, or its hive loaded), a built-in account, and the account the computer signs in to automatically.
+message ProfileDeleteBody {
+  string sid = 1;        // the user's SID (S-1-5-21-... or S-1-12-1-...)
+  string username = 2;   // for the log only: DOMAIN\name as the console showed it
+}
+
+// AgentUninstallBody asks the agent to remove itself (service, device key, data and program files; the MSI product when it was
+// installed from the MSI). The agent reports the job as done first and starts the removal a few seconds later, so the answer
+// reaches the server before the agent is gone (D158). It is refused by an agent whose local policy ceiling leaves it out.
+message AgentUninstallBody {
+  string reason = 1;        // why the device is being revoked, for the log
+  string requested_by = 2;  // the administrator's user id, so the server can finish the revoke under their name
+}
+
+enum ScriptInterpreter {
+  SCRIPT_INTERPRETER_UNSPECIFIED = 0;
+  SCRIPT_INTERPRETER_POWERSHELL = 1;  // Windows PowerShell 5.1
+}
+
+// RunScriptBody is a script from the library, with its content: what runs is exactly what the administrator saw (and, when
+// a second person approved the run, what that person approved). The agent refuses it unless scripts are switched on
+// locally, and checks that sha256 is the hash of content.
+message RunScriptBody {
+  string name = 1;                    // informational
+  uint32 version = 2;                 // informational
+  ScriptInterpreter interpreter = 3;
+  string content = 4;                 // 1..65536 bytes of UTF-8 text
+  bytes sha256 = 5;                   // of content
+  uint32 timeout_s = 6;               // 10..3600; the script and everything it started are ended when it is over
+  string run_id = 7;                  // informational
+}
+
+message InstallBody {
+  string package_id = 1;          // catalog identifier, informational
+  string name = 2;
+  string version = 3;
+  InstallScope scope = 4;
+  Installer installer = 5;
+  repeated Detection detection = 6;   // pre-check (skip if satisfied) and post-check
+  Preconditions preconditions = 7;
+  uint32 timeout_s = 8;
+  uint32 max_retries = 9;
+  uint32 retry_backoff_s = 10;
+  RebootAllow reboot = 11;
+  bool allow_downgrade = 12;
+  bool update = 13;               // an upgrade of an existing install (job type SOFTWARE_UPDATE)
+  InstallPrompts prompts = 14;    // optional messages to the signed-in user (D124)
+}
+
+enum UninstallMethod {
+  UNINSTALL_METHOD_UNSPECIFIED = 0;
+  UNINSTALL_METHOD_AUTO = 1;      // product code, then quiet string, then uninstall string + known switches
+  UNINSTALL_METHOD_PRODUCT_CODE = 2;
+}
+
+// UninstallBody names an inventory row; the agent re-reads that row's
+// uninstall data from its own registry and never trusts command lines from the server.
+message UninstallBody {
+  string package_id = 1;
+  string name = 2;
+  InstallScope scope = 3;
+  string item_source = 4;         // reg64 | reg32 | hku | hku32 | msi
+  string item_key = 5;            // Uninstall subkey name or MSI product code
+  string product_code = 6;        // optional, validated
+  UninstallMethod method = 7;
+  repeated string extra_args = 8; // validated tokens appended for EXE uninstallers
+  uint32 timeout_s = 9;
+  uint32 max_retries = 10;
+  uint32 retry_backoff_s = 11;
+  // remove_older_than makes this a cleanup of an outdated copy (set by "update" deployments):
+  // the agent removes the row only if its DisplayVersion is older than this version, and
+  // treats a row that is already gone as success. Empty = unconditional uninstall.
+  string remove_older_than = 12;
+}
+
+// AgentUpdateBody carries a vendor-signed release manifest. The customer server signs the job
+// (the usual envelope), but the agent trusts the release only because the manifest verifies
+// under a vendor release key compiled into the agent (docs/PROTOCOL.md §5.4).
+message AgentUpdateBody {
+  bytes manifest = 1;     // the exact bytes the vendor signed (JSON, see internal/shared/release)
+  bytes signature = 2;    // Ed25519 over "librepatch/release/v1\0" || manifest
+  bytes key_id = 3;       // first 8 bytes of SHA-256 of the vendor public key
+  uint32 timeout_s = 4;
+}
+
+message CancelBody {
+  string job_id = 1;
+}
+
+// InventoryBody requests a full inventory of the listed sections (all if empty).
+message InventoryBody {
+  repeated uint32 sections = 1;
+}

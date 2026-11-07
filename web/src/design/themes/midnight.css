@@ -1,0 +1,50 @@
+/* Theme "Midnight" (dark). One file is one theme: add a file like this one and it appears in the picker.
+   Every pair below is checked against WCAG AA by src/design/themes.test.ts. */
+:root[data-theme="midnight"] {
+  --lp-theme-name: "Midnight";
+  --lp-scheme: dark;
+  --lp-theme-order: 40;
+
+  /* Surfaces */
+  --lp-bg: #070b16;
+  --lp-surface: #0d1424;
+  --lp-surface-raised: #141d33;
+  --lp-surface-sunken: #050810;
+  --lp-surface-hover: #121b30;
+  --lp-surface-selected: #14305a;
+
+  /* Text */
+  --lp-text: #e6ecf7;
+  --lp-text-muted: #a3b0c8;
+
+  /* Borders and focus */
+  --lp-border: #1f2a44;
+  --lp-border-strong: #7686a6;
+  --lp-focus: #7ab4ff;
+
+  /* Accent (defaults; the branding accent is layered on top at runtime, see accent.ts) */
+  --lp-accent: #1f6fd0;
+  --lp-on-accent: #ffffff;
+  --lp-accent-text: #86b9fa;
+  --lp-accent-subtle: #14305a;
+  --lp-accent-subtle-text: #b0d0fb;
+  --lp-accent-border: #2f5ea5;
+
+  /* Fill text and shadow */
+  --lp-on-solid: #05080f;
+  --lp-shadow-rgb: 0 0 8;
+
+  /* Status and severity: fg = text/icon, bg = pill tint, border, solid = fill for bars and dots */
+  --lp-success-fg: #7fd99a; --lp-success-bg: #13301d; --lp-success-border: #2d6b43; --lp-success-solid: #45b867;
+  --lp-warning-fg: #f2c26b; --lp-warning-bg: #3a2a0c; --lp-warning-border: #7d5a1c; --lp-warning-solid: #e0a030;
+  --lp-danger-fg: #ff9aa0; --lp-danger-bg: #3d1519; --lp-danger-border: #8a343b; --lp-danger-solid: #f2696f;
+  --lp-info-fg: #8ec5fb; --lp-info-bg: #10294a; --lp-info-border: #2d5c93; --lp-info-solid: #4c9bf0;
+  --lp-neutral-fg: #c3cad6; --lp-neutral-bg: #2c3038; --lp-neutral-border: #4a505c; --lp-neutral-solid: #8b94a6;
+  --lp-critical-fg: #ff8e96; --lp-critical-bg: #45131a; --lp-critical-border: #962f38; --lp-critical-solid: #f2616a;
+  --lp-important-fg: #ffb27a; --lp-important-bg: #3d200c; --lp-important-border: #85481f; --lp-important-solid: #ee8a45;
+  --lp-moderate-fg: #e8d56a; --lp-moderate-bg: #33300c; --lp-moderate-border: #6e6420; --lp-moderate-solid: #d4bb3c;
+  --lp-low-fg: #a6c7f5; --lp-low-bg: #16294a; --lp-low-border: #35588f; --lp-low-solid: #6b9be0;
+
+  /* Chart series */
+  --lp-chart-1: #62a3f5; --lp-chart-2: #f08f52; --lp-chart-3: #5fcb80; --lp-chart-4: #ae92f5; --lp-chart-5: #52c7da; --lp-chart-6: #ea72c6;
+}

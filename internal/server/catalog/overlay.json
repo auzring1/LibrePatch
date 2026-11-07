@@ -1,0 +1,17 @@
+{
+  "packages": [
+    {"identifier": "Google.Chrome", "self_updating": true, "note": "Updates itself through Google Update."},
+    {"identifier": "Microsoft.Edge", "self_updating": true, "note": "Updates itself through Microsoft Edge Update."},
+    {"identifier": "Mozilla.Firefox", "self_updating": true, "note": "Updates itself through the Mozilla Maintenance Service."},
+    {"identifier": "Microsoft.Teams", "self_updating": true},
+    {"identifier": "Zoom.Zoom", "self_updating": true},
+    {"identifier": "SlackTechnologies.Slack", "self_updating": true},
+    {"identifier": "Discord.Discord", "self_updating": true},
+    {"identifier": "Postman.Postman", "self_updating": true},
+    {"identifier": "Microsoft.VisualStudioCode", "self_updating": true, "note": "Both the system and the user installer update themselves."},
+    {"identifier": "7zip.7zip", "self_updating": false},
+    {"identifier": "Notepad++.Notepad++", "self_updating": false},
+    {"identifier": "VideoLAN.VLC", "self_updating": false},
+    {"identifier": "Git.Git", "self_updating": false}
+  ]
+}

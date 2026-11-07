@@ -1,0 +1,86 @@
+# ---------------------------------------------------------------------------
+# SECRETS AND KEY MATERIAL: never committed. Tests generate keys at runtime.
+# If you really need a non-secret fixture, put it under testdata/ with an
+# explicit negation and a comment explaining why it is safe.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.env
+!*.env.example
+deploy/secrets/
+secrets/
+*.secret
+*.secrets
+*.key
+*.pem
+*.crt
+*.cer
+*.der
+*.csr
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.kdbx
+*.age
+*.gpg
+*.asc
+id_rsa*
+id_ecdsa*
+id_ed25519*
+*.ovpn
+credentials.json
+*-credentials.json
+*.credentials
+test-credentials*
+*.totp
+recovery-codes*.txt
+enrollment-token*.txt
+# Agent/server local state (may contain enrollment tokens or keys)
+state.db
+*.bbolt
+agent-config.json
+agent-state/
+server-data/
+
+# Build outputs
+/bin/
+/dist/
+/out/
+*.exe
+*.msi
+*.test
+*.out
+coverage.*
+web/node_modules/
+web/dist/
+internal/server/webui/dist/*
+!internal/server/webui/dist/.keep
+test/integration/.artifacts/
+test/vm-matrix/results/*.raw
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+web/test-results/
+web/playwright-report/
+web/blob-report/
+*.tsbuildinfo
+
+# Local Claude Code state (agent worktrees)
+.claude/
+dist-demo/
+
+# Release pipeline output (scripts/build-release.sh, scripts/release-dryrun.sh); throw-away keys live here
+dist-release/
+# Load test output (identity cache holds device private keys)
+/loadtest-results/
+
+# The agent release the image workflow copies in before it builds the server image
+deploy/agent-release/*.exe
+deploy/agent-release/*.lprel

@@ -1,0 +1,209 @@
+syntax = "proto3";
+
+package librepatch.agent.v1;
+
+option go_package = "github.com/auzring1/librepatch/gen/proto/librepatch/agent/v1;agentv1";
+
+enum InventorySection {
+  INVENTORY_SECTION_UNSPECIFIED = 0;
+  INVENTORY_SECTION_HARDWARE = 1;
+  INVENTORY_SECTION_USERS = 2;
+  INVENTORY_SECTION_SOFTWARE = 3;
+  INVENTORY_SECTION_WU = 4;
+}
+
+// InventoryReport carries one section. Phase 1 sends HARDWARE as a full
+// snapshot whenever it changes (it is small). SOFTWARE deltas arrive in Phase 2.
+message InventoryReport {
+  uint64 seq = 1;
+  InventorySection section = 2;
+  // New revision of the section after the server applies this report.
+  uint64 rev = 3;
+  oneof body {
+    HardwareInventory hardware = 10;
+    UsersInventory users = 11;
+    SoftwareDelta software_delta = 12;
+    SoftwareChunk software_chunk = 13;
+    WuInventory wu = 14;
+  }
+  // True when the agent hit its item cap and the inventory is incomplete.
+  bool truncated = 20;
+}
+
+enum SoftwareScope {
+  SOFTWARE_SCOPE_UNSPECIFIED = 0;
+  SOFTWARE_SCOPE_MACHINE = 1;
+  SOFTWARE_SCOPE_USER = 2;
+}
+
+enum SoftwareSource {
+  SOFTWARE_SOURCE_UNSPECIFIED = 0;
+  SOFTWARE_SOURCE_REG64 = 1;     // HKLM Uninstall, 64-bit view
+  SOFTWARE_SOURCE_REG32 = 2;     // HKLM WOW6432Node Uninstall
+  SOFTWARE_SOURCE_HKU = 3;       // a user's HKCU Uninstall (loaded or offline hive)
+  SOFTWARE_SOURCE_HKU32 = 4;     // a user's HKCU WOW6432Node Uninstall
+  SOFTWARE_SOURCE_MSI = 5;       // Windows Installer product not present in Uninstall keys
+  SOFTWARE_SOURCE_APPX = 6;      // AppX / MSIX package
+  SOFTWARE_SOURCE_PORTABLE = 7;  // winget portable package directory
+}
+
+// SoftwareItemKey identifies one installed item on one device:
+// (source, scope, user_sid, item_key). user_sid is empty for machine scope.
+message SoftwareItemKey {
+  SoftwareSource source = 1;
+  SoftwareScope scope = 2;
+  string user_sid = 3;
+  string item_key = 4;
+}
+
+message SoftwareItem {
+  SoftwareItemKey key = 1;
+  string name = 2;
+  string version = 3;
+  string publisher = 4;
+  string install_date = 5;  // YYYY-MM-DD or empty
+  string install_location = 6;
+  string uninstall_string = 7;
+  string quiet_uninstall_string = 8;
+  string product_code = 9;  // {GUID} for MSI-based items
+  bool system_component = 10;
+}
+
+// SoftwareDelta applies only if the server's software revision equals base_rev;
+// otherwise the server answers with a ResyncRequest. The resulting revision is
+// InventoryReport.rev, which must equal base_rev + 1.
+message SoftwareDelta {
+  uint64 base_rev = 1;
+  repeated SoftwareItem upserts = 2;
+  repeated SoftwareItemKey removes = 3;
+}
+
+// SoftwareChunk is part of a full snapshot. Chunks arrive in order on one
+// stream (index 0..total-1); the server replaces the device's software
+// atomically when the last chunk arrives.
+message SoftwareChunk {
+  uint32 index = 1;
+  uint32 total = 2;
+  repeated SoftwareItem items = 3;
+}
+
+message DeviceUser {
+  string sid = 1;
+  string username = 2;
+  string domain = 3;
+  string profile_path = 4;
+  int64 last_logon = 5;  // unix seconds, 0 = unknown
+  bool loaded = 6;       // the user's registry hive is open (a session, or any program or service still running as the user)
+  bool is_admin = 7;     // member of local Administrators (best effort)
+  bool signed_in = 8;    // the user has an interactive session now (active or disconnected); older agents never set it
+}
+
+message UsersInventory {
+  repeated DeviceUser users = 1;
+}
+
+message HardwareInventory {
+  string hostname = 1;
+  string fqdn = 2;
+  string domain = 3;
+  string os_caption = 4;
+  string os_display_version = 5;
+  string os_edition = 6;
+  uint32 os_build = 7;
+  uint32 os_ubr = 8;
+  string os_version = 9;
+  string arch = 10;
+  string manufacturer = 11;
+  string model = 12;
+  string serial = 13;
+  string smbios_uuid = 14;
+  string chassis = 15;
+  string bios_version = 16;
+  string cpu_model = 17;
+  uint32 cpu_logical_cores = 18;
+  uint64 ram_bytes = 19;
+  repeated Disk disks = 20;
+  repeated NetInterface interfaces = 21;
+  string last_logged_on_user = 22;
+  bool pending_reboot = 23;
+  repeated string pending_reboot_reasons = 24;
+  string timezone = 25;
+  int64 boot_time = 26;
+  // Files queued for deletion at the next boot (PendingFileRenameOperations). Housekeeping by installers and
+  // updaters: reported, but never part of pending_reboot (the server may count them, by setting).
+  uint32 queued_file_delete_count = 27;
+  repeated string queued_file_deletes = 28; // the first few, for display
+}
+
+message Disk {
+  string mount = 1;
+  string filesystem = 2;
+  uint64 size_bytes = 3;
+  uint64 free_bytes = 4;
+  // BitLocker: protected | unprotected | encrypting | decrypting | unknown | unsupported
+  string bitlocker = 5;
+}
+
+message NetInterface {
+  string name = 1;
+  string mac = 2;
+  repeated string addresses = 3;
+  // The same addresses with their network, "192.168.1.20/24", so another agent on that network can wake this one up.
+  repeated string cidrs = 4;
+}
+
+// ---- Windows Update (Phase 4) ----
+
+enum WuUpdateState {
+  WU_UPDATE_STATE_UNSPECIFIED = 0;
+  WU_UPDATE_STATE_MISSING = 1;         // applicable and not installed
+  WU_UPDATE_STATE_DOWNLOADED = 2;      // applicable, content already on the machine
+  WU_UPDATE_STATE_HIDDEN = 3;          // applicable but hidden (declined) on this machine
+  WU_UPDATE_STATE_PENDING_REBOOT = 4;  // installed, waiting for a restart
+  WU_UPDATE_STATE_FAILED = 5;          // the last installation attempt failed
+}
+
+message WuUpdate {
+  string update_id = 1;
+  int32 revision = 2;
+  string title = 3;
+  repeated string kb = 4;
+  string classification = 5;        // "Security Updates", "Critical Updates", "Drivers", ...
+  string severity = 6;              // MSRC: Critical | Important | Moderate | Low | "" (unrated)
+  repeated string products = 7;
+  bool is_driver = 8;
+  string driver_class = 9;
+  string driver_hwid = 10;
+  string driver_version = 11;
+  int64 release_date = 12;          // unix seconds, 0 = unknown
+  string support_url = 13;
+  uint64 size_bytes = 14;
+  bool reboot_required = 15;        // installing it needs a restart
+  WuUpdateState state = 16;
+  string last_error = 17;           // e.g. "0x80070643" for FAILED
+}
+
+// WuPolicyInfo says who is in charge of updates on this machine, so administrators are not
+// surprised when another tool (WSUS, Intune, a GPO) fights LibrePatch.
+message WuPolicyInfo {
+  bool wsus_configured = 1;         // UseWUServer = 1
+  string wsus_server = 2;
+  bool wufb_deferrals = 3;          // quality/feature deferral or pause policies present
+  bool no_auto_update = 4;          // "Configure Automatic Updates" = disabled
+  uint32 au_options = 5;            // AUOptions when the GPO is set, else 0
+  bool active_hours_policy = 6;
+  bool wu_service_disabled = 7;     // the wuauserv service cannot start
+  string effective_source = 8;      // "windows_update" | "microsoft_update" | "wsus"
+  repeated string notes = 9;
+}
+
+// WuInventory is a full snapshot of what Windows Update says about this machine.
+message WuInventory {
+  repeated WuUpdate updates = 1;
+  WuPolicyInfo policy = 2;
+  bool reboot_required = 3;
+  int64 scanned_at = 4;
+  int32 service = 5;                // WuService used for the scan
+  bool truncated = 6;
+  string scan_error = 7;            // set when the scan failed; updates is then empty
+}

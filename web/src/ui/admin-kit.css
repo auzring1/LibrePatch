@@ -1,0 +1,104 @@
+/* Small layout helpers for the admin, account, settings and sign-in pages. Semantic tokens only. */
+
+/* Key / value list (a definition list) */
+.lp-kv { margin: 0; display: grid; grid-template-columns: minmax(130px, 220px) minmax(0, 1fr); }
+.lp-kv > div { display: contents; }
+.lp-kv dt, .lp-kv dd { margin: 0; padding: var(--lp-space-2) 0; border-bottom: 1px solid var(--lp-border); min-width: 0; overflow-wrap: anywhere; }
+.lp-kv dt { color: var(--lp-text-muted); font-weight: var(--lp-weight-medium); padding-right: var(--lp-space-4); }
+.lp-kv > div:last-child > * { border-bottom: 0; }
+@media (max-width: 36em) {
+  .lp-kv { grid-template-columns: minmax(0, 1fr); }
+  .lp-kv dt { border-bottom: 0; padding-bottom: 0; }
+}
+
+/* Buttons in the last column of a table: they stay in view when the table scrolls sideways (tablet width) */
+.lp-sticky-actions { display: flex; gap: 4px; align-items: center; justify-content: flex-end; flex-wrap: nowrap; }
+.lp-dt__table td:has(> .lp-sticky-actions) { position: sticky; right: 0; z-index: 1; box-shadow: -1px 0 0 var(--lp-border); }
+.lp-dt__table:has(.lp-sticky-actions) th:last-child { position: sticky; right: 0; z-index: 3; box-shadow: -1px 0 0 var(--lp-border); }
+
+/* Cards side by side when there is room */
+.lp-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: var(--lp-space-4); align-items: start; }
+.lp-stack-y { display: flex; flex-direction: column; gap: var(--lp-space-4); min-width: 0; }
+
+/* A section heading over a table that brings its own frame */
+.lp-section__title { margin: 0; font-size: var(--lp-text-lg); font-weight: var(--lp-weight-semibold); line-height: var(--lp-leading-tight); }
+.lp-section__desc { margin: 2px 0 0; color: var(--lp-text-muted); font-size: var(--lp-text-sm); }
+
+/* Sticky bar for the save buttons of a long form */
+.lp-actionbar {
+  position: sticky; bottom: var(--lp-space-3); z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: var(--lp-space-2);
+  padding: var(--lp-space-3) var(--lp-space-4); background: var(--lp-surface); border: 1px solid var(--lp-border-strong);
+  border-radius: var(--lp-radius-lg); box-shadow: var(--lp-shadow-2);
+}
+.lp-actionbar__spacer { flex: 1 1 auto; }
+
+/* A small static table (contrast results) */
+.lp-minitable { width: 100%; border-collapse: collapse; font-size: var(--lp-text-sm); }
+.lp-minitable th, .lp-minitable td { text-align: left; padding: var(--lp-space-2) var(--lp-space-3); border-bottom: 1px solid var(--lp-border); vertical-align: middle; }
+.lp-minitable th { color: var(--lp-text-muted); font-weight: var(--lp-weight-semibold); background: var(--lp-surface-sunken); }
+.lp-minitable tr:last-child td { border-bottom: 0; }
+.lp-minitable-wrap { border: 1px solid var(--lp-border); border-radius: var(--lp-radius-md); overflow-x: auto; }
+.lp-swatch-dot { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--lp-border-strong); flex: none; vertical-align: middle; margin-right: var(--lp-space-2); }
+
+/* Theme swatch: three stripes taken from the theme's own tokens (set inline) */
+.lp-theme-swatch { display: inline-flex; flex: none; width: 34px; height: 20px; border-radius: var(--lp-radius-sm); border: 1px solid var(--lp-border-strong); overflow: hidden; }
+.lp-theme-swatch > span { flex: 1; }
+.lp-theme-option { display: flex; align-items: center; gap: var(--lp-space-2); }
+
+/* Image slots */
+.lp-slot { display: flex; gap: var(--lp-space-4); align-items: flex-start; padding: var(--lp-space-3) 0; border-top: 1px solid var(--lp-border); }
+.lp-slot:first-of-type { border-top: 0; padding-top: 0; }
+.lp-slot__preview { width: 120px; height: 64px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px dashed var(--lp-border-strong); border-radius: var(--lp-radius-md); background: var(--lp-surface-sunken); color: var(--lp-text-muted); font-size: var(--lp-text-xs); }
+.lp-slot__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.lp-slot__title { margin: 0; font-weight: var(--lp-weight-semibold); font-size: var(--lp-text-md); }
+.lp-slot__help { margin: 0; color: var(--lp-text-muted); font-size: var(--lp-text-sm); }
+.lp-slot__error { margin: 0; color: var(--lp-danger-fg); font-size: var(--lp-text-sm); display: flex; gap: 4px; align-items: center; }
+
+/* Branding preview (the tokens of the previewed theme are set inline on .lp-preview) */
+.lp-preview { border: 1px solid var(--lp-border); border-radius: var(--lp-radius-lg); overflow: hidden; background: var(--lp-bg); color: var(--lp-text); }
+.lp-preview__bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--lp-surface); border-bottom: 3px solid var(--lp-secondary, var(--lp-accent)); }
+.lp-preview__bar-link { margin-left: auto; font-size: var(--lp-text-xs); color: var(--lp-accent-text); }
+.lp-preview__body { padding: 18px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.lp-preview__card { width: 100%; max-width: 320px; box-sizing: border-box; background: var(--lp-surface); border: 1px solid var(--lp-border); border-radius: var(--lp-radius-lg); padding: 16px; display: flex; flex-direction: column; gap: 8px; box-shadow: var(--lp-shadow-1); }
+.lp-preview__field { border: 1px solid var(--lp-border-strong); border-radius: var(--lp-radius-sm); height: 28px; background: var(--lp-surface); }
+.lp-preview__button { background: var(--lp-accent); color: var(--lp-on-accent); border-radius: var(--lp-radius-sm); text-align: center; padding: 6px 0; font-weight: var(--lp-weight-semibold); font-size: var(--lp-text-md); }
+.lp-preview__muted { color: var(--lp-text-muted); }
+.lp-preview__link { color: var(--lp-accent-text); }
+.lp-preview__chip { padding: 4px; border-radius: var(--lp-radius-md); line-height: 0; }
+
+/* Branding page: form beside a sticky preview on wide screens, one column otherwise */
+.lp-branding { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--lp-space-4); align-items: start; }
+.lp-branding__preview { min-width: 0; }
+@media (min-width: 75em) {
+  .lp-branding { grid-template-columns: minmax(0, 680px) minmax(360px, 1fr); }
+  .lp-branding__preview { position: sticky; top: calc(var(--lp-topbar-h) + var(--lp-space-4)); }
+}
+
+/* Full-page sign-in and setup */
+.lp-auth {
+  min-height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--lp-space-4);
+  padding: var(--lp-space-8) var(--lp-space-4); background: var(--lp-bg); color: var(--lp-text);
+}
+.lp-auth__card {
+  width: 100%; max-width: var(--lp-auth-w, 440px); box-sizing: border-box; background: var(--lp-surface); border: 1px solid var(--lp-border);
+  border-top: 3px solid var(--lp-secondary, var(--lp-accent)); border-radius: var(--lp-radius-xl); box-shadow: var(--lp-shadow-2); padding: var(--lp-space-8);
+  display: flex; flex-direction: column; gap: var(--lp-space-4);
+}
+.lp-auth__below { width: 100%; max-width: var(--lp-auth-w, 440px); }
+.lp-auth__title { margin: 0; font-size: var(--lp-text-2xl); font-weight: var(--lp-weight-semibold); line-height: var(--lp-leading-tight); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.lp-auth__org { margin: 0; color: var(--lp-text-muted); font-size: var(--lp-text-sm); }
+.lp-auth__msg { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.lp-auth__mark { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: var(--lp-radius-lg); background: var(--lp-accent); color: var(--lp-on-accent); font-weight: var(--lp-weight-bold); font-size: var(--lp-text-xl); }
+.lp-auth__foot { margin: 0; color: var(--lp-text-muted); font-size: var(--lp-text-xs); text-align: center; white-space: pre-line; overflow-wrap: anywhere; }
+.lp-auth__help { margin: 0; font-size: var(--lp-text-xs); text-align: center; color: var(--lp-text); }
+.lp-auth__help a { color: var(--lp-accent-text); }
+@media (max-width: 30em) { .lp-auth__card { padding: var(--lp-space-5); } }
+
+/* One-time codes and the QR code */
+.lp-codes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--lp-space-2); margin: 0; padding: 0; list-style: none; }
+.lp-codes li { font-family: var(--lp-font-mono); font-size: var(--lp-text-sm); padding: var(--lp-space-2) var(--lp-space-3); background: var(--lp-surface-sunken); border: 1px solid var(--lp-border); border-radius: var(--lp-radius-md); text-align: center; }
+.lp-qr { align-self: flex-start; line-height: 0; padding: var(--lp-space-2); border: 1px solid var(--lp-border-strong); border-radius: var(--lp-radius-md); }
+.lp-copytext { display: flex; gap: var(--lp-space-2); align-items: flex-start; }
+.lp-copytext pre { flex: 1; min-width: 0; margin: 0; padding: var(--lp-space-2) var(--lp-space-3); background: var(--lp-surface-sunken); color: var(--lp-text); border: 1px solid var(--lp-border); border-radius: var(--lp-radius-md); font-size: var(--lp-text-sm); white-space: pre-wrap; word-break: break-all; }
+
+.lp-auth__notice { padding: var(--lp-space-3) var(--lp-space-4); border: 1px solid var(--lp-warning-border); background: var(--lp-warning-bg); color: var(--lp-warning-fg); border-radius: var(--lp-radius-md); font-size: var(--lp-text-sm); }

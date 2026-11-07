@@ -1,0 +1,65 @@
+# syntax=docker/dockerfile:1.7
+# LibrePatch server image: web console + API + agent gateway in one static binary
+# on a distroless, non-root base. Base images are pinned by digest
+# (update them deliberately; Dependabot proposes the updates).
+
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS web
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json ./
+# Optional build secret "extra_ca": a corporate TLS-inspection root, only if your
+# build network needs it. It is never copied into an image layer.
+RUN --mount=type=secret,id=extra_ca,required=false \
+    if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; \
+    npm ci --no-audit --no-fund --ignore-scripts
+COPY api/ /src/api/
+# The web unit tests share the contrast test vectors with the server's Go tests, and `tsc -b` type-checks the tests too.
+COPY internal/server/branding/testdata/contrast_vectors.json /src/internal/server/branding/testdata/contrast_vectors.json
+COPY web/ ./
+RUN mkdir -p /src/internal/server/webui/dist && npm run build
+
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
+WORKDIR /src
+ENV CGO_ENABLED=0 GOFLAGS=-mod=readonly GOTOOLCHAIN=local
+COPY go.mod go.sum ./
+RUN --mount=type=secret,id=extra_ca,required=false \
+    if [ -s /run/secrets/extra_ca ]; then export SSL_CERT_FILE=/run/secrets/extra_ca; fi; \
+    go mod download
+COPY . .
+COPY --from=web /src/internal/server/webui/dist ./internal/server/webui/dist
+ARG VERSION=0.1.0-dev
+ARG COMMIT=unknown
+# Release builds (scripts/build-image.sh) pass the vendor release public keys and the Authenticode
+# requirement so the server binary equals the one built by scripts/build-release.sh, and the Go version
+# they expect, so a drifted base image fails loudly instead of producing a different binary.
+ARG RELEASE_PUBLIC_KEYS=""
+ARG REQUIRE_AUTHENTICODE=""
+ARG AUTHENTICODE_SUBJECTS=""
+ARG EXPECT_GO_VERSION=""
+RUN if [ -n "$EXPECT_GO_VERSION" ] && [ "$(go env GOVERSION)" != "go${EXPECT_GO_VERSION}" ]; then \
+      echo "base image has $(go env GOVERSION), release expects go${EXPECT_GO_VERSION}: update the pinned digest" >&2; exit 1; fi
+RUN go build -trimpath -buildvcs=false \
+      -ldflags "-s -w -buildid= -X github.com/auzring1/librepatch/internal/shared/version.Version=${VERSION} -X github.com/auzring1/librepatch/internal/shared/version.Commit=${COMMIT} -X github.com/auzring1/librepatch/internal/shared/release.PublicKeysHex=${RELEASE_PUBLIC_KEYS} -X github.com/auzring1/librepatch/internal/shared/release.RequireAuthenticode=${REQUIRE_AUTHENTICODE} -X 'github.com/auzring1/librepatch/internal/shared/release.AuthenticodeSubjects=${AUTHENTICODE_SUBJECTS}'" \
+      -o /out/librepatch-server ./cmd/librepatch-server
+
+# Empty content directory owned by the runtime user; compose mounts a volume over it.
+RUN mkdir -p /out/content && chown 65532:65532 /out/content && chmod 700 /out/content
+# Same for the master key directory: the one-shot "maintenance" job writes the key there on the first start of a new stack.
+RUN mkdir -p /out/key && chown 65532:65532 /out/key && chmod 700 /out/key
+
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+# The source label is what links the published package to this repository on GitHub.
+LABEL org.opencontainers.image.source="https://github.com/auzring1/LibrePatch" \
+      org.opencontainers.image.description="LibrePatch server: self-hosted Windows patch and software management" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later"
+COPY --from=build /out/librepatch-server /librepatch-server
+COPY --from=build --chown=65532:65532 /out/content /var/lib/librepatch/content
+COPY --from=build --chown=65532:65532 /out/key /run/librepatch/key
+# The signed agent release this server was built with (empty unless the image workflow made one): the server adds it
+# under "Agent updates" by itself (D149). Owned by the server's user, because the signing step leaves the .lprel readable by
+# its owner only (mode 600) and the server does not run as root.
+COPY --chown=65532:65532 deploy/agent-release/ /opt/librepatch/agent-release/
+USER 65532:65532
+EXPOSE 8080 8443
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 CMD ["/librepatch-server", "healthcheck"]
+ENTRYPOINT ["/librepatch-server"]
+CMD ["serve"]

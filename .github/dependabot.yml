@@ -1,0 +1,37 @@
+# Dependency updates arrive as reviewed pull requests (docs/THREAT-MODEL.md T-REL-2). Nothing is merged automatically.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 10
+  - package-ecosystem: npm
+    directory: /web
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 10
+    # Major versions change APIs and peer requirements (TypeScript 7 broke `npm ci`, the table library 9 is a rewrite).
+    # Take them deliberately, by hand, not as a routine update.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    # Packages that require each other at the same version cannot be updated one by one (npm refuses to install
+    # @mantine/hooks 9.7.2 next to @mantine/core 9.7.1; react must match react-dom), so each family arrives as ONE pull request.
+    groups:
+      mantine:
+        patterns: ["@mantine/*"]
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+      tanstack:
+        patterns: ["@tanstack/*"]
+      playwright:
+        patterns: ["@playwright/test", "@axe-core/playwright"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule: { interval: weekly }
+    # Stay on long-term-support base images (Node 22): odd-numbered Node majors are short-lived.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

@@ -1,0 +1,11 @@
+{
+  "comment": "Packages the VM matrix must pass before they are marked verified. detect_file is expanded on the VM. User-scope rows need a signed-in user.",
+  "packages": [
+    {"identifier": "7zip.7zip", "scope": "machine", "detect_file": "%ProgramFiles%\\7-Zip\\7z.exe"},
+    {"identifier": "Notepad++.Notepad++", "scope": "machine", "detect_file": "%ProgramFiles%\\Notepad++\\notepad++.exe"},
+    {"identifier": "VideoLAN.VLC", "scope": "machine", "detect_file": "%ProgramFiles%\\VideoLAN\\VLC\\vlc.exe"},
+    {"identifier": "Git.Git", "scope": "machine", "detect_file": "%ProgramFiles%\\Git\\cmd\\git.exe"},
+    {"identifier": "Mozilla.Firefox", "scope": "machine", "detect_file": "%ProgramFiles%\\Mozilla Firefox\\firefox.exe"},
+    {"identifier": "Microsoft.VisualStudioCode", "scope": "user", "detect_file": "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe"}
+  ]
+}
