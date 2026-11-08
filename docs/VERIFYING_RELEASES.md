@@ -2,7 +2,7 @@
 
 This page is for customers and auditors: how to check that the files you downloaded are the ones the LibrePatch
 release pipeline built, and what each check does and does not prove. The maintainers' side (keys, certificates, how
-a release is cut) is in `docs/RUNBOOK.md`, section 9; the design is `docs/DECISIONS.md` D79-D84.
+a release is cut) is in `docs/RUNBOOK.md`, section 9; the design is decisions D79-D84 (see `docs/RUNBOOK.md`, section 9).
 
 > **Status.** The pipeline (`.github/workflows/release.yml`) is written and its offline parts are tested, but **no
 > release has been signed yet**: the vendor release key (open decision O7) and the code-signing certificate (O5) do
@@ -139,7 +139,7 @@ to the file, so the signed file's SHA-256 differs from the one in `unsigned-SHA2
 ## 7. How the agent verifies its own updates
 
 You do not have to trust the LibrePatch server you run for agent updates to be safe. The agent installs a new version
-only if **all** of these hold (docs/DECISIONS.md D68, D83; `internal/shared/release`, `internal/agent/jobs/selfupdate.go`):
+only if **all** of these hold (decision D68, D83; `internal/shared/release`, `internal/agent/jobs/selfupdate.go`):
 
 1. The **vendor release bundle** (`.lprel`) carries an Ed25519 signature that verifies under a vendor public key compiled
    into the agent. A build with no key refuses every update. The signature is domain-separated

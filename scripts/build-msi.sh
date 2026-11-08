@@ -20,7 +20,7 @@ cd "$(dirname "$0")/.."
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 
 UTIL_EXT='WixToolset.Util.wixext/7.0.0'   # keep in step with .config/dotnet-tools.json (tested)
-EULA='wix7'                               # project-recorded OSMF EULA acceptance (docs/DECISIONS.md D67)
+EULA='wix7'                               # project-recorded OSMF EULA acceptance (decision D67)
 
 cmd="${1:-lint}"
 case "$cmd" in

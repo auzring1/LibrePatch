@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reproducible release build (docs/DECISIONS.md D79-D82, docs/VERIFYING_RELEASES.md).
+# Reproducible release build (decision D79-D82, docs/VERIFYING_RELEASES.md).
 #
 #   scripts/build-release.sh --version 1.2.3 [--out DIR] [--release-pubkeys HEX[,HEX...]] [options]
 #
@@ -101,7 +101,7 @@ fi
 if [ -n "$subjects" ]; then
   case "$subjects" in *\'*|*\"*|*\\*|*$'\n'*) die "--authenticode-subjects must not contain quotes, backslashes or newlines" ;; esac
 elif [ "$req_auth" = true ] && [ "$allow_no_pin" = 0 ]; then
-  die "no compiled-in Authenticode subject: pass --authenticode-subjects \"<signer CN>\" (or LIBREPATCH_AUTHENTICODE_SUBJECTS); see docs/DECISIONS.md D83"
+  die "no compiled-in Authenticode subject: pass --authenticode-subjects \"<signer CN>\" (or LIBREPATCH_AUTHENTICODE_SUBJECTS); see decision D83"
 fi
 
 # --- toolchains ------------------------------------------------------------------------------------

@@ -370,7 +370,7 @@ Scope: the Windows MSI that wraps `librepatch-agent.exe install` / `uninstall` f
 
 ## 9e. Phase 6: release pipeline (supply chain)
 
-Written in Phase 6 and exercised **locally** with throw-away keys (`scripts/release-dryrun.sh`); the GitHub workflow, the cloud signing steps and the MSI build have never run. Design: DECISIONS D79-D84; operator guide: RUNBOOK section 9; customer checks: `docs/VERIFYING_RELEASES.md`.
+Written in Phase 6 and exercised **locally** with throw-away keys (`scripts/release-dryrun.sh`); the GitHub workflow, the cloud signing steps and the MSI build have never run. Design: decisions D79-D84; operator guide: RUNBOOK section 9; customer checks: `docs/VERIFYING_RELEASES.md`.
 
 | Control | Evidence |
 |---|---|

@@ -22,7 +22,7 @@ import (
 //
 // PLACEHOLDER: 1.3.6.1.4.1.32473 is IANA's documentation enterprise number
 // (RFC 5612). It must be replaced with our registered PEN before release
-// (docs/DECISIONS.md O4). Agents will accept both during a transition.
+// (decision O4). Agents will accept both during a transition.
 var OIDJobSigning = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 32473, 7231, 1, 1}
 
 // CertBackdate is how far NotBefore is set in the past on every certificate
