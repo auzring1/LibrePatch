@@ -9,7 +9,7 @@
   and checked against it by installer/windows/package_test.go.
 
   EULA: WiX v7 is released under the Open Source Maintenance Fee (OSMF) EULA. The build passes
-  `--acceptEula wix7` explicitly; that is the project's recorded acceptance (docs/DECISIONS.md O6, D67).
+  `--acceptEula wix7` explicitly; that is the project's recorded acceptance (decision O6, D67).
   Read installer/windows/README.md before running this in a commercial pipeline.
 
   Signing is NOT done here and no certificate is ever read by this script. Release pipeline:

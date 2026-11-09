@@ -1,8 +1,8 @@
 # LibrePatch: build, test and conventions
 
 Self-hosted Windows endpoint patch and software management: a Go agent, a Go server (REST API, SSE, embedded React console)
-and PostgreSQL, run with docker compose. Open source under the GNU AGPL-3.0. Start with `README.md`, `docs/ARCHITECTURE.md`,
-`docs/DECISIONS.md` and `docs/RUNBOOK.md`. The README, `CONTRIBUTING.md`, `SECURITY.md` and `TRADEMARKS.md` are written for the
+and PostgreSQL, run with docker compose. Open source under the GNU AGPL-3.0. Start with `README.md`, `docs/ARCHITECTURE.md`
+and `docs/RUNBOOK.md`. The decision log (up to D165) is no longer in this repository; comments that cite "D68" and the like refer to it. The README, `CONTRIBUTING.md`, `SECURITY.md` and `TRADEMARKS.md` are written for the
 public: keep real names, hosts and addresses out of the repository.
 
 ## Commands
@@ -20,7 +20,7 @@ public: keep real names, hosts and addresses out of the repository.
 - Every state-changing API action writes an audit entry (`audit.Write`/`audit.Log`) and has an RBAC permission
   (`internal/server/auth/rbac.go`). Update `api/openapi.yaml` with the API.
 - A guard test forbids the owner's real organization name in code and tests; use "Contoso Health" in fixtures.
-- Record design choices in `docs/DECISIONS.md` and security-relevant ones in `docs/THREAT-MODEL.md`.
+- Explain design choices in the pull request description and record security-relevant ones in `docs/THREAT-MODEL.md`. There is no decision log and no decision numbers any more.
 - Say plainly what was and was not verified. Windows-only agent paths, the real winget CDN and a real production host are
   not testable from a Linux sandbox.
 - Never copy production secrets into a development checkout, and never regenerate a production master key (it makes the

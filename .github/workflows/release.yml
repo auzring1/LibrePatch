@@ -1,4 +1,4 @@
-# Release pipeline (docs/DECISIONS.md D79-D83, docs/RUNBOOK.md "Release manager",
+# Release pipeline (decision D79-D83, docs/RUNBOOK.md "Release manager",
 # docs/VERIFYING_RELEASES.md). Nothing here holds a key or certificate: signing is driven by repository
 # variables and OIDC trust configured by the owner (open decisions O5 and O7), inside the protected
 # `release` environment. With dry_run (the default for manual runs) no real signing identity is used,
