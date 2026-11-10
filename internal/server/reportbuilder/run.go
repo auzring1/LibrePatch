@@ -374,7 +374,7 @@ func readOnly(ctx context.Context, pool *pgxpool.Pool, fn func(pgx.Tx) error) er
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, fmt.Sprintf("SET LOCAL statement_timeout = %d", queryTimeout.Milliseconds())); err != nil {
+	if _, err := tx.Exec(ctx, "SELECT set_config('statement_timeout', $1, true)", strconv.FormatInt(queryTimeout.Milliseconds(), 10)); err != nil {
 		return err
 	}
 	if err := fn(tx); err != nil {
