@@ -2464,6 +2464,91 @@ paths:
                   enabled: { type: boolean }
                   has_data: { type: boolean }
         "404": { $ref: "#/components/responses/Error" }
+  /reports/catalog:
+    get:
+      tags: [reports]
+      summary: The data a report can read, the ready-made reports and the saved custom reports (requires reports:read)
+      description: Patch data and the reports built on it are left out when Windows updates are switched off for the organization.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReportCatalog" }
+  /reports/run:
+    post:
+      tags: [reports]
+      summary: Run a report definition and return a preview, a CSV or a PDF (preview requires reports:read; a file requires inventory:export and is audited)
+      description: |
+        `format` json returns the first 1000 rows and the total. `csv` and `pdf` return a file (a PDF holds the first 5000 rows
+        and says so; the CSV holds up to 200000). Cells that would be read as spreadsheet formulas are prefixed with `'`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [spec]
+              properties:
+                spec: { $ref: "#/components/schemas/ReportSpec" }
+                format: { type: string, enum: [json, csv, pdf], default: json }
+                title: { type: string, maxLength: 120, description: Shown at the top of the PDF and in the file name }
+      responses:
+        "200":
+          description: The preview, or the file
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReportResult" }
+            text/csv:
+              schema: { type: string }
+            application/pdf:
+              schema: { type: string, format: binary }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /reports/saved:
+    post:
+      tags: [reports]
+      summary: Save a custom report (requires reports:write; audited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SavedReportBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedReport" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /reports/saved/{id}:
+    put:
+      tags: [reports]
+      summary: Change a saved custom report (requires reports:write; audited)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SavedReportBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedReport" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [reports]
+      summary: Delete a saved custom report (requires reports:write; audited)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
   /reports/lifecycle:
     get:
       tags: [reports]
@@ -4344,6 +4429,101 @@ components:
         status: { type: string, enum: [supported, ending_soon, unsupported, unknown] }
         note: { type: string }
         last_seen_at: { type: string, format: date-time, nullable: true }
+    ReportFilter:
+      type: object
+      additionalProperties: false
+      required: [column, op]
+      properties:
+        column: { type: string }
+        op: { type: string, description: One of the `ops` the column offers }
+        value: { type: string, maxLength: 200 }
+    ReportSpec:
+      type: object
+      additionalProperties: false
+      required: [dataset, columns]
+      properties:
+        dataset: { type: string, description: One of the ids in the catalog's datasets }
+        columns: { type: array, minItems: 1, maxItems: 40, items: { type: string } }
+        filters: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/ReportFilter" } }
+        site_ids: { type: array, maxItems: 200, items: { type: string, format: uuid }, description: Only devices at these sites }
+        group_id: { type: string, format: uuid, description: Only members of this group }
+        sort:
+          type: object
+          additionalProperties: false
+          required: [column]
+          properties:
+            column: { type: string, description: A shown column }
+            desc: { type: boolean }
+    ReportColumn:
+      type: object
+      required: [id, label, kind, group, ops]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        kind: { type: string, enum: [text, number, bool, time] }
+        group: { type: string }
+        choices: { type: array, items: { type: string } }
+        ops: { type: array, items: { type: string } }
+    ReportDataset:
+      type: object
+      required: [id, label, description, default_columns, columns]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        description: { type: string }
+        default_columns: { type: array, items: { type: string } }
+        columns: { type: array, items: { $ref: "#/components/schemas/ReportColumn" } }
+    BuiltinReport:
+      type: object
+      required: [id, category, name, description, spec]
+      properties:
+        id: { type: string }
+        category: { type: string, enum: [software, hardware, patching, devices] }
+        name: { type: string }
+        description: { type: string }
+        spec: { $ref: "#/components/schemas/ReportSpec" }
+    SavedReport:
+      type: object
+      required: [id, name, description, spec, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        spec: { $ref: "#/components/schemas/ReportSpec" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    SavedReportBody:
+      type: object
+      additionalProperties: false
+      required: [name, spec]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 500 }
+        spec: { $ref: "#/components/schemas/ReportSpec" }
+    ReportCatalog:
+      type: object
+      required: [datasets, builtins, saved]
+      properties:
+        datasets: { type: array, items: { $ref: "#/components/schemas/ReportDataset" } }
+        builtins: { type: array, items: { $ref: "#/components/schemas/BuiltinReport" } }
+        saved: { type: array, items: { $ref: "#/components/schemas/SavedReport" } }
+    ReportResult:
+      type: object
+      required: [columns, rows, total, truncated]
+      properties:
+        columns:
+          type: array
+          items:
+            type: object
+            required: [id, label, kind, width]
+            properties:
+              id: { type: string }
+              label: { type: string }
+              kind: { type: string, enum: [text, number, bool, time] }
+              width: { type: integer }
+        rows: { type: array, items: { type: array, items: { type: string } } }
+        total: { type: integer, format: int64 }
+        truncated: { type: boolean, description: More rows exist than are returned }
     LifecycleReport:
       type: object
       required: [data_as_of, warn_days, items, summary]

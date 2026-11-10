@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { generateKeyPairSync, sign as edSign } from "node:crypto";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
@@ -246,6 +246,60 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await expect(page.getByLabel("Search Installed software")).toHaveValue("");
       // Users moved into Overview and the client certificates into Hardware; the tab follows the URL.
       await page.getByRole("tab", { name: "Overview" }).click();
+      await expect(page.getByRole("heading", { name: "User profiles" })).toBeVisible();
+      // Reports (Administration): library, a ready-made hardware and software report with the dev agent's real data, CSV and PDF
+      // exports, and a custom report built, saved and deleted. Done here, while the device is still active.
+      const beforeReports = page.url();
+      await page.goto("/reports");
+      await expect(page.getByRole("heading", { name: /^(.* · )?Reports$/ })).toBeVisible();
+      for (const h of ["Software", "Hardware", "Devices"]) await expect(page.getByRole("heading", { name: h, exact: true, level: 2 })).toBeVisible();
+      await shot(page, "23a-reports-library");
+      await page.getByRole("link", { name: /Hardware inventory/ }).click();
+      await expect(page.getByRole("heading", { name: "Hardware inventory", level: 1 })).toBeVisible();
+      await expect(page.getByText("1 row.")).toBeVisible(); // the dev agent's own device
+      await shot(page, "23b-report-hardware");
+      const [csvDl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export CSV" }).click()]);
+      expect(csvDl.suggestedFilename()).toMatch(/^.*-hardware-inventory-\d{8}-\d{6}\.csv$/);
+      const csvText = readFileSync((await csvDl.path())!, "utf8");
+      expect(csvText.startsWith("\uFEFFDevice,Site,Manufacturer,Model,Serial number,Type,Processor,Logical cores,Memory (GB)")).toBe(true);
+      expect(csvText.trim().split(/\r?\n/).length).toBeGreaterThanOrEqual(2); // the header and the dev agent's device
+      const [pdfDl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export PDF" }).click()]);
+      expect(pdfDl.suggestedFilename()).toMatch(/\.pdf$/);
+      const pdfBytes = readFileSync((await pdfDl.path())!);
+      expect(pdfBytes.subarray(0, 8).toString("latin1")).toBe("%PDF-1.4");
+      expect(pdfBytes.toString("latin1")).toContain("Hardware inventory");
+      if (shots) writeFileSync(join(shots, "23b-report-hardware.pdf"), pdfBytes);
+      // Software reports read the dev agent's package list.
+      await page.goto("/reports/software-programs");
+      await expect(page.getByRole("heading", { name: "Programs by number of devices", level: 1 })).toBeVisible();
+      await expect(page.getByText(/^[1-9]\d* rows?\.$/)).toBeVisible(); // the dpkg packages
+      await shot(page, "23e-report-programs");
+      // A custom report: pick the data and columns, add a filter, save it, find it in the library, export it, delete it.
+      await page.goto("/reports");
+      await page.getByRole("link", { name: "New custom report" }).click();
+      await expect(page.getByRole("heading", { name: "New custom report", level: 1 })).toBeVisible();
+      await page.getByLabel("Report name").fill("E2E large-memory laptops");
+      await page.getByRole("button", { name: "Add a filter" }).click();
+      const filter = page.getByRole("group", { name: "Filter" });
+      await filter.getByLabel("Column", { exact: true }).click();
+      await page.getByRole("option", { name: "Memory (GB)", exact: true }).click();
+      await filter.getByLabel("Is", { exact: true }).click();
+      await page.getByRole("option", { name: "is at least", exact: true }).click();
+      await filter.getByLabel("Value").fill("1");
+      await expect(page.getByText(/^\d+ rows?\.$/)).toBeVisible();
+      await shot(page, "23c-report-builder");
+      await page.getByRole("button", { name: "Save report" }).click();
+      await expect(page.getByText("Report saved.")).toBeVisible();
+      await expect(page).toHaveURL(/\/reports\/[0-9a-f-]{36}$/);
+      await page.goto("/reports");
+      await expect(page.getByRole("link", { name: /E2E large-memory laptops/ })).toBeVisible();
+      await shot(page, "23d-reports-library-custom");
+      await page.getByRole("link", { name: /E2E large-memory laptops/ }).click();
+      await page.getByRole("button", { name: "Delete" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Delete report" }).click();
+      await expect(page.getByText("Report deleted.")).toBeVisible();
+      await expect(page.getByRole("link", { name: /E2E large-memory laptops/ })).toHaveCount(0);
+      await page.goto(beforeReports);
       await expect(page.getByRole("heading", { name: "User profiles" })).toBeVisible();
 
       // Removing a user profile (D157). The dev agent reports no profiles, so the list and the device's answers are played back here:
@@ -900,8 +954,14 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   expect((await ovTpl.json()).format).toBe("librepatch-overlay/1");
   await shot(page, "22b-overlays");
 
+  // Reports are an Administration page, not a Software one.
+  await expect(mainNav(page).getByRole("link", { name: "Reports", exact: true })).toBeVisible();
+  await expect(mainNav(page).locator(".lp-nav__group", { has: page.getByRole("button", { name: "Administration" }) }).getByRole("link", { name: "Reports", exact: true })).toBeVisible();
+  await expect(mainNav(page).locator(".lp-nav__group", { has: page.getByRole("button", { name: "Software" }) }).getByRole("link", { name: "Reports", exact: true })).toHaveCount(0);
   await mainNav(page).getByRole("link", { name: "Reports", exact: true }).click();
   await expect(page.getByRole("heading", { name: /^(.* · )?Reports$/ })).toBeVisible();
+  // The fleet overview this page used to be.
+  await page.getByRole("tab", { name: "Fleet overview" }).click();
   await expect(page.getByText("Patch compliant")).toBeVisible();
   // With no scanned device the headline says so instead of claiming 0% compliance.
   const cmp = (await (await page.request.get("/api/v1/reports/overview")).json()).compliance;

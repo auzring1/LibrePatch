@@ -157,3 +157,36 @@ export type ScriptDetail = components["schemas"]["ScriptDetail"];
 export type ScriptRun = components["schemas"]["ScriptRun"];
 export type ScriptRunDetail = components["schemas"]["ScriptRunDetail"];
 export type ScriptOutput = components["schemas"]["ScriptOutput"];
+
+export type ReportSpec = components["schemas"]["ReportSpec"];
+export type ReportFilter = components["schemas"]["ReportFilter"];
+export type ReportCatalog = components["schemas"]["ReportCatalog"];
+export type ReportDataset = components["schemas"]["ReportDataset"];
+export type ReportColumn = components["schemas"]["ReportColumn"];
+export type BuiltinReport = components["schemas"]["BuiltinReport"];
+export type SavedReport = components["schemas"]["SavedReport"];
+export type ReportResult = components["schemas"]["ReportResult"];
+
+/**
+ * Runs a report on the server and saves the CSV or PDF it returns. The file is made by the server (it holds every row,
+ * not only the ones on screen) and the export is audited there.
+ */
+export async function downloadReport(spec: ReportSpec, title: string, format: "csv" | "pdf"): Promise<string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  const res = await fetch("/api/v1/reports/run", { method: "POST", headers, credentials: "same-origin", cache: "no-store", body: JSON.stringify({ spec, format, title }) });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: { code?: string; message?: string } };
+    throw new ApiError(res.status, data.error?.code ?? "error", data.error?.message ?? `Export failed (HTTP ${res.status})`);
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? `report.${format}`;
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return name;
+}

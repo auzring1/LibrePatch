@@ -10,6 +10,12 @@ describe("describeAudit", () => {
     expect(describeAudit(entry({ action: "policy.create", details: { name: "Keep Chrome current" } }))).toBe("Ada Admin created the policy “Keep Chrome current”");
     expect(describeAudit(entry({ action: "auth.login" }))).toBe("Ada Admin signed in");
   });
+  it("describes exports and custom reports", () => {
+    expect(describeAudit(entry({ action: "inventory.export", details: { kind: "software" } }))).toBe("Ada Admin exported the inventory");
+    expect(describeAudit(entry({ action: "inventory.export", details: { title: "Laptops", format: "pdf" } }))).toBe("Ada Admin exported the report “Laptops” as PDF");
+    expect(describeAudit(entry({ action: "report.create", details: { name: "Laptops" } }))).toBe("Ada Admin saved the custom report “Laptops”");
+    expect(describeAudit(entry({ action: "report.delete" }))).toBe("Ada Admin deleted a custom report");
+  });
   it("uses a plain noun when the entry names nothing", () => {
     expect(describeAudit(entry({ action: "device.approve" }))).toBe("Ada Admin approved a device");
   });

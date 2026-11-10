@@ -510,6 +510,19 @@ No protocol, key, certificate or permission changed. These are the changes that 
 
 Not changed on purpose: no cache for revocation, no new listener, no new secret. `govulncheck` could not run in the sandbox that produced this change (the vulnerability database host was blocked), so the dependency check still has to run in CI.
 
+## 9n. Report builder (D166)
+
+A report is a stored or posted *spec* that the server turns into one read-only query. The risks are SQL injection through the spec, a data export by someone who may not export, and spreadsheet formula injection in the files.
+
+| Risk | Control | Evidence |
+|---|---|---|
+| SQL injection through column names, comparisons or values | Columns and comparisons are chosen from allow-lists in `internal/server/reportbuilder/datasets.go`; nothing from the spec is placed in the SQL text except those constants and `$n` placeholders. Values are bound (numbers, dates and yes/no are parsed first). Group scope reuses the group filter compiler (D36). The query runs in a read-only transaction with a 30 second statement timeout. | `TestValidateRejectsWhatIsNotAllowListed`, `TestRunDevices` (a quote in a value is only a value), `TestEveryBuiltinRunsAgainstARealDatabase` (every column with every comparison and sort) |
+| Exporting without the right | A preview needs `reports:read`; CSV and PDF need `inventory:export`, as the older exports did. Saving, changing and deleting a custom report need the new `reports:write` (administrators and operators). Neither site-limited roles nor API tokens without the scope gain anything. | `TestReportBuilderEndToEnd` (read-only user, operator, API token, anonymous) |
+| Exports leave no trace | Every CSV or PDF is audited as `inventory.export` with the report kind, title, format, row count, column and filter counts; create, update and delete of a saved report are audited. | `TestReportBuilderEndToEnd` |
+| Formula injection in CSV | Same rule as D38: a cell starting with `=`, `+`, `-`, `@`, tab or CR is prefixed with `'`. The PDF is plain text in built-in fonts. | `TestCSVIsFormulaSafeAndHasBOM`, `TestReportBuilderEndToEnd` |
+| A report that is too big | Preview 1000 rows, CSV 200,000 rows, PDF 5,000 rows (and it says so); at most 40 columns, 20 filters, 200 sites; values up to 200 characters. | `Validate`, `TestPDFIsAPDFAndSaysWhenItIsCut` |
+| One organization reading another's saved report | Every query of `saved_reports` and of the data carries the organization id from the session. | `TestSavedReports`, `TestRunDevices` |
+
 ## 10. Vulnerability disclosure
 Reports go through GitHub private vulnerability reporting (Security tab, "Report a vulnerability"); the full policy is in the
 repository's [SECURITY.md](../SECURITY.md). LibrePatch has a single maintainer, so response times there are goals, not guarantees.

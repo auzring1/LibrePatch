@@ -101,7 +101,6 @@ export const NAV: NavGroup[] = [
     label: "",
     items: [
       { id: "vulnerabilities", to: "/vulnerabilities", label: "Vulnerabilities", perm: "reports:read", feature: "vulnerabilities", icon: I.Shield, keywords: ["cve", "exploited", "security", "risk", "kev", "nvd"] },
-      { id: "reports", to: "/reports", label: "Reports", perm: "reports:read", icon: I.NavReports, keywords: ["compliance", "export"] },
     ],
   },
   {
@@ -110,6 +109,7 @@ export const NAV: NavGroup[] = [
     items: [
       { id: "users", to: "/users", label: "Users and roles", perm: "users:read", icon: I.NavUsers, keywords: ["accounts", "rbac", "tokens"] },
       { id: "audit", to: "/audit", label: "Audit log", perm: "audit:read", icon: I.NavAudit, keywords: ["history", "events"] },
+      { id: "reports", to: "/reports", label: "Reports", perm: "reports:read", icon: I.NavReports, keywords: ["compliance", "export", "csv", "pdf", "custom report", "hardware report", "software report", "inventory"] },
       { id: "settings", to: "/settings", label: "Settings", perm: "catalog:read", icon: I.NavSettings, children: SETTINGS_SECTIONS, keywords: ["configuration", "options"] },
       { id: "styleguide", to: "/styleguide", label: "Style guide", perm: "branding:write", icon: I.Palette },
     ],

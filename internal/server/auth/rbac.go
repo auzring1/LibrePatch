@@ -45,6 +45,7 @@ const (
 	PermPoliciesRead     = "policies:read"
 	PermPoliciesWrite    = "policies:write" // auto-update policies and baselines
 	PermReportsRead      = "reports:read"
+	PermReportsWrite     = "reports:write"  // save, change and delete custom reports
 	PermBrandingWrite    = "branding:write" // organization name, product name, colors, login texts and images (administrators only)
 
 	// Settings sections (decision D95). Administrators hold all of them; operators the day-to-day ones.
@@ -76,12 +77,12 @@ var rolePerms = map[string][]string{
 		PermGroupsRead, PermGroupsWrite, PermInventoryExport,
 		PermCatalogRead, PermCatalogWrite, PermCatalogOverride, PermDeploymentsRead, PermDeploymentsWrite, PermSettingsWrite,
 		PermUpdatesRead, PermUpdatesWrite, PermUpdatesPolicy, PermReleasesRead, PermReleasesWrite,
-		PermSitesRead, PermSitesWrite, PermUsersRead, PermUsersWrite, PermPoliciesRead, PermPoliciesWrite, PermReportsRead,
+		PermSitesRead, PermSitesWrite, PermUsersRead, PermUsersWrite, PermPoliciesRead, PermPoliciesWrite, PermReportsRead, PermReportsWrite,
 		PermBrandingWrite,
 		PermSettingsAppearance, PermSettingsSecurity, PermSettingsNotifications, PermSettingsUpdates, PermSettingsDevices, PermSettingsReports, PermSettingsData, PermSettingsIntegrations},
 	RoleOperator: {PermDevicesRead, PermDevicesWrite, PermDevicesWake, PermEnrollmentRead, PermGroupsRead, PermGroupsWrite, PermInventoryExport,
 		PermCatalogRead, PermCatalogWrite, PermDeploymentsRead, PermDeploymentsWrite, PermUpdatesRead, PermUpdatesWrite, PermReleasesRead,
-		PermSitesRead, PermPoliciesRead, PermReportsRead,
+		PermSitesRead, PermPoliciesRead, PermReportsRead, PermReportsWrite,
 		PermSettingsNotifications, PermSettingsDevices, PermSettingsReports},
 	RoleReadOnly: {PermDevicesRead, PermGroupsRead, PermCatalogRead, PermDeploymentsRead, PermUpdatesRead, PermReleasesRead,
 		PermSitesRead, PermPoliciesRead, PermReportsRead},
