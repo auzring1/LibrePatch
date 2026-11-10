@@ -523,6 +523,18 @@ A report is a stored or posted *spec* that the server turns into one read-only q
 | A report that is too big | Preview 1000 rows, CSV 200,000 rows, PDF 5,000 rows (and it says so); at most 40 columns, 20 filters, 200 sites; values up to 200 characters. | `Validate`, `TestPDFIsAPDFAndSaysWhenItIsCut` |
 | One organization reading another's saved report | Every query of `saved_reports` and of the data carries the organization id from the session. | `TestSavedReports`, `TestRunDevices` |
 
+## 9o. Scheduled custom reports (D167)
+
+A schedule can now e-mail a ready-made or saved report. The new risk is data leaving the system to addresses typed into a schedule; the engine, its allow-lists and the CSV rules are those of section 9n.
+
+| Risk | Control | Evidence |
+|---|---|---|
+| Data e-mailed to someone who should not have it | Only people with `settings:reports` (administrators and operators) can create or change a schedule, and every change to the setting is audited (D95). Recipients are listed on the schedule and shown in its history (count). Mail goes only through the relay the administrator configured (D167); there is no direct delivery to arbitrary hosts. | `TestScheduledSavedAndReadyMadeReports`, settings audit |
+| A schedule pointing at someone else's report | The saved report is looked up with the organization id of the schedule; an id from another organization is "no longer exists". | `reportbuilder.Store.Get` |
+| Formula injection in an attached CSV | Same `CSVSafe` rule as exports. | `TestScheduledSavedAndReadyMadeReports` (`'=SCHED-PC`) |
+| A huge report exhausting memory or the mail server | At most 200,000 rows and 15 MB per message; more ends the run as failed with the reason. Query limits of 9n apply (read-only, 30 second timeout). | `buildSpec` |
+| Error text leaking secrets | The mail hint only adds fixed sentences to the server's own response; the password is never part of an error. | `TestHint` |
+
 ## 10. Vulnerability disclosure
 Reports go through GitHub private vulnerability reporting (Security tab, "Report a vulnerability"); the full policy is in the
 repository's [SECURITY.md](../SECURITY.md). LibrePatch has a single maintainer, so response times there are goals, not guarantees.

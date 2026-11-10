@@ -295,6 +295,20 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await expect(page.getByRole("link", { name: /E2E large-memory laptops/ })).toBeVisible();
       await shot(page, "23d-reports-library-custom");
       await page.getByRole("link", { name: /E2E large-memory laptops/ }).click();
+      // A schedule can send the saved report: the schedule form offers it by name (nothing is saved here).
+      await page.getByRole("link", { name: "Schedule by email" }).click();
+      await expect(page.getByRole("heading", { name: "Scheduled reports", exact: true })).toBeVisible();
+      await page.getByRole("group", { name: "Schedules" }).getByRole("button", { name: "Add", exact: true }).click();
+      const sched = page.getByRole("group", { name: "Weekly compliance" });
+      await sched.getByLabel("Report", { exact: true }).click();
+      await page.getByRole("option", { name: "A saved custom report", exact: true }).click();
+      await sched.getByLabel("Saved report").click();
+      await expect(page.getByRole("option", { name: "E2E large-memory laptops", exact: true })).toBeVisible();
+      await page.getByRole("option", { name: "E2E large-memory laptops", exact: true }).click();
+      await shot(page, "23f-schedule-saved-report");
+      await sched.getByRole("button", { name: /^Remove/ }).click();
+      await page.goto("/reports");
+      await page.getByRole("link", { name: /E2E large-memory laptops/ }).click();
       await page.getByRole("button", { name: "Delete" }).click();
       await page.getByRole("dialog").getByRole("button", { name: "Delete report" }).click();
       await expect(page.getByText("Report deleted.")).toBeVisible();

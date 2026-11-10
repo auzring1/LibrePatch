@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/auzring1/librepatch/internal/shared/brand"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -20,8 +21,10 @@ import (
 
 	"github.com/auzring1/librepatch/gen/dbq"
 	"github.com/auzring1/librepatch/internal/server/dashboard"
+	"github.com/auzring1/librepatch/internal/server/groups"
 	"github.com/auzring1/librepatch/internal/server/notify"
 	"github.com/auzring1/librepatch/internal/server/pdf"
+	"github.com/auzring1/librepatch/internal/server/reportbuilder"
 	"github.com/auzring1/librepatch/internal/server/settings"
 	"github.com/auzring1/librepatch/internal/shared/text"
 )
@@ -112,8 +115,8 @@ func (s *Service) Tick(ctx context.Context) {
 		if !sc.Bool("enabled") || ctx.Err() != nil {
 			continue
 		}
-		if k := sc.Str("report"); !windows && (k == "compliance" || k == "missing_updates") {
-			continue // these two report on Windows updates, which are switched off
+		if k := sc.Str("report"); !windows && (k == "compliance" || k == "missing_updates" || usesWindowsUpdates(k)) {
+			continue // these report on Windows updates, which are switched off
 		}
 		id := sc.Str("id")
 		slot := LastSlot(now, loc, sc.Str("frequency"), sc.Str("weekday"), sc.Int("day_of_month"), sc.Str("time"))
@@ -131,6 +134,12 @@ func (s *Service) Tick(ctx context.Context) {
 		}
 		s.run(ctx, org, sc, slot)
 	}
+}
+
+// usesWindowsUpdates reports whether a ready-made report reads the Windows update data.
+func usesWindowsUpdates(kind string) bool {
+	b, ok := reportbuilder.BuiltinByID(kind)
+	return ok && b.Spec.Dataset == "patching"
 }
 
 func (s *Service) run(ctx context.Context, org uuid.UUID, sc settings.V, due time.Time) {
@@ -178,18 +187,17 @@ func (s *Service) send(ctx context.Context, org uuid.UUID, sc settings.V) (int, 
 	if len(rcpt) == 0 {
 		return 0, errors.New("the schedule has no recipients")
 	}
-	body, name, ctype, err := s.Build(ctx, org, sc.Str("report"), sc.Str("format"))
+	built, err := s.Build(ctx, org, sc.Str("report"), sc.Str("saved_report"), sc.Str("format"))
 	if err != nil {
 		return 0, err
 	}
-	orgName, product, _ := s.names(ctx)
-	text := fmt.Sprintf("Attached: %s (%s).\r\n\r\nThis report is sent on the schedule %q set up under Settings > Scheduled reports.\r\n", reportTitle(sc.Str("report")), strings.ToUpper(sc.Str("format")), sc.Str("name"))
-	subject := fmt.Sprintf("%s: %s", sc.Str("name"), reportTitle(sc.Str("report")))
+	orgName, _, _ := s.names(ctx)
+	text := fmt.Sprintf("Attached: %s (%s).\r\n\r\nThis report is sent on the schedule %q set up under Settings > Scheduled reports.\r\n", built.Title, strings.ToUpper(sc.Str("format")), sc.Str("name"))
+	subject := fmt.Sprintf("%s: %s", sc.Str("name"), built.Title)
 	if orgName != "" {
 		subject = orgName + " - " + subject
 	}
-	_ = product
-	return len(body), s.Mail.SendMail(ctx, org, notify.Message{To: rcpt, Subject: subject, Text: text, Attachments: []notify.Attachment{{Name: name, Type: ctype, Data: body}}})
+	return len(built.Body), s.Mail.SendMail(ctx, org, notify.Message{To: rcpt, Subject: subject, Text: text, Attachments: []notify.Attachment{{Name: built.Name, Type: built.Type, Data: built.Body}}})
 }
 
 func (s *Service) names(ctx context.Context) (string, string, string) {
@@ -278,18 +286,58 @@ func yesNo(b bool) string {
 	return "no"
 }
 
-// Build renders one report. It returns the bytes, a file name and the content type.
-func (s *Service) Build(ctx context.Context, org uuid.UUID, kind, format string) ([]byte, string, string, error) {
-	t, err := s.data(ctx, org, kind)
-	if err != nil {
-		return nil, "", "", err
+// Built is one rendered report ready to attach.
+type Built struct {
+	Body       []byte
+	Name, Type string
+	Title      string
+}
+
+// maxAttachment is the largest report sent by e-mail; mail servers commonly refuse more than 20 MB once encoded.
+const maxAttachment = 15 << 20
+
+// maxRows bounds the rows of a report built from the report builder.
+const maxRows = 200_000
+
+var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
+
+func stem(title string) string {
+	t := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(title), "-"), "-")
+	if t == "" {
+		t = "report"
 	}
+	if len(t) > 60 {
+		t = strings.Trim(t[:60], "-")
+	}
+	return t
+}
+
+// pdfDoc is the header and footer every PDF carries.
+func (s *Service) pdfDoc(ctx context.Context, org uuid.UUID, title string) pdf.Doc {
 	orgName, product, accent := s.names(ctx)
 	note := ""
 	if v := s.Settings.Values(ctx, org, "reports"); v.Str("header_note") != "" {
 		note = v.Str("header_note")
 	}
-	stem := strings.ReplaceAll(kind, "_", "-") + "-" + s.now().UTC().Format("2006-01-02")
+	doc := pdf.Doc{OrgName: orgName, ProductName: product, Title: title, Note: note, Footer: strings.TrimSpace(orgName + " " + product), Accent: pdf.ParseHexColor(accent), Generated: s.now()}
+	if s.Logo != nil {
+		doc.LogoPNG = s.Logo(ctx, org)
+	}
+	return doc
+}
+
+// Build renders one report. kind is one of the three original reports, the id of a ready-made report, or "saved" with
+// the id of a saved custom report in savedID.
+func (s *Service) Build(ctx context.Context, org uuid.UUID, kind, savedID, format string) (Built, error) {
+	if kind == "saved" || reportbuilder.IsBuiltin(kind) {
+		return s.buildSpec(ctx, org, kind, savedID, format)
+	}
+	t, err := s.data(ctx, org, kind)
+	if err != nil {
+		return Built{}, err
+	}
+	title := reportTitle(kind)
+	name := strings.ReplaceAll(kind, "_", "-") + "-" + s.now().UTC().Format("2006-01-02")
 	if format == "csv" {
 		var b bytes.Buffer
 		b.WriteString("\xef\xbb\xbf") // the byte-order mark Excel needs to read UTF-8
@@ -307,13 +355,71 @@ func (s *Service) Build(ctx context.Context, org uuid.UUID, kind, format string)
 			_ = w.Write(out)
 		}
 		w.Flush()
-		return b.Bytes(), stem + ".csv", "text/csv; charset=utf-8", w.Error()
+		return Built{Body: b.Bytes(), Name: name + ".csv", Type: "text/csv; charset=utf-8", Title: title}, w.Error()
 	}
-	doc := pdf.Doc{OrgName: orgName, ProductName: product, Title: reportTitle(kind), Note: note, Footer: strings.TrimSpace(orgName + " " + product), Accent: pdf.ParseHexColor(accent), Generated: s.now()}
-	if s.Logo != nil {
-		doc.LogoPNG = s.Logo(ctx, org)
+	doc := s.pdfDoc(ctx, org, title)
+	return Built{Body: doc.Table(t.cols, t.rows), Name: name + ".pdf", Type: "application/pdf", Title: title}, nil
+}
+
+// buildSpec renders a ready-made or saved report from the report builder.
+func (s *Service) buildSpec(ctx context.Context, org uuid.UUID, kind, savedID, format string) (Built, error) {
+	var sp reportbuilder.Spec
+	var title string
+	if kind == "saved" {
+		id, err := uuid.Parse(savedID)
+		if err != nil {
+			return Built{}, errors.New("the schedule has no saved report chosen")
+		}
+		sv, err := (&reportbuilder.Store{Pool: s.Pool}).Get(ctx, org, id)
+		if errors.Is(err, reportbuilder.ErrNotFound) {
+			return Built{}, errors.New("the saved report no longer exists; choose another one in the schedule")
+		}
+		if err != nil {
+			return Built{}, err
+		}
+		sp, title = sv.Spec, sv.Name
+	} else {
+		b, _ := reportbuilder.BuiltinByID(kind)
+		sp, title = b.Spec, b.Name
 	}
-	return doc.Table(t.cols, t.rows), stem + ".pdf", "application/pdf", nil
+	windows := s.Settings.Peek(ctx, org, "updates").Bool("windows_updates_enabled")
+	sp, _, err := sp.Validate(windows)
+	if err != nil {
+		return Built{}, err
+	}
+	var grp *groups.Node
+	if sp.GroupID != nil {
+		g, err := dbq.New(s.Pool).GetGroup(ctx, dbq.GetGroupParams{ID: *sp.GroupID, OrgID: org})
+		if err != nil {
+			return Built{}, errors.New("the group this report is limited to no longer exists")
+		}
+		if grp, err = groups.Parse(g.Filter); err != nil {
+			return Built{}, err
+		}
+	}
+	res, err := reportbuilder.Run(ctx, s.Pool, org, sp, grp, windows, maxRows)
+	if err != nil {
+		return Built{}, err
+	}
+	if res.Truncated {
+		return Built{}, fmt.Errorf("the report has %d rows, more than can be sent by e-mail; narrow it with filters, a site or a group", res.Total)
+	}
+	name := stem(title) + "-" + s.now().UTC().Format("2006-01-02")
+	out := Built{Title: title}
+	if format == "csv" {
+		out.Body, err = reportbuilder.CSV(res)
+		out.Name, out.Type = name+".csv", "text/csv; charset=utf-8"
+	} else {
+		out.Body = reportbuilder.PDF(s.pdfDoc(ctx, org, title), res)
+		out.Name, out.Type = name+".pdf", "application/pdf"
+	}
+	if err != nil {
+		return Built{}, err
+	}
+	if len(out.Body) > maxAttachment {
+		return Built{}, fmt.Errorf("the report is %d MB, over the %d MB e-mail limit; narrow it with filters, a site or a group", len(out.Body)>>20, maxAttachment>>20)
+	}
+	return out, nil
 }
 
 // Tick prunes old run rows once a day along with the other retention work (see maintenance).

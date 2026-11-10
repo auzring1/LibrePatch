@@ -79,3 +79,6 @@ func BuiltinByID(id string) (*Builtin, bool) {
 	}
 	return nil, false
 }
+
+// IsBuiltin reports whether id names a ready-made report.
+func IsBuiltin(id string) bool { _, ok := BuiltinByID(id); return ok }
