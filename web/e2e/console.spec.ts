@@ -539,6 +539,19 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
         descriptions: [{ lang: "en", value: "A made-up entry that names no versions, known as &quot;NoVersions&quot;." }], metrics: { cvssMetricV31: [{ cvssData: { baseScore: 7.5, baseSeverity: "HIGH" } }] },
         configurations: [{ nodes: [{ operator: "OR", cpeMatch: [{ vulnerable: true, criteria: "cpe:2.3:a:gnu:bash:*:*:*:*:*:*:*:*" }] }] }] } }] };
       expect((await post("/vulnerabilities/import", { kind: "nvd", data: JSON.stringify(noVersionsPage) })).status()).toBe(200);
+      // The lookup is off on a new installation, so the console hides Vulnerabilities everywhere until an administrator turns it on.
+      await page.reload();
+      await expect(mainNav(page).getByRole("link", { name: "Devices", exact: true })).toBeVisible();
+      await expect(mainNav(page).getByRole("link", { name: "Vulnerabilities", exact: true })).toHaveCount(0);
+      await page.goto("/vulnerabilities");
+      await expect(page.getByText("Vulnerability lookup is switched off")).toBeVisible();
+      const vulnSection = (await (await page.request.get("/api/v1/settings/sections/vulnerabilities")).json()) as { revision: number };
+      const turnOn = await page.request.put("/api/v1/settings/sections/vulnerabilities", {
+        data: { revision: vulnSection.revision, values: { enabled: true } },
+        headers: { "X-CSRF-Token": csrf, Origin: new URL(page.url()).origin },
+      });
+      expect(turnOn.status()).toBe(200);
+      await page.reload();
       await mainNav(page).getByRole("link", { name: "Vulnerabilities", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Vulnerabilities", exact: true })).toBeVisible();
       await expect(page.getByText("Known exploited", { exact: true })).toBeVisible();
