@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Alert, Button, Checkbox, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
 import { api, errorMessage, type Device } from "../api/client";
-import { ago } from "../api/format";
 import { useSession } from "../api/session";
 import { useFeatures } from "../settings/features";
 import { DeviceActions } from "../components/DeviceActions";
@@ -114,7 +113,6 @@ export function DevicePage() {
       <PageHeader
         title={d?.hostname ?? "Device"}
         crumb={d?.hostname ?? "Device"}
-        description={d ? [d.os_caption, d.os_build].filter(Boolean).join(" · ") || undefined : undefined}
         actions={d ? <DeviceActions device={d} approve={approve} refreshDevice={refreshDevice} onRevoke={() => setRevokeOpen(true)} onDelete={() => void askDelete()} /> : undefined}
       />
       {q.isLoading && <TableSkeleton rows={4} cols={3} />}
@@ -125,9 +123,6 @@ export function DevicePage() {
             {d.status === "active" && <Status value={d.online ? "online" : "offline"} />}
             <Status value={d.status} />
             {d.pending_reboot && <StatusPill kind="warning" icon={Icons.Restart}>Restart pending</StatusPill>}
-            <span className="lp-muted" style={{ fontSize: "var(--lp-text-sm)" }}>
-              {d.online ? "Connected now" : d.last_seen_at ? `Last seen ${ago(d.last_seen_at)}` : "Never seen"}
-            </span>
           </div>
           {d.status === "pending" && d.replaces_device_id && (
             <Alert color="yellow" icon={<Icons.Warning size={18} aria-hidden />} title="Re-enrollment of known hardware">

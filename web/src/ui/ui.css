@@ -179,7 +179,7 @@ a.lp-tile:hover, button.lp-tile:hover { border-color: var(--lp-border-strong); b
 .lp-dt { display: flex; flex-direction: column; gap: var(--lp-space-3); min-width: 0; }
 .lp-dt__toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lp-space-2); }
 .lp-dt__toolbar-spacer { flex: 1; }
-.lp-dt__searchbox { display: flex; flex: 0 1 260px; align-items: center; gap: var(--lp-space-2); height: 34px; min-width: 160px; padding: 0 var(--lp-space-3); background: var(--lp-surface); border: 1px solid var(--lp-border-strong); border-radius: var(--lp-radius-md); color: var(--lp-text-muted); }
+.lp-dt__searchbox { display: flex; flex: 1 1 270px; max-width: 300px; align-items: center; gap: var(--lp-space-2); height: 34px; min-width: 160px; padding: 0 var(--lp-space-3); background: var(--lp-surface); border: 1px solid var(--lp-border-strong); border-radius: var(--lp-radius-md); color: var(--lp-text-muted); }
 .lp-dt__searchbox:focus-within { border-color: var(--lp-focus); box-shadow: 0 0 0 1px var(--lp-focus); }
 .lp-dt__searchbox input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--lp-text); font: inherit; }
 .lp-dt__searchbox input::placeholder { color: var(--lp-text-muted); opacity: 1; }

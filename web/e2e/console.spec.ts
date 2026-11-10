@@ -181,6 +181,10 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await mainNav(page).getByRole("link", { name: "Devices", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Devices", exact: true })).toBeVisible();
   await expect(page.getByText("No devices yet")).toBeVisible();
+  // An empty list has nothing to view, size or export: only the page's own controls remain.
+  await expect(page.getByRole("button", { name: "Export CSV" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Columns" })).toHaveCount(0);
+  await expect(page.getByRole("radiogroup", { name: "Show devices by status" })).toBeVisible();
   // The organization name and logo from the wizard are in the top bar; the product keeps its default name.
   await expect(page.getByTestId("org-name")).toHaveText("Acme Corp");
   await expect(page.getByTestId("product-name")).toHaveText("LibrePatch");
@@ -217,6 +221,11 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await expect(row).toBeVisible({ timeout: 30_000 });
       await expect(row.getByText("online")).toBeVisible({ timeout: 30_000 });
       await shot(page, "04-devices");
+      // The capitals of the column headers are not cut off (they used to lose the end of "CONNECTION").
+      for (const th of await page.locator("table.lp-dt__table th[scope=col] .lp-dt__sort").all()) {
+        expect(await th.evaluate((e) => e.scrollWidth <= e.clientWidth + 1), `header "${await th.innerText()}" is cut off`).toBe(true);
+      }
+      await expect(page.getByPlaceholder("Search devices, users, models…")).toBeVisible();
       // Regression: the select-all checkbox must work for ACTIVE devices (it used to select revoked devices only).
       const selectAll = page.getByRole("checkbox", { name: "Select all rows on this page" });
       await expect(selectAll).toBeEnabled();
@@ -229,6 +238,12 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await row.click();
       await expect(page).toHaveURL(/\/devices\/[0-9a-f-]{36}$/);
       await expect(page.getByRole("tab", { name: "Hardware" })).toBeVisible();
+      // The overview says each fact once: the tiles carry OS, agent version, last seen, user, uptime and software count.
+      await expect(page.getByRole("group", { name: "Device summary" }).getByText("Agent version")).toBeVisible();
+      for (const repeated of ["Agent version", "Operating system", "Last seen", "Uptime"]) {
+        await expect(page.getByText(repeated, { exact: true })).toHaveCount(1);
+      }
+      await expect(page.getByText("Software inventory", { exact: true })).toHaveCount(0);
       await page.getByRole("tab", { name: "Hardware" }).click();
       await expect(page.getByText("Memory")).toBeVisible();
       await shot(page, "05-device-hardware");
@@ -856,7 +871,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await mainNav(page).getByRole("link", { name: "Automations", exact: true }).click();
   await expect(page.getByRole("tab", { name: "Software", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "Rings", exact: true })).toHaveCount(0); // rings are for Windows updates only (D148)
-  await expect(page.getByRole("toolbar", { name: "Software policies controls" })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Software policies controls" })).toHaveCount(0); // no policy yet: nothing to search, view or export
   await page.getByRole("button", { name: "Add policy" }).click();
   const pd = page.getByRole("dialog");
   await pd.getByLabel(/^Name/).fill("Keep Acme Tool current");
