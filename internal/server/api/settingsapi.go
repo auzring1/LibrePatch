@@ -139,8 +139,6 @@ func (s *server) settingsEffective(w http.ResponseWriter, r *http.Request) {
 		"appearance": s.Settings.Values(ctx, org, "appearance"),
 		"devices":    map[string]any{"offline_hours": dev.Int("offline_hours"), "naming_pattern": dev.Str("naming_pattern"), "default_columns": dev.Strings("default_columns"), "custom_fields": fields},
 		"updates":    map[string]any(up),
-		// Only whether the lookup is on, so the console can hide the Vulnerabilities pages when it is off. The URLs and the API key stay in the settings section.
-		"vulnerabilities": map[string]any{"enabled": s.Settings.Values(ctx, org, "vulnerabilities").Bool("enabled")},
 	})
 }
 

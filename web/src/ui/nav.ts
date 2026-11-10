@@ -15,7 +15,7 @@ export interface NavItem {
   /** Visible with any one of these permissions (organization-wide) instead of `perm`. */
   anyOf?: string[];
   /** Hidden while this part of the console is switched off for the organization (Settings > Update defaults). */
-  feature?: "windows-updates" | "vulnerabilities";
+  feature?: "windows-updates";
   icon: IconType;
   /** Match this path exactly (a sibling lives below it). */
   end?: boolean;
@@ -100,7 +100,7 @@ export const NAV: NavGroup[] = [
     id: "insights",
     label: "",
     items: [
-      { id: "vulnerabilities", to: "/vulnerabilities", label: "Vulnerabilities", perm: "reports:read", feature: "vulnerabilities", icon: I.Shield, keywords: ["cve", "exploited", "security", "risk", "kev", "nvd"] },
+      { id: "vulnerabilities", to: "/vulnerabilities", label: "Vulnerabilities", perm: "reports:read", icon: I.Shield, keywords: ["cve", "exploited", "security", "risk", "kev", "nvd"] },
       { id: "reports", to: "/reports", label: "Reports", perm: "reports:read", icon: I.NavReports, keywords: ["compliance", "export"] },
     ],
   },
@@ -120,13 +120,12 @@ export interface Allow {
   can: (perm: string) => boolean;
   canOrg: (perm: string) => boolean;
   /** Parts of the console the organization switched off; absent means everything is on. */
-  features?: { windowsUpdates: boolean; vulnerabilities: boolean };
+  features?: { windowsUpdates: boolean };
 }
 
 /** Whether the person may see a link. */
 export const allowed = (n: NavItem, a: Allow) => {
   if (n.feature === "windows-updates" && a.features?.windowsUpdates === false) return false;
-  if (n.feature === "vulnerabilities" && a.features?.vulnerabilities === false) return false;
   if (n.anyOf) return n.anyOf.some((p) => a.canOrg(p));
   return n.perm === "" || (n.any ? a.can(n.perm) : a.canOrg(n.perm));
 };

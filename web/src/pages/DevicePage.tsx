@@ -78,7 +78,7 @@ export function DevicePage() {
   const d = q.data;
   const { loading: sessionLoading, can, canOrg } = useSession();
   const features = useFeatures();
-  const access = { hasVulnerabilities: features.vulnerabilities, hasUpdates: can("updates:read") && features.windowsUpdates, hasSoftwareUpdates: can("deployments:read"), hasJobs: can("deployments:read"), hasInspect: can("devices:inspect") && d?.status === "active", hasActivity: canOrg("audit:read") };
+  const access = { hasUpdates: can("updates:read") && features.windowsUpdates, hasSoftwareUpdates: can("deployments:read"), hasJobs: can("deployments:read"), hasInspect: can("devices:inspect") && d?.status === "active", hasActivity: canOrg("audit:read") };
   const [params, setParams] = useSearchParams();
   const rawTab = params.get("tab");
   const tab = resolveDeviceTab(rawTab, access);
@@ -159,7 +159,7 @@ export function DevicePage() {
                 <Tabs.Tab value="overview">Overview</Tabs.Tab>
                 <Tabs.Tab value="hardware">Hardware</Tabs.Tab>
                 <Tabs.Tab value="software">Installed software{d.software_count ? ` (${d.software_count})` : ""}</Tabs.Tab>
-                {access.hasVulnerabilities && <Tabs.Tab value="vulnerabilities">Vulnerabilities</Tabs.Tab>}
+                <Tabs.Tab value="vulnerabilities">Vulnerabilities</Tabs.Tab>
                 {access.hasSoftwareUpdates && <Tabs.Tab value="software-updates">Software updates</Tabs.Tab>}
                 {access.hasUpdates && <Tabs.Tab value="updates">Windows updates</Tabs.Tab>}
                 {access.hasJobs && <Tabs.Tab value="jobs">Jobs</Tabs.Tab>}
@@ -176,11 +176,9 @@ export function DevicePage() {
               <Tabs.Panel value="software" pt="md">
                 <SoftwareTab id={id} hostname={d.hostname} active={d.status === "active"} />
               </Tabs.Panel>
-              {access.hasVulnerabilities && (
-                <Tabs.Panel value="vulnerabilities" pt="md">
-                  <VulnerabilitiesTab device={d} />
-                </Tabs.Panel>
-              )}
+              <Tabs.Panel value="vulnerabilities" pt="md">
+                <VulnerabilitiesTab device={d} />
+              </Tabs.Panel>
               {access.hasSoftwareUpdates && (
                 <Tabs.Panel value="software-updates" pt="md">
                   <SoftwareUpdatesTab id={id} hostname={d.hostname} active={d.status === "active"} />

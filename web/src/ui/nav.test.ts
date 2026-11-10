@@ -50,24 +50,13 @@ describe("navigation tree", () => {
   });
 
   it("hides the Windows pages, and only those, when Windows updates are switched off", () => {
-    const off = { ...everything, features: { windowsUpdates: false, vulnerabilities: true } };
+    const off = { ...everything, features: { windowsUpdates: false } };
     const ids = visibleNav(off).flatMap((g) => g.items.map((i) => i.id));
     expect(ids).not.toContain("windows-updates");
     expect(ids).not.toContain("held-updates");
     expect(ids).toEqual(expect.arrayContaining(["software-updates", "automations", "deployments", "vulnerabilities"]));
-    const on = { ...everything, features: { windowsUpdates: true, vulnerabilities: true } };
+    const on = { ...everything, features: { windowsUpdates: true } };
     expect(visibleNav(on).flatMap((g) => g.items.map((i) => i.id))).toEqual(expect.arrayContaining(["windows-updates", "held-updates"]));
-  });
-
-  it("hides the Vulnerabilities page, and only it, when the lookup is switched off", () => {
-    const off = { ...everything, features: { windowsUpdates: true, vulnerabilities: false } };
-    const ids = visibleNav(off).flatMap((g) => g.items.map((i) => i.id));
-    expect(ids).not.toContain("vulnerabilities");
-    expect(ids).toEqual(expect.arrayContaining(["windows-updates", "reports", "software-updates"]));
-    // The settings section that turns it on stays reachable.
-    expect(flatNav().some((x) => x.item.id === "settings")).toBe(true);
-    expect(sidebarNav(off).flatMap((g) => g.items.map((i) => i.id))).not.toContain("vulnerabilities");
-    expect(visibleNav({ ...everything, features: { windowsUpdates: true, vulnerabilities: true } }).flatMap((g) => g.items.map((i) => i.id))).toContain("vulnerabilities");
   });
 
   it("keeps the Settings sections for the Settings page and the command palette (the sidebar shows one Settings link)", () => {

@@ -1427,7 +1427,6 @@ paths:
     get:
       tags: [settings]
       summary: The organization's display and formatting choices and the device and update defaults, for any signed-in person (no secrets, no security settings)
-      description: Includes vulnerabilities.enabled, whether the vulnerability lookup is on (the console hides the Vulnerabilities pages while it is off); the feed addresses and the API key are not included.
       responses:
         "200":
           description: OK

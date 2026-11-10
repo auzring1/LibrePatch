@@ -292,7 +292,7 @@ jobs:
           function Test-LogLeak([string]$Path, [string]$Secret) {
             # msiexec writes ANSI or UTF-16 depending on version: look for the secret in both encodings.
             # Windows Installer itself prints the install action's data (with the token) on one known line even for
-            # hidden properties (decision D103, accepted by the owner). That line is ignored; the token anywhere
+            # hidden properties (DECISIONS D103, accepted by the owner). That line is ignored; the token anywhere
             # else in the log is a failure.
             $bytes = [System.IO.File]::ReadAllBytes($Path)
             if ($bytes.Length -lt 2000) { throw "$Path is suspiciously small ($($bytes.Length) bytes): no verbose log" }

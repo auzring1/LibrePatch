@@ -295,29 +295,3 @@ func TestAboutAndSupportBundleHaveNoSecrets(t *testing.T) {
 		t.Fatal("the bundle download is audited")
 	}
 }
-
-// The console hides the Vulnerabilities pages while the lookup is off, so /settings/effective (readable by every signed-in person)
-// reports whether it is on, and only that: no URLs and no API key.
-func TestEffectiveSettingsReportVulnerabilityLookup(t *testing.T) {
-	h := newHarness(t)
-	h.setupAndLogin()
-	vuln := func() map[string]any {
-		t.Helper()
-		_, b := h.do("GET", "/api/v1/settings/effective", nil, nil)
-		v, ok := b["vulnerabilities"].(map[string]any)
-		if !ok {
-			t.Fatalf("effective settings have no vulnerabilities entry: %v", b)
-		}
-		return v
-	}
-	if v := vuln(); v["enabled"] != false || len(v) != 1 {
-		t.Fatalf("the lookup is off by default and nothing else is exposed: %v", v)
-	}
-	_, d := h.do("GET", "/api/v1/settings/sections/vulnerabilities", nil, nil)
-	if st, b := h.do("PUT", "/api/v1/settings/sections/vulnerabilities", map[string]any{"revision": d["revision"], "values": map[string]any{"enabled": true}}, nil); st != 200 {
-		t.Fatalf("save: %d %v", st, b)
-	}
-	if v := vuln(); v["enabled"] != true {
-		t.Fatalf("turning the lookup on must show: %v", v)
-	}
-}
