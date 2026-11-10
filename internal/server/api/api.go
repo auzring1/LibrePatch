@@ -315,6 +315,11 @@ func (s *server) routes(r chi.Router) {
 	r.With(s.requireDevice(auth.PermDevicesRead)).Get("/devices/{id}/vulnerabilities", s.deviceVulnerabilities)
 	r.With(s.require(auth.PermReportsRead)).Get("/reports/lifecycle", s.reportLifecycle)
 	r.With(s.require(auth.PermInventoryExport)).Get("/reports/lifecycle.csv", s.lifecycleCSV)
+	r.With(s.require(auth.PermReportsRead)).Get("/reports/catalog", s.reportCatalog)
+	r.With(s.require(auth.PermReportsRead)).Post("/reports/run", s.runReport)
+	r.With(s.require(auth.PermReportsWrite)).Post("/reports/saved", s.createSavedReport)
+	r.With(s.require(auth.PermReportsWrite)).Put("/reports/saved/{id}", s.updateSavedReport)
+	r.With(s.require(auth.PermReportsWrite)).Delete("/reports/saved/{id}", s.deleteSavedReport)
 	r.With(s.require(auth.PermInventoryExport)).Get("/reports/compliance.html", s.complianceHTML)
 
 	r.With(s.require(auth.PermBrandingWrite)).Get("/settings/branding", s.getBranding)

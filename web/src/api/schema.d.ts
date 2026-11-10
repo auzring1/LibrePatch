@@ -5884,6 +5884,210 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reports/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The data a report can read, the ready-made reports and the saved custom reports (requires reports:read)
+         * @description Patch data and the reports built on it are left out when Windows updates are switched off for the organization.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReportCatalog"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run a report definition and return a preview, a CSV or a PDF (preview requires reports:read; a file requires inventory:export and is audited)
+         * @description `format` json returns the first 1000 rows and the total. `csv` and `pdf` return a file (a PDF holds the first 5000 rows
+         *     and says so; the CSV holds up to 200000). Cells that would be read as spreadsheet formulas are prefixed with `'`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        spec: components["schemas"]["ReportSpec"];
+                        /**
+                         * @default json
+                         * @enum {string}
+                         */
+                        format?: "json" | "csv" | "pdf";
+                        /** @description Shown at the top of the PDF and in the file name */
+                        title?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The preview, or the file */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReportResult"];
+                        "text/csv": string;
+                        "application/pdf": string;
+                    };
+                };
+                400: components["responses"]["Error"];
+                403: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports/saved": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save a custom report (requires reports:write; audited) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SavedReportBody"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SavedReport"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports/saved/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a saved custom report (requires reports:write; audited) */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SavedReportBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SavedReport"];
+                    };
+                };
+                400: components["responses"]["Error"];
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        post?: never;
+        /** Delete a saved custom report (requires reports:write; audited) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Error"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/reports/lifecycle": {
         parameters: {
             query?: never;
@@ -9125,6 +9329,89 @@ export interface components {
             note: string;
             /** Format: date-time */
             last_seen_at: string | null;
+        };
+        ReportFilter: {
+            column: string;
+            /** @description One of the `ops` the column offers */
+            op: string;
+            value?: string;
+        };
+        ReportSpec: {
+            /** @description One of the ids in the catalog's datasets */
+            dataset: string;
+            columns: string[];
+            filters?: components["schemas"]["ReportFilter"][];
+            /** @description Only devices at these sites */
+            site_ids?: string[];
+            /**
+             * Format: uuid
+             * @description Only members of this group
+             */
+            group_id?: string;
+            sort?: {
+                /** @description A shown column */
+                column: string;
+                desc?: boolean;
+            };
+        };
+        ReportColumn: {
+            id: string;
+            label: string;
+            /** @enum {string} */
+            kind: "text" | "number" | "bool" | "time";
+            group: string;
+            choices?: string[];
+            ops: string[];
+        };
+        ReportDataset: {
+            id: string;
+            label: string;
+            description: string;
+            default_columns: string[];
+            columns: components["schemas"]["ReportColumn"][];
+        };
+        BuiltinReport: {
+            id: string;
+            /** @enum {string} */
+            category: "software" | "hardware" | "patching" | "devices";
+            name: string;
+            description: string;
+            spec: components["schemas"]["ReportSpec"];
+        };
+        SavedReport: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            spec: components["schemas"]["ReportSpec"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        SavedReportBody: {
+            name: string;
+            description?: string;
+            spec: components["schemas"]["ReportSpec"];
+        };
+        ReportCatalog: {
+            datasets: components["schemas"]["ReportDataset"][];
+            builtins: components["schemas"]["BuiltinReport"][];
+            saved: components["schemas"]["SavedReport"][];
+        };
+        ReportResult: {
+            columns: {
+                id: string;
+                label: string;
+                /** @enum {string} */
+                kind: "text" | "number" | "bool" | "time";
+                width: number;
+            }[];
+            rows: string[][];
+            /** Format: int64 */
+            total: number;
+            /** @description More rows exist than are returned */
+            truncated: boolean;
         };
         LifecycleReport: {
             /** Format: date */

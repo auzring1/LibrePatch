@@ -570,6 +570,17 @@ type RoleBinding struct {
 	Source    string
 }
 
+type SavedReport struct {
+	ID          uuid.UUID
+	OrgID       uuid.UUID
+	Name        string
+	Description string
+	Spec        []byte
+	CreatedBy   *uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type Script struct {
 	ID             uuid.UUID
 	OrgID          uuid.UUID

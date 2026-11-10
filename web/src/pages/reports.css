@@ -1,0 +1,17 @@
+/* The report library and the report page. Semantic tokens only. */
+.lp-rpt-section { display: flex; flex-direction: column; gap: var(--lp-space-3); }
+.lp-rpt-section__head { display: flex; align-items: baseline; gap: var(--lp-space-3); flex-wrap: wrap; }
+.lp-rpt-section__title { margin: 0; font-size: var(--lp-text-md); font-weight: var(--lp-weight-semibold); }
+.lp-rpt-grid { display: grid; gap: var(--lp-space-3); grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.lp-rpt-card {
+  display: flex; flex-direction: column; gap: var(--lp-space-1); padding: var(--lp-space-3) var(--lp-space-4);
+  background: var(--lp-surface); border: 1px solid var(--lp-border); border-radius: var(--lp-radius-md);
+  color: var(--lp-text); text-decoration: none; transition: border-color var(--lp-motion-fast) var(--lp-ease), background var(--lp-motion-fast) var(--lp-ease);
+}
+.lp-rpt-card:hover { border-color: var(--lp-accent); background: var(--lp-surface-hover); }
+.lp-rpt-card:focus-visible { outline: 2px solid var(--lp-focus); outline-offset: 2px; }
+.lp-rpt-card__name { font-weight: var(--lp-weight-semibold); }
+.lp-rpt-card__desc { margin: 0; color: var(--lp-text-muted); font-size: var(--lp-text-sm); }
+.lp-rpt-filter { display: grid; gap: var(--lp-space-2); grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(150px, 1.2fr) auto; align-items: end; }
+@media (max-width: 720px) { .lp-rpt-filter { grid-template-columns: 1fr; } }
+.lp-rpt-meta { color: var(--lp-text-muted); font-size: var(--lp-text-sm); margin: 0; }

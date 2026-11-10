@@ -40,6 +40,19 @@ describe("navigation tree", () => {
     expect(locate("/software-updates")?.item.id).toBe("software-updates");
   });
 
+  it("lists Reports in Administration, not under Software or Insights, for anyone who can read reports", () => {
+    const groupOf = (a: Parameters<typeof visibleNav>[0]) => visibleNav(a).find((g) => g.items.some((i) => i.id === "reports"))?.id;
+    expect(groupOf(everything)).toBe("administration");
+    expect(groupOf(only("reports:read"))).toBe("administration");
+    expect(groupOf(only("devices:read"))).toBeUndefined();
+    const admin = visibleNav(everything).find((g) => g.id === "administration")!;
+    expect(admin.items.map((i) => i.id).indexOf("reports")).toBeLessThan(admin.items.map((i) => i.id).indexOf("settings"));
+    expect(locate("/reports")?.group.id).toBe("administration");
+    expect(locate("/reports/hardware-inventory")?.item.id).toBe("reports");
+    expect(trail("/reports/hardware-inventory").map((c) => c.label)).toEqual(["Administration", "Reports"]);
+    expect(visibleNav(everything).find((g) => g.id === "software")!.items.map((i) => i.id)).not.toContain("reports");
+  });
+
   it("keeps Automations for anyone who can read policies or updates, and moved Software policies into it", () => {
     const ids = (a: Parameters<typeof visibleNav>[0]) => visibleNav(a).flatMap((g) => g.items.map((i) => i.id));
     expect(ids(only("policies:read"))).toContain("automations");

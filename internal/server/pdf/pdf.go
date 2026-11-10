@@ -22,7 +22,7 @@ const (
 	margin       = 36.0
 	bodySize     = 8.0
 	lineH        = 11.0
-	headerH      = 78.0
+	headerH      = 92.0
 	footerH      = 28.0
 )
 
@@ -130,7 +130,7 @@ func (d Doc) Table(cols []Column, rows [][]string) []byte {
 	for i, c := range cols {
 		heads[i] = c.Header
 	}
-	perPage := 37 // (595 - 2*36 - 78 - 28) / 11 lines
+	perPage := 36 // (595 - 2*36 - 92 - 28) / 11 lines
 	if perPage < 5 {
 		perPage = 5
 	}
