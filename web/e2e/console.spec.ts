@@ -179,7 +179,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await page.getByRole("button", { name: "Hide this" }).click();
   await expect(page.getByRole("heading", { name: "Getting started" })).toHaveCount(0);
 
-  // Customizable dashboards (D166): edit, drag, resize, add widgets, save, a second dashboard, and it all survives a reload.
+  // Customizable dashboards (D167): edit, drag, resize, add widgets, save, a second dashboard, and it all survives a reload.
   await page.getByRole("button", { name: "Edit dashboard" }).click();
   const agents = page.locator("[data-widget]").filter({ hasText: "Agent versions" });
   const y0 = (await agents.boundingBox())!.y;
