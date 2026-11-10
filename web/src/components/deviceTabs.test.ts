@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { availableDeviceTabs, DEVICE_TAB_ALIASES, DEVICE_TABS, resolveDeviceTab, type DeviceTabAccess } from "./deviceTabs";
 
-const all: DeviceTabAccess = { hasUpdates: true, hasSoftwareUpdates: true, hasJobs: true, hasInspect: true, hasActivity: true };
-const none: DeviceTabAccess = { hasUpdates: false, hasSoftwareUpdates: false, hasJobs: false, hasInspect: false, hasActivity: false };
+const all: DeviceTabAccess = { hasVulnerabilities: true, hasUpdates: true, hasSoftwareUpdates: true, hasJobs: true, hasInspect: true, hasActivity: true };
+const none: DeviceTabAccess = { hasVulnerabilities: true, hasUpdates: false, hasSoftwareUpdates: false, hasJobs: false, hasInspect: false, hasActivity: false };
 
 describe("resolveDeviceTab", () => {
   it("keeps every valid tab the person may see", () => {
@@ -51,6 +51,10 @@ describe("resolveDeviceTab", () => {
     expect(resolveDeviceTab("software-updates", none)).toBe("overview");
     expect(resolveDeviceTab("software-updates", { ...all, hasSoftwareUpdates: false })).toBe("overview");
     expect(resolveDeviceTab("updates", { ...all, hasUpdates: false })).toBe("overview");
+    // Vulnerability lookup switched off: the tab and every old name for it lead to Overview.
+    expect(availableDeviceTabs({ ...all, hasVulnerabilities: false })).not.toContain("vulnerabilities");
+    expect(resolveDeviceTab("vulnerabilities", { ...all, hasVulnerabilities: false })).toBe("overview");
+    expect(resolveDeviceTab("cve", { ...all, hasVulnerabilities: false })).toBe("overview");
     expect(resolveDeviceTab("missing", none)).toBe("overview");
     expect(resolveDeviceTab("users", none)).toBe("overview");
     expect(resolveDeviceTab("certs", none)).toBe("hardware");
@@ -62,6 +66,6 @@ describe("availableDeviceTabs", () => {
   it("keeps the display order", () => {
     expect(availableDeviceTabs(all)).toEqual(["overview", "hardware", "software", "vulnerabilities", "software-updates", "updates", "jobs", "inspect", "activity"]);
     expect(availableDeviceTabs(none)).toEqual(["overview", "hardware", "software", "vulnerabilities"]);
-    expect(availableDeviceTabs({ hasUpdates: true, hasSoftwareUpdates: false, hasJobs: false, hasInspect: false, hasActivity: true })).toEqual(["overview", "hardware", "software", "vulnerabilities", "updates", "activity"]);
+    expect(availableDeviceTabs({ hasVulnerabilities: true, hasUpdates: true, hasSoftwareUpdates: false, hasJobs: false, hasInspect: false, hasActivity: true })).toEqual(["overview", "hardware", "software", "vulnerabilities", "updates", "activity"]);
   });
 });

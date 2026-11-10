@@ -59,6 +59,14 @@ describe("navigation tree", () => {
     expect(visibleNav(on).flatMap((g) => g.items.map((i) => i.id))).toEqual(expect.arrayContaining(["windows-updates", "held-updates"]));
   });
 
+  it("hides Vulnerabilities, and keeps its settings section, when the lookup is switched off", () => {
+    const ids = (a: Parameters<typeof visibleNav>[0]) => visibleNav(a).flatMap((g) => g.items.flatMap((i) => [i.id, ...(i.children ?? []).map((c) => c.id)]));
+    expect(ids({ ...everything, features: { windowsUpdates: true, vulnerabilities: false } })).not.toContain("vulnerabilities");
+    expect(ids({ ...everything, features: { windowsUpdates: true, vulnerabilities: false } })).toContain("settings-vulnerabilities");
+    expect(ids({ ...everything, features: { windowsUpdates: true, vulnerabilities: true } })).toContain("vulnerabilities");
+    expect(ids(everything)).toContain("vulnerabilities");
+  });
+
   it("keeps the Settings sections for the Settings page and the command palette (the sidebar shows one Settings link)", () => {
     const settings = visibleNav(only("catalog:read")).flatMap((g) => g.items).find((i) => i.id === "settings");
     expect(settings?.children?.map((c) => c.id)).toEqual(["settings-general"]);
