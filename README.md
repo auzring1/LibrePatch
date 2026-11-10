@@ -178,6 +178,7 @@ and install it on an endpoint with the command the console shows under **Enrollm
 | [PROTOCOL](docs/PROTOCOL.md) | Enrollment, mTLS channel, signed jobs, inventory |
 | [DATA_MODEL](docs/DATA_MODEL.md) | PostgreSQL schema |
 | [THREAT-MODEL](docs/THREAT-MODEL.md) | Threat model, controls with evidence, known gaps |
+| [DECISIONS](docs/DECISIONS.md) | Owner decisions and engineering defaults |
 | [RUNBOOK](docs/RUNBOOK.md) | Install, operate, troubleshoot (branding: §5g) |
 | [VERIFYING_RELEASES](docs/VERIFYING_RELEASES.md) | Check a release's signatures and reproducibility |
 | [LOADTEST](docs/LOADTEST.md) | Load generator and sandbox results |

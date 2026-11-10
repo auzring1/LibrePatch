@@ -217,6 +217,15 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await expect(row).toBeVisible({ timeout: 30_000 });
       await expect(row.getByText("online")).toBeVisible({ timeout: 30_000 });
       await shot(page, "04-devices");
+      // Regression: the select-all checkbox must work for ACTIVE devices (it used to select revoked devices only).
+      const selectAll = page.getByRole("checkbox", { name: "Select all rows on this page" });
+      await expect(selectAll).toBeEnabled();
+      await selectAll.check();
+      await expect(page.getByText(/^\d+ selected$/)).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Refresh \d+ active$/ })).toBeEnabled();
+      await expect(page.getByRole("button", { name: /^Delete\s*revoked$/ })).toBeDisabled(); // nothing selected is revoked
+      await page.getByRole("button", { name: "Clear selection" }).click();
+      await expect(page.getByText(/^\d+ selected$/)).toHaveCount(0);
       await row.click();
       await expect(page).toHaveURL(/\/devices\/[0-9a-f-]{36}$/);
       await expect(page.getByRole("tab", { name: "Hardware" })).toBeVisible();

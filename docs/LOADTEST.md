@@ -125,8 +125,8 @@ and PostgreSQL all on the same machine over loopback. Every simulated agent had 
 
 The load test found and fixed three server problems: deadlocks when many devices sent the same software at once, enrollment
 bursts starving TLS handshakes of database connections, and enrollment rate limits that could not be changed. Later passes
-cut memory per connection and database work per reconnect (decision D116 to D118). Open points, such as a bounded handshake
-queue for very large storms, are still open.
+cut memory per connection and database work per reconnect (DECISIONS D116 to D118). Open points, such as a bounded handshake
+queue for very large storms, are in DECISIONS.
 
 Still to do before trusting a number for your site: run section 4.2 against the real stack and network with the generator on
 another host, run a soak of several hours, and repeat the 10,000-agent run with the current build.

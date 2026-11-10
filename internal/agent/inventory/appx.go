@@ -9,7 +9,7 @@ import (
 
 // The AppX/MSIX registration store. This layout is not formally documented;
 // the collector is best-effort and covered by the Windows CI probe plus the
-// Phase 3 VM matrix (decision D33).
+// Phase 3 VM matrix (docs/DECISIONS.md D33).
 const appxStore = `SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore`
 
 var sidKeyRe = regexp.MustCompile(`^S-1-(5-21|12-1)(-\d+)+$`)

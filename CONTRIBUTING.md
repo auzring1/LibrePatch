@@ -29,7 +29,7 @@ relevant part of `agent.log`. Remove host names, addresses and anything private 
    ```
    If you changed the database, the API or the protocol, run `make generate` and commit the generated files.
 5. Keep the pull request focused: one change, explained in plain words (what and why). Update the docs it touches.
-   Explain design choices that someone will later wonder about in the pull request description; security-relevant ones also belong in [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md).
+   Design choices that someone will later wonder about belong in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Rules that matter here
 

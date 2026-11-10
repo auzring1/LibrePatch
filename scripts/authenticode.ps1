@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  Authenticode helper for the release pipeline (.github/workflows/release.yml, decision D79, D82).
+  Authenticode helper for the release pipeline (.github/workflows/release.yml, docs/DECISIONS.md D79, D82).
 
 .DESCRIPTION
   -Action Sign    signs files with signtool.exe. Used by the "signtool" provider (a code-signing certificate whose

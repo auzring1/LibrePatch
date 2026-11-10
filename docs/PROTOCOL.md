@@ -32,7 +32,7 @@ Root CA (ECDSA P-384, 20y)  — key encrypted with an owner passphrase; unlocked
  ├── Issuing CA (P-384, 5y, pathlen 0, EKU serverAuth+clientAuth)   — key encrypted with server KEK
  │    ├── Gateway server cert (P-256, 90d, auto-renewed, SAN = configured gateway hostnames/IPs)
  │    └── Device client certs (P-256, 90d; CN = device UUID; URI SAN urn:librepatch:device:<uuid>; EKU clientAuth)
- └── Job-signing cert (Ed25519, 2y, EKU = 1.3.6.1.4.1.32473.7231.1.1 "current job signing" (placeholder PEN, see decision D25), issued *directly* by root)
+ └── Job-signing cert (Ed25519, 2y, EKU = 1.3.6.1.4.1.32473.7231.1.1 "current job signing" (placeholder PEN, see DECISIONS D25), issued *directly* by root)
 ```
 
 - **The agent pins the root** by SPKI SHA-256 from its enrollment bundle. It accepts a job-signing certificate only if the root issued it directly and it has the job-signing EKU. The issuing CA can't produce one, because of its EKU constraint and path rule. So stealing the TLS issuing key does **not** let an attacker sign jobs.

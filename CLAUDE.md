@@ -1,9 +1,22 @@
-# LibrePatch: build, test and conventions
+# LibrePatch: notes for Claude Code sessions
 
-Self-hosted Windows endpoint patch and software management: a Go agent, a Go server (REST API, SSE, embedded React console)
-and PostgreSQL, run with docker compose. Open source under the GNU AGPL-3.0. Start with `README.md`, `docs/ARCHITECTURE.md`
-and `docs/RUNBOOK.md`. The decision log (up to D165) is no longer in this repository; comments that cite "D68" and the like refer to it. The README, `CONTRIBUTING.md`, `SECURITY.md` and `TRADEMARKS.md` are written for the
-public: keep real names, hosts and addresses out of the repository.
+Open source under the GNU AGPL-3.0 (D100). There is no licensing system, no device cap and no telemetry. The README, `CONTRIBUTING.md`,
+`SECURITY.md` and `TRADEMARKS.md` are written for the public: keep real names, hosts and addresses out of the repository.
+
+Self-hosted Windows endpoint patch and software management: a Go agent, a Go server (REST API, SSE, embedded
+React console) and PostgreSQL, run with docker compose. Security first: mTLS, signed jobs, mandatory MFA, RBAC, hash-chained
+audit. Start with `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (latest decision: D165) and `docs/RUNBOOK.md`.
+
+## The maintainer and the deployment
+- The maintainer is an IT administrator, not a full-time developer. Explain things in plain words and ask when a request is unclear.
+- Production runs on any Docker host with Docker Compose, often behind an existing reverse proxy, for a few hundred
+  PCs. Keep the public docs platform-neutral (D165): describe Docker and docker compose, not one vendor's NAS; a specific
+  product may appear at most as a brief optional example. Behind a proxy, the console goes through it to Caddy over plain HTTP (`deploy/caddy/Caddyfile.behind-proxy`); agents connect directly to
+  the gateway port. Host names and addresses of real installations are kept out of the repository on purpose.
+- This checkout is a development copy. Its `deploy/.env` and its Docker volumes (`secrets_*`, which hold the generated passwords and master key) are its own. Never copy production secrets
+  here, and never regenerate a production master key (it makes the database unreadable).
+- Changes reach production by rebuilding the server image. A server-only change needs no new agent release; an agent
+  change does (upload a new signed `.lprel` under Agent releases).
 
 ## Commands
 - Tests need PostgreSQL: `make dev-db` (port 55432), then
@@ -16,12 +29,19 @@ public: keep real names, hosts and addresses out of the repository.
   plain `bash` may resolve to WSL.
 
 ## Conventions
-- Database changes are goose migrations in `db/migrations` plus sqlc queries in `db/queries`.
+- Database changes are goose migrations in `db/migrations` (latest 00040) plus sqlc queries in `db/queries`.
 - Every state-changing API action writes an audit entry (`audit.Write`/`audit.Log`) and has an RBAC permission
   (`internal/server/auth/rbac.go`). Update `api/openapi.yaml` with the API.
 - A guard test forbids the owner's real organization name in code and tests; use "Contoso Health" in fixtures.
-- Explain design choices in the pull request description and record security-relevant ones in `docs/THREAT-MODEL.md`. There is no decision log and no decision numbers any more.
-- Say plainly what was and was not verified. Windows-only agent paths, the real winget CDN and a real production host are
+- Record design choices in `docs/DECISIONS.md` (next number D166) and security-relevant ones in `docs/THREAT-MODEL.md`.
+- Say plainly what was and was not verified. Windows-only agent paths, the real winget CDN and the real production host are
   not testable from a Linux sandbox.
-- Never copy production secrets into a development checkout, and never regenerate a production master key (it makes the
-  database unreadable).
+- Commit messages end with the `Co-Authored-By` and `Claude-Session` trailers the session gives you.
+
+## Where things stand
+- Done: phases 1 to 6, branding and design system, navigation, settings framework, reverse-proxy mode, Software
+  updates page, winget community index (updates need no catalog entry), admin "Mark as verified" (D99), and the fix that
+  stops a non-GUID product code reaching the agent (Folge update).
+- Open or unproven: restart-delay after a reboot on real PCs (suspected clock skew; ask for `agent.log`), faster
+  reconnect after reboot needs a new agent release, behaviour against the real winget CDN, and anything that runs only
+  on real Windows (see `docs/THREAT-MODEL.md`).

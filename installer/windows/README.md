@@ -1,6 +1,6 @@
 # LibrePatch Agent MSI
 
-A thin WiX v7 wrapper around `librepatch-agent.exe install` / `uninstall` (decision O6, D67).
+A thin WiX v7 wrapper around `librepatch-agent.exe install` / `uninstall` (docs/DECISIONS.md O6, D67).
 Usage for administrators (properties, GPO, Intune, RMM, exit codes): docs/RUNBOOK.md section 4.
 Security notes and gaps: docs/THREAT-MODEL.md section 9d.b.
 
