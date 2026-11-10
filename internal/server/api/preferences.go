@@ -57,7 +57,7 @@ type navPrefs struct {
 }
 
 // dashPrefs is a person's dashboard layout. Order and Hidden are the original single layout (widget ids); Boards,
-// Active and Refresh are the customizable dashboards (D167). All of it is optional on the wire, so an older client that
+// Active and Refresh are the customizable dashboards (D169). All of it is optional on the wire, so an older client that
 // only knows Order and Hidden saves without wiping the boards (the server keeps them).
 type dashPrefs struct {
 	Order  []string `json:"order"`
