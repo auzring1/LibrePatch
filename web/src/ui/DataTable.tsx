@@ -113,6 +113,16 @@ interface Layout {
   pageSize?: number;
 }
 
+/**
+ * Which toolbar a table shows. "bare": the list is empty and nothing is searched or filtered, so Views, Columns, density and
+ * Export would act on nothing and only the page's own controls remain. "lean": a short list inside a card. "full": the rest.
+ */
+export function toolbarMode(o: { simple: boolean; rows: number; loading: boolean; error: boolean; inUse: boolean }): "full" | "lean" | "bare" {
+  if (o.inUse) return "full";
+  if (!o.loading && !o.error && o.rows === 0) return "bare";
+  return o.simple && o.rows <= SIMPLE_ROWS ? "lean" : "full";
+}
+
 const EMPTY: never[] = []; // a stable empty list: a fresh [] every render would reset the page index forever
 const SELECT = "__select";
 /** A `simple` table shows its controls only above this many rows. */
@@ -383,10 +393,15 @@ export function DataTable<T>(p: DataTableProps<T>) {
   const from = filteredRows.length === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1;
   const to = Math.min(filteredRows.length, (pagination.pageIndex + 1) * pagination.pageSize);
 
-  const lean = !!p.simple && (p.data?.length ?? 0) <= SIMPLE_ROWS && filters.length === 0 && !search;
+  const mode = toolbarMode({ simple: !!p.simple, rows: p.data?.length ?? 0, loading: !!p.loading, error: !!p.error, inUse: filters.length > 0 || search !== "" });
   return (
     <div className="lp-dt" data-testid={`table-${p.id}`}>
-      {!lean && (
+      {mode === "bare" && p.toolbar && (
+        <div className="lp-dt__toolbar" role="toolbar" aria-label={`${p.label} controls`}>
+          {p.toolbar}
+        </div>
+      )}
+      {mode === "full" && (
         <div className="lp-dt__toolbar" role="toolbar" aria-label={`${p.label} controls`}>
           <label className="lp-dt__searchbox">
             <I.Search size={16} aria-hidden="true" />
