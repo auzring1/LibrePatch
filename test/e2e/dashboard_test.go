@@ -125,6 +125,64 @@ func TestDashboardNotificationsAndLayoutPreferences(t *testing.T) {
 	if pr["nav"].(map[string]any)["collapsed"] != true || len(pr["dashboard"].(map[string]any)["order"].([]any)) != 2 {
 		t.Fatalf("an older client must not wipe the layout: %v", pr)
 	}
+	// Customizable dashboards (D167): saved with widget settings, kept when a client that only knows order and hidden saves.
+	site := "5b9c2d52-5d0f-4c52-a0de-2f1d4f6a7b10"
+	board := func(w map[string]any) map[string]any {
+		return map[string]any{"dashboard": map[string]any{"order": []string{}, "hidden": []string{}, "active": "ops",
+			"boards": []any{map[string]any{"id": "ops", "name": "Operations", "refresh": 60, "widgets": []any{w}}}}}
+	}
+	goodWidget := map[string]any{"id": "w1", "type": "stat", "x": 0, "y": 0, "w": 3, "h": 2, "settings": map[string]any{"metric": "online", "site": site, "range": "14d", "count": 5, "title": "Online"}}
+	if st, b := h.do("PUT", "/api/v1/me/preferences", board(goodWidget), nil); st != 200 {
+		t.Fatalf("boards: %d %v", st, b)
+	}
+	if st, _ := h.do("PUT", "/api/v1/me/preferences", map[string]any{"dashboard": map[string]any{"order": []string{"tiles"}, "hidden": []string{}}}, nil); st != 200 {
+		t.Fatal("older client save")
+	}
+	_, pr = h.do("GET", "/api/v1/me/preferences", nil, nil)
+	if bs, _ := pr["dashboard"].(map[string]any)["boards"].([]any); len(bs) != 1 || pr["dashboard"].(map[string]any)["active"] != "ops" {
+		t.Fatalf("an older client must not wipe the saved dashboards: %v", pr)
+	}
+	// Sending an empty list deletes them.
+	if st, _ := h.do("PUT", "/api/v1/me/preferences", map[string]any{"dashboard": map[string]any{"order": []string{}, "hidden": []string{}, "boards": []any{}}}, nil); st != 200 {
+		t.Fatal("clear boards")
+	}
+	_, pr = h.do("GET", "/api/v1/me/preferences", nil, nil)
+	if bs, _ := pr["dashboard"].(map[string]any)["boards"].([]any); len(bs) != 0 {
+		t.Fatalf("boards should be cleared: %v", pr)
+	}
+	bad := func(over map[string]any) map[string]any {
+		w := map[string]any{}
+		for k, v := range goodWidget {
+			w[k] = v
+		}
+		for k, v := range over {
+			w[k] = v
+		}
+		return board(w)
+	}
+	badBoards := map[string]map[string]any{
+		"widget past the right edge": bad(map[string]any{"x": 10, "w": 4}),
+		"widget with no size":        bad(map[string]any{"w": 0}),
+		"widget type":                bad(map[string]any{"type": "Bad Type"}),
+		"settings site":              bad(map[string]any{"settings": map[string]any{"site": "not-a-site"}}),
+		"settings range":             bad(map[string]any{"settings": map[string]any{"range": "forever"}}),
+		"settings text too long":     bad(map[string]any{"settings": map[string]any{"text": strings.Repeat("x", 501)}}),
+		"settings count":             bad(map[string]any{"settings": map[string]any{"count": 500}}),
+	}
+	dup := board(goodWidget)
+	dup["dashboard"].(map[string]any)["boards"] = append(dup["dashboard"].(map[string]any)["boards"].([]any), dup["dashboard"].(map[string]any)["boards"].([]any)[0])
+	badBoards["repeated dashboard id"] = dup
+	missing := board(goodWidget)
+	missing["dashboard"].(map[string]any)["active"] = "nope"
+	badBoards["active board missing"] = missing
+	refresh := board(goodWidget)
+	refresh["dashboard"].(map[string]any)["boards"].([]any)[0].(map[string]any)["refresh"] = 7
+	badBoards["refresh"] = refresh
+	for name, in := range badBoards {
+		if st, b := h.do("PUT", "/api/v1/me/preferences", in, nil); st != 422 {
+			t.Errorf("%s: %d %v", name, st, b)
+		}
+	}
 	for name, in := range map[string]map[string]any{
 		"nav id":          {"nav": map[string]any{"closed": []string{"Bad Id"}}},
 		"nav duplicate":   {"nav": map[string]any{"closed": []string{"a", "a"}}},

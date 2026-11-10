@@ -1,19 +1,9 @@
-// Dashboard layout: which widgets exist, in which order, and which the person has hidden. Pure functions, unit tested.
+// The original single-column dashboard layout (an order and a hidden list). Dashboards are now boards (boards.ts); this is
+// kept to read what people saved before, so the default board starts from their choices. Pure functions, unit tested.
 
 /** Stable widget ids (kebab-case, saved in the person's preferences) in their default order. */
 export const WIDGET_IDS = ["start", "tiles", "apps", "compliance", "top-missing", "attention", "activity", "agents"] as const;
 export type WidgetId = (typeof WIDGET_IDS)[number];
-
-export const WIDGET_TITLES: Record<WidgetId, string> = {
-  start: "Getting started",
-  tiles: "Key numbers",
-  apps: "Apps out of date",
-  compliance: "Patch compliance",
-  "top-missing": "Top missing updates",
-  attention: "Devices needing attention",
-  activity: "Recent activity",
-  agents: "Agent versions",
-};
 
 export interface SavedLayout {
   order?: string[];
@@ -44,29 +34,4 @@ export function resolveLayout(allIds: readonly string[], saved?: SavedLayout | n
   }
   const hiddenSet = new Set((saved?.hidden ?? []).filter((id) => known.has(id)));
   return { order, visible: order.filter((id) => !hiddenSet.has(id)), hidden: order.filter((id) => hiddenSet.has(id)) };
-}
-
-/**
- * Moves `id` one step up or down among the widgets in `among` (the ones the person can see on this page), leaving
- * widgets they cannot see where they are. Returns the new full order.
- */
-export function moveWidget(order: readonly string[], id: string, dir: -1 | 1, among: readonly string[]): string[] {
-  const list = order.filter((x) => among.includes(x));
-  const i = list.indexOf(id);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= list.length) return [...order];
-  const a = order.indexOf(list[i]!);
-  const b = order.indexOf(list[j]!);
-  const next = [...order];
-  next[a] = list[j]!;
-  next[b] = list[i]!;
-  return next;
-}
-
-/** Hides or shows one widget; returns the new hidden list (in display order). */
-export function setWidgetHidden(order: readonly string[], hidden: readonly string[], id: string, hide: boolean): string[] {
-  const set = new Set(hidden);
-  if (hide) set.add(id);
-  else set.delete(id);
-  return order.filter((x) => set.has(x));
 }

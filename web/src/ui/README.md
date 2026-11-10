@@ -38,21 +38,25 @@ import { Page, PageHeader, DataTable, StatGrid, StatTile, Status, StatusPill, Se
 
 ## Dashboard widgets: how to add one
 
-The landing page (`src/pages/DashboardPage.tsx`) is a list of widgets. Each person's order and hidden widgets are saved on
-their account (`prefs.dashboard = { order, hidden }`, via `usePreferences()`), and `GET /api/v1/dashboard` supplies the data.
+The landing page (`src/pages/DashboardPage.tsx`) shows a **board**: widgets placed on a 12-column grid. A person can have up to
+ten boards, each with a name, a refresh interval and its widgets (`prefs.dashboard = { boards, active }`, plus the older
+`order` and `hidden`, via `usePreferences()`; the server only checks shapes, `internal/server/api/preferences.go`).
+`GET /api/v1/dashboard` supplies the numbers. Until someone saves a board they see the default one, built from what they
+may see (`defaultBoard`), so a widget they cannot see leaves no hole.
 
 1. **Data**: add the numbers to the `Dashboard` schema in `api/openapi.yaml` and `internal/server/api/dashboard.go`. Leave a
    section `null` (or empty) when the person lacks the permission or only has site-limited rights, and never send zeros for it.
-2. **Id**: add a stable kebab-case id (`^[a-z][a-z0-9-]{0,39}$`) to `WIDGET_IDS` and a title to `WIDGET_TITLES` in
-   `src/components/dashboard/layout.ts`. Ids are stored in preferences, so never rename one. Widgets that are not in a saved
-   order are appended at the end (`resolveLayout`), and unknown ids are dropped.
-3. **Component**: write it in `src/components/dashboard/widgets.tsx` as `({ d }: { d: Dashboard })`. Use `Card title=…` (the
-   h2), `StatTile to=…` / `Link`s for drill-downs into a pre-filtered list, and `StatusPill`/`SeverityBadge` for status (icon + text,
-   never color alone). Charts are plain SVG with tokens; give them an `aria-label` summary and a table alternative
-   (see `ComplianceChart.tsx`).
-4. **Wire it up**: return its id from `availableWidgets()` only when its data is present, and add a `case` in `render()` in
-   `DashboardPage.tsx`. The customizer (show/hide switch, Move up/down buttons, Reset to default) picks it up automatically.
-5. Put pure logic (links, labels, geometry) in `format.ts` and cover it in `dashboard.test.ts`.
+2. **Kind**: add a stable kebab-case kind (`^[a-z][a-z0-9-]{0,39}$`, never renamed: it is stored) to `WidgetKind` and its
+   default and smallest size to `WIDGET_SIZES` in `components/dashboard/boards.ts`, and a line to `WIDGETS` in
+   `registry.ts` (title, description for the Add widget panel, group, which settings it has, and `available()`: who may use it).
+   An unknown kind in a saved board is skipped, not deleted.
+3. **Component**: write it in `widgets.tsx` as `({ d, title, count }: Props)`. Use `Card title={title || "…"}` (the h2),
+   `StatTile to=…` / `Link`s for drill-downs into a pre-filtered list, and `StatusPill`/`SeverityBadge` for status (icon + text,
+   never color alone). The card fills the widget's height and its body scrolls, so lists need no height of their own. Charts
+   are plain SVG with tokens; give them an `aria-label` summary and a table alternative (see `ComplianceChart.tsx`).
+4. **Wire it up**: add a `case` in `WidgetView.tsx`. The Add widget panel, the settings dialog, dragging, resizing and saving
+   pick it up automatically. A kind that needs its own data (like Vulnerabilities) loads it in `WidgetView`.
+5. Put pure logic (links, labels, geometry) in `format.ts`, `grid.ts` or `boards.ts` and cover it in `dashboard.test.ts`.
 
 Drill-down links use query parameters understood by the target list: `/devices?state=online|offline`, `?restart=1`,
 `?status=pending`, `?agent=<version>`; `/updates?severity=Critical&missing=1`, `?q=<KB or title>&missing=1`;
