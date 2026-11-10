@@ -24,31 +24,31 @@ interface AgentDownloads {
   items: { kind: "msi" | "exe"; file_name: string; size: number; sha256: string; verified: boolean; url: string; available: boolean }[];
 }
 
-/** Where the installers come from: the server fetches them from the release that matches its version. */
+/** Where the agent comes from: the server fetches it from the release that matches its version. One button, the exe. */
 function AgentDownloadsCard({ d }: { d: AgentDownloads | undefined }) {
   if (!d) return null;
-  const missing = d.items.filter((i) => !i.available);
+  const exe = d.items.find((i) => i.kind === "exe");
+  const ready = d.enabled && !!exe?.available;
   return (
-    <Card title="Agent downloads" description={d.enabled ? `The agent for Windows, version ${d.version}, served by this server. Endpoints download it with the commands shown when you create a token; no sign-in is needed for the download itself.` : "The server does not hand out the agent."}>
+    <Card
+      title="Agent downloads"
+      description={d.enabled ? `The agent for Windows, version ${d.version}, served by this server. Endpoints download it with the commands shown when you create a token; no sign-in is needed for the download itself.` : "The server does not hand out the agent."}
+      actions={
+        ready ? (
+          <Button component="a" href={exe!.url} download variant="default" size="compact-md" leftSection={<Icons.Download size={14} aria-hidden />}>
+            Download
+          </Button>
+        ) : undefined
+      }
+    >
       <Stack gap="xs">
-        {!d.enabled && <Text size="sm">{d.reason || "Agent downloads are not available on this server."} Get the files from the project's release page and copy them to the PCs yourself.</Text>}
-        {d.enabled &&
-          d.items.map((i) => (
-            <Group key={i.kind} justify="space-between" wrap="nowrap" align="flex-start">
-              <div>
-                <Text fw={500}>{i.kind === "msi" ? "MSI installer (GPO, Intune, RMM, or by hand)" : "Executable (single PC)"}</Text>
-                <Text size="sm" c="dimmed" style={{ wordBreak: "break-all" }}>
-                  {i.available ? `${i.file_name}, ${fileSize(i.size)}. SHA-256 ${i.sha256}${i.verified ? " (matches the one published with the release)" : " (computed by this server; the release publishes none for this file)"}` : "Not on this server yet."}
-                </Text>
-              </div>
-              {i.available ? (
-                <Button component="a" href={i.url} download variant="default" size="compact-md" leftSection={<Icons.Download size={14} aria-hidden />}>
-                  Download
-                </Button>
-              ) : null}
-            </Group>
-          ))}
-        {d.enabled && missing.length > 0 && (
+        {!d.enabled && <Text size="sm">{d.reason || "Agent downloads are not available on this server."} Get the file from the project's release page and copy it to the PCs yourself.</Text>}
+        {d.enabled && exe?.available && (
+          <Text size="sm" c="dimmed" style={{ wordBreak: "break-all" }}>
+            {`${exe.file_name}, ${fileSize(exe.size)}. SHA-256 ${exe.sha256}${exe.verified ? " (matches the one published with the release)" : " (computed by this server; the release publishes none for this file)"}`}
+          </Text>
+        )}
+        {d.enabled && !exe?.available && (
           <Text size="sm" c={d.error ? "red" : "dimmed"} role={d.error ? "alert" : undefined}>
             {d.error ? `The server could not fetch the agent from the release yet: ${d.error}. It tries again by itself.` : "The server is fetching the agent from the release. This page updates by itself."}
           </Text>
@@ -69,7 +69,7 @@ export function TokensPage() {
   const [form, setForm] = useState<{ name: string; max_uses: number; expires_in_hours: number; require_approval: boolean; site_id: string | null }>({ name: "", max_uses: 10, expires_in_hours: 24, require_approval: false, site_id: null });
   const sites = useQuery({ queryKey: ["sites"], queryFn: () => api<{ items: Site[] }>("GET", "/sites") });
   const [created, setCreated] = useState<Created | null>(null);
-  const downloads = useQuery({ queryKey: ["agent-downloads"], queryFn: () => api<AgentDownloads>("GET", "/agent-downloads"), refetchInterval: (query) => (query.state.data?.enabled && query.state.data.items.some((i) => !i.available) ? 15000 : false) });
+  const downloads = useQuery({ queryKey: ["agent-downloads"], queryFn: () => api<AgentDownloads>("GET", "/agent-downloads"), refetchInterval: (query) => (query.state.data?.enabled && query.state.data.items.some((i) => i.kind === "exe" && !i.available) ? 15000 : false) });
   const q = useQuery({ queryKey: ["tokens"], queryFn: () => api<{ items: EnrollmentToken[] }>("GET", "/enrollment-tokens") });
   const create = useMutation({
     mutationFn: () => api<Created>("POST", "/enrollment-tokens", form),
