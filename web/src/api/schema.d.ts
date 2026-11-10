@@ -3169,7 +3169,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The organization's display and formatting choices and the device and update defaults, for any signed-in person (no secrets, no security settings) */
+        /** The organization's display and formatting choices, the device and update defaults and whether the vulnerability lookup is on (`vulnerabilities.enabled`), for any signed-in person (no secrets, no security settings) */
         get: {
             parameters: {
                 query?: never;
