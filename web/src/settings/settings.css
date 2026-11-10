@@ -45,4 +45,4 @@
 .lp-set-theme__mock span:first-child { display: block; }
 .lp-set-theme__mock span:last-child { display: grid; align-content: start; gap: 5px; padding: 7px; }
 .lp-set-theme__mock i { display: block; height: 6px; border-radius: 3px; }
-@media (max-width: 62em) { .lp-set-layout { grid-template-columns: minmax(0, 1fr); } .lp-set-aside { position: static; } .lp-set-nav { grid-auto-flow: column; overflow-x: auto; grid-auto-columns: max-content; } }
+@media (max-width: 62em) { .lp-set-layout { grid-template-columns: minmax(0, 1fr); } .lp-set-aside { position: static; min-width: 0; grid-template-columns: minmax(0, 1fr); } .lp-set-nav { grid-auto-flow: column; overflow-x: auto; grid-auto-columns: max-content; } }

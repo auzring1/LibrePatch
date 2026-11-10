@@ -21,7 +21,7 @@
 
 /* ---------- Cards ---------- */
 .lp-card { background: var(--lp-surface); border: 1px solid var(--lp-border); border-radius: var(--lp-radius-lg); box-shadow: var(--lp-shadow-1); }
-.lp-card__head { display: flex; align-items: center; justify-content: space-between; gap: var(--lp-space-3); padding: var(--lp-space-3) var(--lp-space-4); border-bottom: 1px solid var(--lp-border); }
+.lp-card__head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--lp-space-3); padding: var(--lp-space-3) var(--lp-space-4); border-bottom: 1px solid var(--lp-border); }
 .lp-card__title { margin: 0; font-size: var(--lp-text-lg); font-weight: var(--lp-weight-semibold); line-height: var(--lp-leading-tight); }
 .lp-card__desc { margin: 2px 0 0; color: var(--lp-text-muted); font-size: var(--lp-text-sm); }
 .lp-card__body { padding: var(--lp-space-4); }
@@ -127,7 +127,15 @@ a.lp-tile:hover, button.lp-tile:hover { border-color: var(--lp-border-strong); b
   .lp-main { padding: var(--lp-space-4); }
   .lp-topbar__org { display: none; }
 }
-@media (max-width: 48em) { .lp-topbar__search-wide { display: none; } }
+@media (max-width: 48em) {
+  .lp-topbar__search-wide { display: none; }
+  /* Phones: let the search field shrink (it used to push the bell and account menu off screen), drop the keyboard hint. */
+  .lp-topbar { gap: var(--lp-space-2); }
+  .lp-topbar__search { min-width: 0; }
+  .lp-topbar__right, .lp-topbar__brand { flex-shrink: 0; }
+  .lp-search__trigger { min-width: 0; overflow: hidden; }
+  .lp-search__trigger .lp-kbd { display: none; }
+}
 
 /* ---------- Global search ---------- */
 .lp-search { position: relative; width: 100%; }
