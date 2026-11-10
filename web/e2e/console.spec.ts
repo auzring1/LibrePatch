@@ -167,9 +167,9 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await page.getByRole("button", { name: "Continue" }).click();
   // The landing page is the dashboard; the device list is one click away.
   await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
-  await expect(page.getByLabel("Key numbers")).toBeVisible();
+  await expect(page.getByText("Online devices")).toBeVisible();
   // Apps that are out of date have a tile and a widget of their own, next to the Windows numbers.
-  await expect(page.getByLabel("Key numbers").getByText("Apps out of date")).toBeVisible();
+  await expect(page.locator(".lp-tile").getByText("Apps out of date")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Apps out of date" })).toBeVisible();
   // A new installation starts with a short checklist; it can be put away.
   await expect(page.getByRole("heading", { name: "Getting started" })).toBeVisible();
@@ -178,6 +178,66 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await shot(page, "01b-dashboard");
   await page.getByRole("button", { name: "Hide this" }).click();
   await expect(page.getByRole("heading", { name: "Getting started" })).toHaveCount(0);
+
+  // Customizable dashboards (D167): edit, drag, resize, add widgets, save, a second dashboard, and it all survives a reload.
+  await page.getByRole("button", { name: "Edit dashboard" }).click();
+  const agents = page.locator("[data-widget]").filter({ hasText: "Agent versions" });
+  const y0 = (await agents.boundingBox())!.y;
+  const grip = (await page.getByRole("button", { name: /^Move Agent versions/ }).boundingBox())!;
+  await page.mouse.move(grip.x + 8, grip.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(grip.x - 192, grip.y - 392, { steps: 8 });
+  await page.mouse.up();
+  expect((await agents.boundingBox())!.y).toBeLessThan(y0 - 200);
+  const w0 = (await agents.boundingBox())!.width;
+  const corner = (await agents.locator(".lp-grid__resize").boundingBox())!;
+  await page.mouse.move(corner.x + 8, corner.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(corner.x + 208, corner.y + 8, { steps: 8 });
+  await page.mouse.up();
+  expect((await agents.boundingBox())!.width).toBeGreaterThan(w0 + 100);
+  // The keyboard does the same: Shift plus an arrow key resizes.
+  await page.getByRole("button", { name: /^Move Agent versions/ }).focus();
+  await page.keyboard.press("Shift+ArrowLeft");
+  await page.getByRole("button", { name: "Add widget" }).click();
+  await page.getByRole("button", { name: "Add Note" }).click();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: /^Settings of Note/ }).click();
+  await page.getByLabel("Title").fill("Runbook");
+  await page.getByLabel("Text").fill("Escalate to the service desk");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByRole("heading", { name: "Runbook" })).toBeVisible();
+  await a11y(page, "dashboard-edit");
+  await shot(page, "01c-dashboard-edit");
+  await page.getByRole("button", { name: "Save dashboard" }).click();
+  await expect.poll(async () => JSON.stringify((await (await page.request.get("/api/v1/me/preferences")).json()).dashboard?.boards ?? []), { timeout: 10_000 }).toContain("Runbook");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Runbook" })).toBeVisible();
+  await expect(page.getByText("Escalate to the service desk")).toBeVisible();
+  // A second dashboard, switched to from the list, then deleted.
+  await page.getByRole("button", { name: "Dashboard actions" }).click();
+  await page.getByRole("menuitem", { name: "New dashboard" }).click();
+  await page.getByLabel("Name").fill("Service desk");
+  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Add Number tile" }).click();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Save dashboard" }).click();
+  await expect(page.getByRole("heading", { name: "Runbook" })).toHaveCount(0);
+  await expect(page.locator(".lp-tile")).toHaveCount(1);
+  await page.getByRole("combobox", { name: "Dashboard" }).click();
+  await page.getByRole("option", { name: "Overview" }).click();
+  await expect(page.getByRole("heading", { name: "Runbook" })).toBeVisible();
+  await page.getByRole("combobox", { name: "Dashboard" }).click();
+  await page.getByRole("option", { name: "Service desk" }).click();
+  await page.getByRole("button", { name: "Dashboard actions" }).click();
+  await page.getByRole("menuitem", { name: "Delete this dashboard" }).click();
+  await page.getByRole("button", { name: "Delete dashboard" }).click();
+  await expect(page.getByRole("heading", { name: "Runbook" })).toBeVisible();
+  // Put the standard layout back so the rest of the walk-through sees the usual dashboard.
+  await page.getByRole("button", { name: "Dashboard actions" }).click();
+  await page.getByRole("menuitem", { name: "Reset to the standard layout" }).click();
+  await page.getByRole("button", { name: "Reset layout" }).click();
+  await expect(page.getByRole("heading", { name: "Runbook" })).toHaveCount(0);
   await mainNav(page).getByRole("link", { name: "Devices", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Devices", exact: true })).toBeVisible();
   await expect(page.getByText("No devices yet")).toBeVisible();
@@ -309,6 +369,20 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await page.goto("/reports");
       await expect(page.getByRole("link", { name: /E2E large-memory laptops/ })).toBeVisible();
       await shot(page, "23d-reports-library-custom");
+      await page.getByRole("link", { name: /E2E large-memory laptops/ }).click();
+      // A schedule can send the saved report: the schedule form offers it by name (nothing is saved here).
+      await page.getByRole("link", { name: "Schedule by email" }).click();
+      await expect(page.getByRole("heading", { name: "Scheduled reports", exact: true })).toBeVisible();
+      await page.getByRole("group", { name: "Schedules" }).getByRole("button", { name: "Add", exact: true }).click();
+      const sched = page.getByRole("group", { name: "Weekly compliance" });
+      await sched.getByLabel("Report", { exact: true }).click();
+      await page.getByRole("option", { name: "A saved custom report", exact: true }).click();
+      await sched.getByLabel("Saved report").click();
+      await expect(page.getByRole("option", { name: "E2E large-memory laptops", exact: true })).toBeVisible();
+      await page.getByRole("option", { name: "E2E large-memory laptops", exact: true }).click();
+      await shot(page, "23f-schedule-saved-report");
+      await sched.getByRole("button", { name: /^Remove/ }).click();
+      await page.goto("/reports");
       await page.getByRole("link", { name: /E2E large-memory laptops/ }).click();
       await page.getByRole("button", { name: "Delete" }).click();
       await page.getByRole("dialog").getByRole("button", { name: "Delete report" }).click();

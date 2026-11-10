@@ -3,8 +3,12 @@ package settings
 import (
 	"errors"
 	"fmt"
-	"github.com/auzring1/librepatch/internal/shared/brand"
 	"strings"
+
+	"github.com/google/uuid"
+
+	"github.com/auzring1/librepatch/internal/server/reportbuilder"
+	"github.com/auzring1/librepatch/internal/shared/brand"
 )
 
 // Permissions guarding each section. Administrators hold all of them; the operator role is given the ones that are
@@ -164,7 +168,7 @@ var notifications = Section{
 		{Key: "email_enabled", Label: "Send e-mail", Kind: Bool, Default: false, Effect: Live,
 			Help: "Turn on to send notifications and scheduled reports by e-mail. Nothing is sent until the mail server below works (use Send test)."},
 		{Key: "smtp_host", Label: "Mail server", Kind: String, Default: "", Max: 253, Placeholder: "smtp.example.org", ShowIf: "email_enabled", Effect: Live,
-			Help: "Host name of your SMTP relay."},
+			Help: "Host name of your SMTP relay. Microsoft 365: smtp.office365.com, port 587, STARTTLS (the sending mailbox needs Authenticated SMTP switched on). Gmail: smtp.gmail.com, port 587, STARTTLS, with an app password."},
 		{Key: "smtp_port", Label: "Port", Kind: Int, Default: 587, Min: 1, Max: 65535, ShowIf: "email_enabled", Effect: Live,
 			Help: "Usually 587 (STARTTLS), 465 (TLS from the start) or 25."},
 		{Key: "smtp_security", Label: "Connection security", Kind: Enum, Default: "starttls", ShowIf: "email_enabled", Effect: Live,
@@ -365,7 +369,17 @@ var scripts = Section{
 	},
 }
 
-var reportKinds = []Option{{"compliance", "Patch compliance"}, {"missing_updates", "Missing updates"}, {"inventory", "Device inventory"}}
+// reportKinds are the reports a schedule can send: the three the schedules always had, every ready-made report of the
+// Reports page, and "saved" for one of the organization's own custom reports (chosen in saved_report).
+var reportKinds = reportOptions()
+
+func reportOptions() []Option {
+	out := []Option{{"compliance", "Patch compliance"}, {"missing_updates", "Missing updates"}, {"inventory", "Device inventory"}}
+	for _, b := range reportbuilder.Builtins() {
+		out = append(out, Option{b.ID, strings.ToUpper(b.Category[:1]) + b.Category[1:] + ": " + b.Name})
+	}
+	return append(out, Option{"saved", "A saved custom report"})
+}
 
 var reports = Section{
 	ID: "reports", Label: "Scheduled reports", Perm: PermReports,
@@ -380,6 +394,19 @@ var reports = Section{
 				{Key: "name", Label: "Name", Kind: String, Required: true, Default: "Weekly compliance", Min: 1, Max: 100, Effect: Live, Help: "Shown in the e-mail subject."},
 				{Key: "enabled", Label: "Enabled", Kind: Bool, Default: true, Effect: Live, Help: "Paused schedules send nothing."},
 				{Key: "report", Label: "Report", Kind: Enum, Default: "compliance", Required: true, Options: reportKinds, Effect: Live, Help: "What to send."},
+				{Key: "saved_report", Label: "Saved report", Kind: String, Default: "", Max: 36, ShowIf: "report=saved", Effect: Live,
+					Help: "Which saved custom report to send (create one under Reports). Needed when the report above is a saved custom report.",
+					Validate: func(v any, item map[string]any) error {
+						if r, _ := item["report"].(string); r != "saved" {
+							return nil
+						}
+						if id, _ := v.(string); id == "" {
+							return errors.New("choose a saved report")
+						} else if _, err := uuid.Parse(id); err != nil {
+							return errors.New("is not a saved report")
+						}
+						return nil
+					}},
 				{Key: "format", Label: "Format", Kind: Enum, Default: "pdf", Required: true, Effect: Live, Help: "PDF to read, CSV to analyse.", Options: []Option{{"pdf", "PDF"}, {"csv", "CSV"}}},
 				{Key: "frequency", Label: "Repeat", Kind: Enum, Default: "weekly", Required: true, Effect: Live, Help: "How often.", Options: []Option{{"daily", "Every day"}, {"weekly", "Every week"}, {"monthly", "Every month"}}},
 				{Key: "weekday", Label: "Day of the week", Kind: Enum, Default: "monday", Options: weekdays, Effect: Live, Help: "For weekly schedules."},

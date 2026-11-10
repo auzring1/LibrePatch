@@ -233,6 +233,11 @@ export function ReportViewPage() {
                 Delete
               </Button>
             )}
+            {!isNew && (saved || builtin) && can("settings:reports") && (
+              <Button component={Link} to="/settings/reports" variant="default" leftSection={<Icons.Mail size={16} aria-hidden />} title="Open Scheduled reports, add a schedule and choose this report">
+                Schedule by email
+              </Button>
+            )}
             {can("inventory:export") && (
               <>
                 <Button variant="default" disabled={!exportable} loading={busy === "csv"} onClick={() => exportAs("csv")} leftSection={<Icons.Download size={16} aria-hidden />}>

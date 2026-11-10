@@ -1,28 +1,33 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ago } from "../../api/format";
-import type { Dashboard } from "../../api/client";
+import type { Dashboard, VulnerabilityOverview } from "../../api/client";
 import { Button } from "@mantine/core";
-import { Card, Donut, Icons, SeverityBadge, StatGrid, StatTile, StatusPill, type PillKind } from "../../ui";
+import { Card, Donut, Icons, SeverityBadge, StatTile, StatusPill, type PillKind } from "../../ui";
 import { describeAudit } from "../auditText";
 import { complianceSummary } from "../compliance";
 import { ComplianceChart } from "./ComplianceChart";
 import { REASON_TEXT, type Reason, historySummary, kbLabel, missingUpdateLink, normaliseHistory, positiveKind } from "./format";
-import type { WidgetId } from "./layout";
-import { startSteps, startVisible } from "./start";
+import { startSteps } from "./start";
 
-type Props = { d: Dashboard };
+/** Every widget may carry its own title and a row count (Customize > widget settings). */
+type Props = { d: Dashboard; title?: string; count?: number };
+
+const rowsOf = <T,>(rows: readonly T[], count?: number) => (count && count > 0 ? rows.slice(0, count) : [...rows]);
 
 const ICON = 16;
 
-/** Tiles that the data allows, in display order. The widget is hidden when there are none. */
-export function tileList(d: Dashboard) {
-  const tiles: { key: string; label: string; value: string | number; kind?: PillKind | "accent"; hint?: string; to: string; icon: ReactNode }[] = [];
+export type Tile = { key: string; label: string; value: string | number; kind?: PillKind | "accent"; hint?: string; to: string; icon: ReactNode };
+
+/** Every number a stat tile can show, keyed by metric. A metric the data does not allow (no permission) is absent. */
+export function allTiles(d: Dashboard): Tile[] {
+  const tiles: Tile[] = [];
   const dev = d.devices;
   if (dev) {
     tiles.push({ key: "online", label: "Online devices", value: dev.online ?? 0, kind: "success", hint: `of ${dev.total ?? 0} devices`, to: "/devices?state=online", icon: <Icons.Online size={ICON} aria-hidden="true" /> });
     tiles.push({ key: "offline", label: "Offline devices", value: dev.offline ?? 0, to: "/devices?state=offline", icon: <Icons.Offline size={ICON} aria-hidden="true" /> });
-    if ((dev.pending ?? 0) > 0) tiles.push({ key: "pending", label: "Waiting for approval", value: dev.pending ?? 0, kind: "warning", hint: "New devices to review", to: "/devices?status=pending", icon: <Icons.Clock size={ICON} aria-hidden="true" /> });
+    tiles.push({ key: "total", label: "Devices", value: dev.total ?? 0, kind: "accent", to: "/devices", icon: <Icons.NavDevices size={ICON} aria-hidden="true" /> });
+    tiles.push({ key: "pending", label: "Waiting for approval", value: dev.pending ?? 0, kind: positiveKind(dev.pending ?? 0, "warning"), hint: "New devices to review", to: "/devices?status=pending", icon: <Icons.Clock size={ICON} aria-hidden="true" /> });
   }
   if (d.software) {
     const s = d.software;
@@ -39,18 +44,24 @@ export function tileList(d: Dashboard) {
   if (d.needs_restart != null) tiles.push({ key: "restart", label: "Devices needing restart", value: d.needs_restart, kind: positiveKind(d.needs_restart, "warning"), to: "/devices?restart=1", icon: <Icons.Restart size={ICON} aria-hidden="true" /> });
   if (d.missing_critical_devices != null) tiles.push({ key: "critical", label: "Devices missing critical updates", value: d.missing_critical_devices, kind: positiveKind(d.missing_critical_devices, "danger"), to: "/updates?severity=Critical&missing=1", icon: <Icons.Critical size={ICON} aria-hidden="true" /> });
   if (d.failed_jobs_24h != null) tiles.push({ key: "failed", label: "Failed jobs, last 24 h", value: d.failed_jobs_24h, kind: positiveKind(d.failed_jobs_24h, "danger"), to: "/deployments?failed=1", icon: <Icons.NavDeployments size={ICON} aria-hidden="true" /> });
+  if (d.compliance) {
+    const c = complianceSummary(d.compliance);
+    tiles.push({ key: "compliant", label: "Patch compliant", value: c.value, kind: c.kind, hint: c.hint, to: "/reports", icon: <Icons.NavUpdates size={ICON} aria-hidden="true" /> });
+  }
   return tiles;
 }
 
-export function TilesWidget({ d }: Props) {
-  const tiles = tileList(d);
-  return (
-    <StatGrid label="Key numbers">
-      {tiles.map(({ key, ...t }) => (
-        <StatTile key={key} {...t} />
-      ))}
-    </StatGrid>
-  );
+/** What the original "Key numbers" strip showed: the tiles above, without the ones that only matter when non-zero. */
+export function tileList(d: Dashboard): Tile[] {
+  return allTiles(d).filter((t) => (t.key !== "pending" || Number(t.value) > 0) && t.key !== "total" && t.key !== "compliant");
+}
+
+/** One stat tile for a metric, or null while the person may not see it. */
+export function StatWidget({ d, metric, title }: { d: Dashboard; metric?: string; title?: string }) {
+  const t = allTiles(d).find((x) => x.key === metric);
+  if (!t) return <p className="lp-dash-empty">This number is not available to you.</p>;
+  const { key: _key, ...tile } = t;
+  return <StatTile {...tile} label={title || tile.label} />;
 }
 
 /** The first steps, as a checklist; each one links to where it is done. */
@@ -92,14 +103,14 @@ export function StartWidget({ d, canOrg, onDismiss }: Props & { canOrg: (perm: s
   );
 }
 
-export function AppsWidget({ d }: Props) {
+export function AppsWidget({ d, title, count }: Props) {
   const s = d.software;
   if (!s) return null;
-  const rows = s.top ?? [];
+  const rows = rowsOf(s.top ?? [], count);
   const manual = s.apps - s.automated;
   return (
     <Card
-      title="Apps out of date"
+      title={title || "Apps out of date"}
       description={s.apps === 0 ? "Installed apps with a newer version available" : `${s.apps} ${s.apps === 1 ? "app" : "apps"} on ${s.devices} ${s.devices === 1 ? "device" : "devices"}${s.vendor > 0 ? `; ${s.vendor} left to their own updater` : ""}`}
       flush
       footer={<Link to="/software-updates" className="lp-dash-foot">Open Software updates</Link>}
@@ -141,10 +152,17 @@ export function AppsWidget({ d }: Props) {
   );
 }
 
-export function ComplianceWidget({ d }: Props) {
+/** Number of days of history for a range setting such as "14d" (7 when unset or unreadable). */
+export function rangeDays(range?: string): number {
+  const m = /^(\d{1,3})([dh])$/.exec(range ?? "");
+  if (!m) return 30;
+  return m[2] === "h" ? Math.max(1, Math.ceil(Number(m[1]) / 24)) : Math.max(1, Number(m[1]));
+}
+
+export function ComplianceWidget({ d, title, range }: Props & { range?: string }) {
   const c = d.compliance;
   if (!c) return null;
-  const days = normaliseHistory(c.history);
+  const days = normaliseHistory(c.history).slice(-rangeDays(range));
   const slices = [
     { label: "Compliant", value: c.compliant ?? 0, token: "success", state: "compliant" },
     { label: "Not compliant", value: c.non_compliant ?? 0, token: "danger", state: "non_compliant" },
@@ -153,7 +171,7 @@ export function ComplianceWidget({ d }: Props) {
   const total = slices.reduce((s, x) => s + x.value, 0);
   const summary = complianceSummary(c);
   return (
-    <Card title="Patch compliance over time" description="Devices per compliance state, one snapshot per day" footer={<Link to="/reports" className="lp-dash-foot">Open reports</Link>}>
+    <Card title={title || "Patch compliance over time"} description={`Devices per compliance state, one snapshot per day${range ? `, last ${rangeDays(range)} days` : ""}`} footer={<Link to="/reports" className="lp-dash-foot">Open reports</Link>}>
       <div className="lp-dash-compliance">
         <div>
           {days.length >= 2 ? (
@@ -191,10 +209,10 @@ export function ComplianceWidget({ d }: Props) {
   );
 }
 
-export function TopMissingWidget({ d }: Props) {
-  const rows = d.top_missing ?? [];
+export function TopMissingWidget({ d, title, count }: Props) {
+  const rows = rowsOf(d.top_missing ?? [], count);
   return (
-    <Card title="Top missing updates" description="Updates missing on the most devices" flush footer={<Link to="/updates" className="lp-dash-foot">View all updates</Link>}>
+    <Card title={title || "Top missing updates"} description="Updates missing on the most devices" flush footer={<Link to="/updates" className="lp-dash-foot">View all updates</Link>}>
       {rows.length === 0 ? (
         <p className="lp-dash-empty">No updates are missing on any device.</p>
       ) : (
@@ -226,10 +244,10 @@ const REASON_PILL: Record<Reason, { kind: PillKind; icon: typeof Icons.Offline }
   failed_updates: { kind: "danger", icon: Icons.Danger },
 };
 
-export function AttentionWidget({ d }: Props) {
-  const rows = d.attention ?? [];
+export function AttentionWidget({ d, title, count }: Props) {
+  const rows = rowsOf(d.attention ?? [], count);
   return (
-    <Card title="Devices needing attention" description="Worst first" flush footer={<Link to="/devices" className="lp-dash-foot">View all devices</Link>}>
+    <Card title={title || "Devices needing attention"} description="Worst first" flush footer={<Link to="/devices" className="lp-dash-foot">View all devices</Link>}>
       {rows.length === 0 ? (
         <p className="lp-dash-empty">No device needs attention right now.</p>
       ) : (
@@ -259,10 +277,10 @@ export function AttentionWidget({ d }: Props) {
   );
 }
 
-export function ActivityWidget({ d, now }: Props & { now?: number }) {
-  const rows = d.activity ?? [];
+export function ActivityWidget({ d, now, title, count }: Props & { now?: number }) {
+  const rows = rowsOf(d.activity ?? [], count);
   return (
-    <Card title="Recent activity" description="Latest entries in the audit log" flush footer={<Link to="/audit" className="lp-dash-foot">View audit log</Link>}>
+    <Card title={title || "Recent activity"} description="Latest entries in the audit log" flush footer={<Link to="/audit" className="lp-dash-foot">View audit log</Link>}>
       <ul className="lp-dash-list">
         {rows.map((a) => (
           <li key={a.id}>
@@ -294,11 +312,11 @@ export function ActivityWidget({ d, now }: Props & { now?: number }) {
   );
 }
 
-export function AgentsWidget({ d }: Props) {
-  const rows = [...(d.agent_versions ?? [])].sort((a, b) => (b.devices ?? 0) - (a.devices ?? 0));
+export function AgentsWidget({ d, title, count }: Props) {
+  const rows = rowsOf([...(d.agent_versions ?? [])].sort((a, b) => (b.devices ?? 0) - (a.devices ?? 0)), count);
   const max = Math.max(1, ...rows.map((r) => r.devices ?? 0));
   return (
-    <Card title="Agent versions" description="Devices per agent version">
+    <Card title={title || "Agent versions"} description="Devices per agent version">
       {rows.length === 0 ? (
         <p className="lp-dash-empty" style={{ padding: 0 }}>No agent has reported a version yet.</p>
       ) : (
@@ -320,14 +338,80 @@ export function AgentsWidget({ d }: Props) {
   );
 }
 
-/** Which widgets the data allows this person to see. A section the server left out (or an empty log) is not offered. */
-export function availableWidgets(d: Dashboard, start?: { canOrg: (perm: string) => boolean; dismissed: boolean }): WidgetId[] {
-  const out: WidgetId[] = [];
-  if (start && startVisible(startSteps(d, start.canOrg), start.dismissed)) out.push("start");
-  if (tileList(d).length > 0) out.push("tiles");
-  if (d.software) out.push("apps");
-  if (d.compliance) out.push("compliance", "top-missing");
-  if (d.devices) out.push("attention", "agents");
-  if ((d.activity ?? []).length > 0) out.push("activity");
-  return out;
+/** Known vulnerabilities, exploited first. Loaded on its own (needs reports:read and the lookup switched on). */
+export function VulnerabilitiesWidget({ data, title, count }: { data?: VulnerabilityOverview; title?: string; count?: number }) {
+  const s = data?.summary;
+  const rows = rowsOf(data?.items ?? [], count ?? 5);
+  return (
+    <Card
+      title={title || "Vulnerabilities"}
+      description={s ? `${s.exploited} exploited, ${s.critical} critical, on ${s.devices} ${s.devices === 1 ? "device" : "devices"}` : "Loading…"}
+      flush
+      footer={<Link to="/vulnerabilities" className="lp-dash-foot">Open Vulnerabilities</Link>}
+    >
+      {!data ? (
+        <p className="lp-dash-empty">Loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="lp-dash-empty">No known vulnerabilities affect your devices.</p>
+      ) : (
+        <ul className="lp-dash-list">
+          {rows.map((v) => (
+            <li key={v.id}>
+              <Link className="lp-dash-row" to="/vulnerabilities">
+                <span className="lp-dash-row__main">
+                  <span className="lp-dash-row__title lp-mono">{v.id}</span>
+                  <span className="lp-dash-row__meta">{(v.products ?? []).join(", ")}</span>
+                </span>
+                <span className="lp-dash-row__side">
+                  {v.exploited && (
+                    <StatusPill kind="danger" size="sm">
+                      Exploited
+                    </StatusPill>
+                  )}
+                  <span className="lp-dash-count">
+                    {v.devices} {v.devices === 1 ? "device" : "devices"}
+                  </span>
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+/** A tile that opens a report or page. */
+export function ShortcutWidget({ label, hint, to, title }: { label?: string; hint?: string; to?: string; title?: string }) {
+  if (!to) return <p className="lp-dash-empty">Choose where this tile leads (Edit, then the gear on the widget).</p>;
+  return (
+    <Link to={to} className="lp-tile lp-dash-shortcut" title={hint}>
+      <span className="lp-tile__label">
+        <Icons.External size={ICON} aria-hidden="true" />
+        Open
+      </span>
+      <span className="lp-dash-shortcut__name">{title || label}</span>
+    </Link>
+  );
+}
+
+/** Plain text, with web addresses made into links. */
+export function TextWidget({ text, title }: { text?: string; title?: string }) {
+  const parts = (text ?? "").split(/(https?:\/\/[^\s<>"']+)/g);
+  return (
+    <Card title={title || undefined} aria-label={title ? undefined : "Note"}>
+      <p className="lp-dash-text">
+        {parts.length === 1 && !text ? <span className="lp-dash-empty" style={{ padding: 0 }}>Empty note.</span> : null}
+        {parts.map((p, i) =>
+          /^https?:\/\//.test(p) ? (
+            <a key={i} href={p} target="_blank" rel="noopener noreferrer">
+              {p}
+            </a>
+          ) : (
+            p
+          ),
+        )}
+      </p>
+    </Card>
+  );
 }
