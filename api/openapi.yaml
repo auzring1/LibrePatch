@@ -1426,7 +1426,7 @@ paths:
   /settings/effective:
     get:
       tags: [settings]
-      summary: The organization's display and formatting choices and the device and update defaults, for any signed-in person (no secrets, no security settings)
+      summary: The organization's display and formatting choices, the device and update defaults and whether the vulnerability lookup is on (`vulnerabilities.enabled`), for any signed-in person (no secrets, no security settings)
       responses:
         "200":
           description: OK

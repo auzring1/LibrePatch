@@ -5,6 +5,7 @@ import { Alert, Button, Modal, Stack, Switch, Table, Text } from "@mantine/core"
 import { api, errorMessage, type Vulnerability, type VulnerabilityDevice, type VulnerabilityOverview, type VulnerabilitySyncReport } from "../api/client";
 import { dateTime } from "../api/format";
 import { useSession } from "../api/session";
+import { useFeaturesLoaded } from "../settings/features";
 import { ConfirmDeployUpdates, useDeployUpdates } from "../components/FleetDeploy";
 import { TrackedProductsCard } from "../components/TrackedProductsCard";
 import { fixLabel, fixPlan } from "../components/vulnFix";
@@ -30,7 +31,27 @@ export function ExploitedPill({ v }: { v: Pick<Vulnerability, "exploited" | "ran
   );
 }
 
+/** The page, or, while the organization has the lookup switched off, a note that says where to turn it on (a bookmarked address should not land on a blank or broken page). */
 export function VulnerabilitiesPage() {
+  const { features, loaded } = useFeaturesLoaded();
+  const { canOrg } = useSession();
+  if (loaded && !features.vulnerabilities) {
+    return (
+      <Page>
+        <PageHeader title="Vulnerabilities" description="Known vulnerabilities that affect the programs and Windows versions on your devices." />
+        <EmptyState
+          icon={<Icons.Shield size={26} />}
+          title="Vulnerability lookup is switched off"
+          description="Turn on “Look up known vulnerabilities” to see which devices are affected."
+          actions={canOrg("settings:integrations") ? <Button component={Link} to="/settings/vulnerabilities">Open Vulnerability data settings</Button> : undefined}
+        />
+      </Page>
+    );
+  }
+  return <VulnerabilitiesContent />;
+}
+
+function VulnerabilitiesContent() {
   const { can } = useSession();
   const qc = useQueryClient();
   const [open, setOpen] = useState<Vulnerability | null>(null);

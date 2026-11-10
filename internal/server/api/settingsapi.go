@@ -139,6 +139,8 @@ func (s *server) settingsEffective(w http.ResponseWriter, r *http.Request) {
 		"appearance": s.Settings.Values(ctx, org, "appearance"),
 		"devices":    map[string]any{"offline_hours": dev.Int("offline_hours"), "naming_pattern": dev.Str("naming_pattern"), "default_columns": dev.Strings("default_columns"), "custom_fields": fields},
 		"updates":    map[string]any(up),
+		// Only the on/off switch: the console hides the Vulnerabilities pages while it is off. The feed addresses and the key stay in the section.
+		"vulnerabilities": map[string]any{"enabled": s.Settings.Values(ctx, org, "vulnerabilities").Bool("enabled")},
 	})
 }
 

@@ -15,6 +15,8 @@ export interface Effective {
   appearance: { default_density: string; sidebar_style: string; date_format: string; time_format: string; time_zone: string; locale: string; first_day_of_week: string };
   devices: { offline_hours: number; naming_pattern: string; default_columns: string[]; custom_fields: CustomFieldDef[] };
   updates: Record<string, unknown>;
+  /** Only the switch; absent on a server that predates it (the console then treats the feature as on). */
+  vulnerabilities?: { enabled: boolean };
 }
 
 export function useEffective() {
