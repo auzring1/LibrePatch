@@ -46,6 +46,8 @@ const options = (cmps: string[]) => cmps.map((c) => ({ value: c, label: CMP_LABE
 
 export const newDeviceCondition = (): Filter => ({ op: "device", field: "chassis", cmp: "in", value: LAPTOP_CHASSIS });
 export const newSoftwareCondition = (): Filter => ({ op: "software", title: "", match: "contains" });
+/** True when a "Has software" condition has no product name yet (the server would answer 422 "software filter needs a title"). */
+export const hasBlankSoftware = (n: Filter): boolean => (n.op === "software" ? !(n.title ?? "").trim() : (n.children ?? []).some(hasBlankSoftware));
 export const newGroup = (op: "and" | "or" = "and"): Filter => ({ op, children: [newSoftwareCondition()] });
 
 function defaultValue(kind: Kind): unknown {

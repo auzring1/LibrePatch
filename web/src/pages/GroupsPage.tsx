@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Modal, MultiSelect, SegmentedControl, Textarea, TextInput } from "@mantine/core";
 import { api, errorMessage, type Device, type Filter, type Group as Grp, type GroupMembers } from "../api/client";
 import { dateTime } from "../api/format";
-import { FilterEditor, newGroup } from "../components/FilterEditor";
+import { FilterEditor, hasBlankSoftware, newGroup } from "../components/FilterEditor";
 import { useSession } from "../api/session";
 import { Card, DataTable, EmptyState, Icons, IconButton, Page, PageHeader, Status, StatusPill, toast, useConfirm, type Column } from "../ui";
 import { LinkButton } from "../ui/PageBits";
@@ -192,6 +192,8 @@ export function GroupsPage() {
   );
 }
 
+const BLANK_SOFTWARE = "A “Has software” condition has no product name. Type one, or remove the condition.";
+
 function GroupEditor({ group, onClose }: { group: Grp | null; onClose: () => void }) {
   const qc = useQueryClient();
   const [name, setName] = useState(group?.name ?? "");
@@ -200,12 +202,18 @@ function GroupEditor({ group, onClose }: { group: Grp | null; onClose: () => voi
   const [filter, setFilter] = useState<Filter>(group?.filter ?? newGroup());
   const [error, setError] = useState("");
   const preview = useMutation({
-    mutationFn: () => api<GroupMembers>("POST", "/groups/preview?limit=50", { filter }),
+    mutationFn: () => {
+      if (hasBlankSoftware(filter)) throw new Error(BLANK_SOFTWARE);
+      return api<GroupMembers>("POST", "/groups/preview?limit=50", { filter });
+    },
     onMutate: () => setError(""),
     onError: (e) => setError(errorMessage(e)),
   });
   const save = useMutation({
-    mutationFn: () => (group ? api("PUT", `/groups/${group.id}`, group.kind === "static" ? { name, description } : { name, description, filter }) : api("POST", "/groups", kind === "static" ? { kind, name, description } : { kind, name, description, filter })),
+    mutationFn: () => {
+      if ((group ? group.kind !== "static" : kind !== "static") && hasBlankSoftware(filter)) throw new Error(BLANK_SOFTWARE);
+      return group ? api("PUT", `/groups/${group.id}`, group.kind === "static" ? { name, description } : { name, description, filter }) : api("POST", "/groups", kind === "static" ? { kind, name, description } : { kind, name, description, filter });
+    },
     onSuccess: () => (toast.success("Group saved."), qc.invalidateQueries({ queryKey: ["groups"] }), onClose()),
     onError: (e) => setError(errorMessage(e)),
   });
