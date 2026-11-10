@@ -125,7 +125,7 @@ func TestDashboardNotificationsAndLayoutPreferences(t *testing.T) {
 	if pr["nav"].(map[string]any)["collapsed"] != true || len(pr["dashboard"].(map[string]any)["order"].([]any)) != 2 {
 		t.Fatalf("an older client must not wipe the layout: %v", pr)
 	}
-	// Customizable dashboards (D167): saved with widget settings, kept when a client that only knows order and hidden saves.
+	// Customizable dashboards (D169): saved with widget settings, kept when a client that only knows order and hidden saves.
 	site := "5b9c2d52-5d0f-4c52-a0de-2f1d4f6a7b10"
 	board := func(w map[string]any) map[string]any {
 		return map[string]any{"dashboard": map[string]any{"order": []string{}, "hidden": []string{}, "active": "ops",
