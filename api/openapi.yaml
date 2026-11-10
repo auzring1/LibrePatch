@@ -3505,9 +3505,49 @@ components:
               items: { type: string, pattern: "^[a-z][a-z0-9-]{0,39}$" }
         dashboard:
           type: object
-          description: Dashboard widget order and hidden widgets. Left out of a save, the stored value is kept.
+          description: >
+            The dashboards. `order` and `hidden` are the original single layout; `boards` are the customizable dashboards
+            (a 12-column grid of widgets, each with its own settings). Left out of a save, the stored value is kept; an
+            older client that sends only `order` and `hidden` keeps the boards, and an empty `boards` list deletes them.
           additionalProperties: false
           properties:
+            boards:
+              type: array
+              maxItems: 10
+              items:
+                type: object
+                additionalProperties: false
+                required: [id, name, widgets]
+                properties:
+                  id: { type: string, pattern: "^[a-z][a-z0-9-]{0,39}$" }
+                  name: { type: string, minLength: 1, maxLength: 40 }
+                  refresh: { type: integer, enum: [0, 30, 60, 300], description: Seconds between refreshes; 0 = never }
+                  widgets:
+                    type: array
+                    maxItems: 40
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [id, type, x, y, w, h]
+                      properties:
+                        id: { type: string, pattern: "^[a-z][a-z0-9-]{0,39}$" }
+                        type: { type: string, pattern: "^[a-z][a-z0-9-]{0,39}$", description: "The widget kind (for example stat, compliance, apps, vulnerabilities, shortcut, text); the console ignores kinds it does not know" }
+                        x: { type: integer, minimum: 0, maximum: 11 }
+                        y: { type: integer, minimum: 0, maximum: 399 }
+                        w: { type: integer, minimum: 1, maximum: 12 }
+                        h: { type: integer, minimum: 1, maximum: 400 }
+                        settings:
+                          type: object
+                          additionalProperties: false
+                          properties:
+                            title: { type: string, maxLength: 60 }
+                            site: { type: string, format: uuid, description: Show this site instead of the site switcher's choice }
+                            range: { type: string, pattern: "^[0-9]{1,3}[dh]$", description: "A time range such as 7d" }
+                            count: { type: integer, minimum: 0, maximum: 50 }
+                            metric: { type: string, pattern: "^[a-z][a-z0-9-]{0,39}$" }
+                            dest: { type: string, pattern: "^[a-z][a-z0-9-]{0,39}$" }
+                            text: { type: string, maxLength: 500 }
+            active: { type: string, pattern: "^[a-z][a-z0-9-]{0,39}$", description: The id of the board shown first }
             order:
               type: array
               maxItems: 32

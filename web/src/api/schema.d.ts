@@ -8181,8 +8181,42 @@ export interface components {
                 collapsed?: boolean;
                 closed?: string[];
             };
-            /** @description Dashboard widget order and hidden widgets. Left out of a save, the stored value is kept. */
+            /** @description The dashboards. `order` and `hidden` are the original single layout; `boards` are the customizable dashboards (a 12-column grid of widgets, each with its own settings). Left out of a save, the stored value is kept; an older client that sends only `order` and `hidden` keeps the boards, and an empty `boards` list deletes them. */
             dashboard?: {
+                boards?: {
+                    id: string;
+                    name: string;
+                    /**
+                     * @description Seconds between refreshes; 0 = never
+                     * @enum {integer}
+                     */
+                    refresh?: 0 | 30 | 60 | 300;
+                    widgets: {
+                        id: string;
+                        /** @description The widget kind (for example stat, compliance, apps, vulnerabilities, shortcut, text); the console ignores kinds it does not know */
+                        type: string;
+                        x: number;
+                        y: number;
+                        w: number;
+                        h: number;
+                        settings?: {
+                            title?: string;
+                            /**
+                             * Format: uuid
+                             * @description Show this site instead of the site switcher's choice
+                             */
+                            site?: string;
+                            /** @description A time range such as 7d */
+                            range?: string;
+                            count?: number;
+                            metric?: string;
+                            dest?: string;
+                            text?: string;
+                        };
+                    }[];
+                }[];
+                /** @description The id of the board shown first */
+                active?: string;
                 order?: string[];
                 hidden?: string[];
             };
