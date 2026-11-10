@@ -160,7 +160,7 @@ func filterArg(c *Column, f Filter) (any, error) {
 		return v == "true", nil
 	case KTime:
 		if f.Op == "within_days" || f.Op == "older_than_days" {
-			n, err := strconv.Atoi(v)
+			n, err := strconv.ParseInt(v, 10, 32)
 			if err != nil || n < 0 || n > 36500 {
 				return nil, bad("%s needs a number of days.", c.Label)
 			}
