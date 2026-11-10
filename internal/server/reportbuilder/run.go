@@ -164,7 +164,7 @@ func filterArg(c *Column, f Filter) (any, error) {
 			if err != nil || n < 0 || n > 36500 {
 				return nil, bad("%s needs a number of days.", c.Label)
 			}
-			return int32(n), nil // #nosec G115 -- bounded above
+			return int32(n), nil // #nosec G115 -- parsed as 32 bits and bounded above
 		}
 		if _, err := time.Parse("2006-01-02", v); err != nil {
 			return nil, bad("%s needs a date like 2026-01-31.", c.Label)
