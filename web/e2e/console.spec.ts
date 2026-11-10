@@ -272,7 +272,7 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       // Software reports read the dev agent's package list.
       await page.goto("/reports/software-programs");
       await expect(page.getByRole("heading", { name: "Programs by number of devices", level: 1 })).toBeVisible();
-      await expect(page.getByText(/^\d+ rows?\.$/)).toBeVisible(); // how many depends on which packages the runner marks as system components (the Go end-to-end test checks the data)
+      await expect(page.getByText(/^[\d,]+ rows?\.$|^Showing the first [\d,]+ of [\d,]+ rows/)).toBeVisible(); // how many depends on which packages the runner marks as system components (the Go end-to-end test checks the data)
       await shot(page, "23e-report-programs");
       // A custom report: pick the data and columns, add a filter, save it, find it in the library, export it, delete it.
       await page.goto("/reports");
