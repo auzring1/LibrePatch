@@ -68,7 +68,7 @@ Permission: `settings:notifications`. E-mail delivery, quiet hours and which eve
 | Setting | Type | Default | Limits | Effect | What it does |
 |---|---|---|---|---|---|
 | **Send e-mail** (`email_enabled`) | bool | `false` |  | in effect | Turn on to send notifications and scheduled reports by e-mail. Nothing is sent until the mail server below works (use Send test). |
-| **Mail server** (`smtp_host`) | string | empty | up to 253 characters | in effect | Host name of your SMTP relay. |
+| **Mail server** (`smtp_host`) | string | empty | up to 253 characters | in effect | Host name of your SMTP relay. Microsoft 365: smtp.office365.com, port 587, STARTTLS (the sending mailbox needs Authenticated SMTP switched on). Gmail: smtp.gmail.com, port 587, STARTTLS, with an app password. |
 | **Port** (`smtp_port`) | int | `587` | 1 to 65535 | in effect | Usually 587 (STARTTLS), 465 (TLS from the start) or 25. |
 | **Connection security** (`smtp_security`) | enum | `starttls` | starttls, tls, none | in effect | The server's certificate is always verified. 'None' is only for a relay on a trusted internal network. |
 | **User name** (`smtp_username`) | string | empty | up to 254 characters | in effect | Leave empty if the relay does not need a login. |
@@ -209,7 +209,8 @@ Permission: `settings:reports`. Reports e-mailed on a schedule as PDF or CSV. Ne
 | **Id** (`id`) | string | empty | up to 64 characters | in effect | Assigned automatically. |
 | **Name** (`name`) | string | `Weekly compliance` | up to 100 characters | in effect | Shown in the e-mail subject. |
 | **Enabled** (`enabled`) | bool | `true` |  | in effect | Paused schedules send nothing. |
-| **Report** (`report`) | enum | `compliance` | compliance, missing_updates, inventory | in effect | What to send. |
+| **Report** (`report`) | enum | `compliance` | compliance, missing_updates, inventory, software-installed, software-programs, software-versions, software-user-installs, hardware-inventory, hardware-os, hardware-disks, hardware-low-disk, hardware-unencrypted, patching-compliance, patching-attention, devices-status, devices-not-seen, devices-restart, saved | in effect | What to send. |
+| **Saved report** (`saved_report`) | string | empty | up to 36 characters | in effect | Which saved custom report to send (create one under Reports). Needed when the report above is a saved custom report. |
 | **Format** (`format`) | enum | `pdf` | pdf, csv | in effect | PDF to read, CSV to analyse. |
 | **Repeat** (`frequency`) | enum | `weekly` | daily, weekly, monthly | in effect | How often. |
 | **Day of the week** (`weekday`) | enum | `monday` | monday, tuesday, wednesday, thursday, friday, saturday, sunday | in effect | For weekly schedules. |

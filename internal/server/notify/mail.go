@@ -160,7 +160,41 @@ func Build(cfg SMTPConfig, m Message, now time.Time, host string) ([]byte, error
 	return b.Bytes(), nil
 }
 
+// Hint adds a plain-words explanation to an error from the mail server when the cause is a well-known one (Microsoft
+// 365 with SMTP AUTH off, Gmail wanting an app password, a certificate for another name, a blocked port). The server's
+// own text is always kept, so nothing is hidden.
+func Hint(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	low := strings.ToLower(msg)
+	var hint string
+	switch {
+	case strings.Contains(low, "5.7.139") || strings.Contains(low, "smtpclientauthentication is disabled") || strings.Contains(low, "basic authentication is disabled"):
+		hint = "Microsoft 365 has SMTP AUTH switched off for this mailbox or organization. An administrator can turn on \"Authenticated SMTP\" for the sending mailbox (Exchange admin center, Mailboxes, Manage email apps), or you can use your own SMTP relay instead."
+	case strings.Contains(low, "5.7.60") || strings.Contains(low, "not permitted to send as") || strings.Contains(low, "sendas denied"):
+		hint = "The server does not let this login send as the From address. Use the login's own address as From, or ask for send-as permission."
+	case strings.Contains(low, "535") || strings.Contains(low, "username and password not accepted") || strings.Contains(low, "authentication failed"):
+		hint = "Check the user name and password. Gmail and accounts with two-step sign-in need an app password, not the normal one."
+	case strings.Contains(low, "x509") || strings.Contains(low, "certificate"):
+		hint = "The mail server's certificate does not match the name entered under Mail server. Use the exact host name the certificate was issued for."
+	case strings.Contains(low, "connection refused") || strings.Contains(low, "i/o timeout") || strings.Contains(low, "no such host") || strings.Contains(low, "context deadline exceeded"):
+		hint = "The mail server could not be reached. Check the host name and port, and that this server may connect out on that port (many networks block port 25; 587 and 465 are usually open)."
+	case strings.Contains(low, "does not offer starttls"):
+		hint = "Choose 'TLS from the start' if the server uses port 465."
+	}
+	if hint == "" {
+		return err
+	}
+	return fmt.Errorf("%w. %s", err, hint)
+}
+
 func (smtpMailer) Send(ctx context.Context, cfg SMTPConfig, m Message) error {
+	return Hint(send(ctx, cfg, m))
+}
+
+func send(ctx context.Context, cfg SMTPConfig, m Message) error {
 	if cfg.Host == "" || cfg.From == "" {
 		return errors.New("the mail server and the From address are not set")
 	}

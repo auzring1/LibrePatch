@@ -1,5 +1,8 @@
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button, Checkbox, NumberInput, PasswordInput, Select, Switch, TagsInput, Text, TextInput, Textarea, Autocomplete } from "@mantine/core";
+import { api } from "../api/client";
+import type { ReportCatalog } from "../api/client";
 import { Icons } from "../ui";
 import { asArray, asObject, newItem, type SettingsField, type Values } from "./types";
 
@@ -80,6 +83,9 @@ export function FieldInput(p: InputProps) {
     case "string":
     case "regex":
     case "url":
+      if (f.key === "saved_report" && path.startsWith("schedules[")) {
+        return <SavedReportPicker common={common} value={String(value ?? "")} onChange={(v) => onChange(v)} />;
+      }
       return <TextInput {...common} value={String(value ?? "")} onChange={(e) => onChange(e.currentTarget.value)} maxLength={f.max} placeholder={f.placeholder} autoComplete="off" />;
     case "time":
       return <TextInput {...common} type="time" value={String(value ?? "")} onChange={(e) => onChange(e.currentTarget.value)} />;
@@ -121,8 +127,33 @@ export function FieldInput(p: InputProps) {
   return null;
 }
 
-/** Whether a field should show, given its show_if sibling. */
-export const visible = (f: SettingsField, siblings: Values) => !f.show_if || siblings[f.show_if] === true;
+/** Whether a field should show: show_if names a Bool sibling that must be on, or is written "key=value" for a sibling choice. */
+export const visible = (f: SettingsField, siblings: Values) => {
+  if (!f.show_if) return true;
+  const eq = f.show_if.indexOf("=");
+  if (eq > 0) return siblings[f.show_if.slice(0, eq)] === f.show_if.slice(eq + 1);
+  return siblings[f.show_if] === true;
+};
+
+/** Choose one of the organization's saved custom reports for a schedule. */
+function SavedReportPicker({ common, value, onChange }: { common: Record<string, unknown>; value: string; onChange: (v: string) => void }) {
+  const catalog = useQuery({ queryKey: ["reports", "catalog"], queryFn: () => api<ReportCatalog>("GET", "/reports/catalog"), staleTime: 30_000 });
+  const items = catalog.data?.saved ?? [];
+  const data = items.map((r) => ({ value: r.id, label: r.name }));
+  if (value && !data.some((d) => d.value === value)) data.push({ value, label: catalog.isLoading ? "Loading…" : "A report that no longer exists" });
+  return (
+    <Select
+      {...common}
+      data={data}
+      value={value || null}
+      onChange={(v) => onChange(v ?? "")}
+      allowDeselect={false}
+      placeholder={items.length === 0 && !catalog.isLoading ? "No saved reports yet. Create one under Reports." : "Choose a saved report"}
+      comboboxProps={{ withinPortal: true }}
+      searchable
+    />
+  );
+}
 
 function itemTitle(f: SettingsField, item: Values, i: number): string {
   const key = f.item_key ? String(item[f.item_key] ?? "") : "";

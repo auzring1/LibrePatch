@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SETTINGS_SECTIONS } from "../ui/nav";
 import { toRequest } from "./SectionForm";
+import { visible } from "./fields";
 import { searchSettings } from "./search";
 import { localErrors, newItem, type SettingsField, type SettingsSection } from "./types";
 
@@ -62,5 +63,23 @@ describe("settings form helpers", () => {
     const out = toRequest(section, { smtp_host: "h", smtp_port: 25, webhooks: [{ id: "a", name: "x", secret: "" }, { id: "b", name: "y", secret: "s" }] });
     expect((out["webhooks"] as Record<string, unknown>[])[0]).not.toHaveProperty("secret");
     expect((out["webhooks"] as Record<string, unknown>[])[1]!["secret"]).toBe("s");
+  });
+});
+
+describe("visible", () => {
+  it("shows a field with no condition", () => {
+    expect(visible(f({ key: "a", kind: "string" }), {})).toBe(true);
+  });
+  it("follows a Bool sibling", () => {
+    const fld = f({ key: "a", kind: "string", show_if: "on" });
+    expect(visible(fld, { on: true })).toBe(true);
+    expect(visible(fld, { on: false })).toBe(false);
+    expect(visible(fld, {})).toBe(false);
+  });
+  it("follows a choice written key=value", () => {
+    const fld = f({ key: "saved_report", kind: "string", show_if: "report=saved" });
+    expect(visible(fld, { report: "saved" })).toBe(true);
+    expect(visible(fld, { report: "inventory" })).toBe(false);
+    expect(visible(fld, {})).toBe(false);
   });
 });

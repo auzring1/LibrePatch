@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -205,4 +206,69 @@ func TestScheduledReports(t *testing.T) {
 		t.Fatalf("nothing new is due: %d", len(mailer.sent))
 	}
 	_ = org
+}
+
+// A schedule can send a ready-made report or one of the organization's saved custom reports.
+func TestScheduledSavedAndReadyMadeReports(t *testing.T) {
+	h := newHarness(t)
+	h.setupAndLogin()
+	mailer := &fakeMailer{}
+	h.app.Notify.Mailer = mailer
+	if st, b := h.do("PUT", "/api/v1/settings/sections/notifications", map[string]any{"revision": 0, "values": map[string]any{"email_enabled": true, "smtp_host": "smtp.example.org", "from_address": "r@example.org"}}, nil); st != 200 {
+		t.Fatalf("notifications: %d %v", st, b)
+	}
+	ta := h.startAgent(h.createToken("sched", 5, false), &fakeHW{host: "=SCHED-PC", serial: "S9", uuid: "U9"}, nil)
+	waitFor(t, 20e9, "agent", func() bool { return ta.state() == "connected" && len(h.devices()) == 1 })
+
+	st, saved := h.do("POST", "/api/v1/reports/saved", map[string]any{"name": "Big memory laptops",
+		"spec": map[string]any{"dataset": "devices", "columns": []string{"hostname", "ram_gb"}}}, nil)
+	if st != 201 && st != 200 {
+		t.Fatalf("save report: %d %v", st, saved)
+	}
+	savedID, _ := saved["id"].(string)
+	sched := func(id, report, savedRef, format string) map[string]any {
+		return map[string]any{"id": id, "name": "Weekly " + id, "enabled": true, "report": report, "saved_report": savedRef, "format": format, "frequency": "weekly", "weekday": "monday", "day_of_month": 1, "time": "07:00", "recipients": []any{"boss@example.org"}}
+	}
+	put := func(rev int, items ...map[string]any) (int, map[string]any) {
+		list := make([]any, len(items))
+		for i, it := range items {
+			list[i] = it
+		}
+		return h.do("PUT", "/api/v1/settings/sections/reports", map[string]any{"revision": rev, "values": map[string]any{"time_zone": "UTC", "schedules": list}}, nil)
+	}
+	// "saved" needs a report that is a real id.
+	if st, _ := put(0, sched("a", "saved", "", "csv")); st != 422 {
+		t.Fatalf("saved without a report: %d", st)
+	}
+	if st, _ := put(0, sched("a", "saved", "not-an-id", "csv")); st != 422 {
+		t.Fatalf("saved with a bad id: %d", st)
+	}
+	if st, b := put(0, sched("hw", "hardware-inventory", "", "csv"), sched("mine", "saved", savedID, "pdf")); st != 200 {
+		t.Fatalf("schedules: %d %v", st, b)
+	}
+	if st, b := h.do("POST", "/api/v1/settings/reports/schedules/hw/send-now", map[string]any{}, nil); st != 200 {
+		t.Fatalf("send ready-made: %d %v", st, b)
+	}
+	if st, b := h.do("POST", "/api/v1/settings/reports/schedules/mine/send-now", map[string]any{}, nil); st != 200 {
+		t.Fatalf("send saved: %d %v", st, b)
+	}
+	if len(mailer.sent) != 2 {
+		t.Fatalf("mails: %d", len(mailer.sent))
+	}
+	csvMail, pdfMail := mailer.sent[0], mailer.sent[1]
+	csvText := string(csvMail.Attachments[0].Data)
+	if !strings.HasPrefix(csvText, "\xef\xbb\xbf") || !strings.Contains(csvText, "'=SCHED-PC") || !strings.HasSuffix(csvMail.Attachments[0].Name, ".csv") || !strings.Contains(csvMail.Subject, "Hardware inventory") {
+		t.Fatalf("ready-made csv: %q %q", csvMail.Subject, csvText)
+	}
+	if !strings.HasPrefix(string(pdfMail.Attachments[0].Data), "%PDF-") || !strings.HasPrefix(pdfMail.Attachments[0].Name, "big-memory-laptops-") || !strings.Contains(pdfMail.Subject, "Big memory laptops") {
+		t.Fatalf("saved pdf: %q %q", pdfMail.Subject, pdfMail.Attachments[0].Name)
+	}
+	// Deleting the saved report makes the schedule fail with a message a person can act on, and nothing is sent.
+	if st, _ := h.do("DELETE", "/api/v1/reports/saved/"+savedID, nil, nil); st != 204 && st != 200 {
+		t.Fatalf("delete: %d", st)
+	}
+	st, b := h.do("POST", "/api/v1/settings/reports/schedules/mine/send-now", map[string]any{}, nil)
+	if st != 422 || !strings.Contains(fmt.Sprint(b), "no longer exists") || len(mailer.sent) != 2 {
+		t.Fatalf("deleted report: %d %v %d", st, b, len(mailer.sent))
+	}
 }
