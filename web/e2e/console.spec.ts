@@ -192,10 +192,9 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
   await page.getByRole("button", { name: "New token" }).click();
   await page.getByLabel(/^Name/).fill("GUI test");
   await page.getByRole("button", { name: "Create" }).click();
-  // The dialog shows the MSI commands and the exe commands (D112); a development build has no agent files to hand out, so
-  // there are no download lines here.
-  const msiCmd = (await page.locator("pre", { hasText: "msiexec /i librepatch-agent.msi" }).innerText()).trim();
-  expect(msiCmd).toMatch(/msiexec \/i librepatch-agent\.msi \/qn \/norestart SERVER=\S+ TOKEN=LP1\./);
+  // The dialog shows one install command, for the exe (the MSI is no longer offered in the console); a development build has no
+  // agent files to hand out, so there are no download lines here.
+  await expect(page.locator("pre", { hasText: "msiexec" })).toHaveCount(0);
   const cmd = (await page.locator("pre", { hasText: "librepatch-agent.exe install" }).innerText()).trim();
   expect(cmd).toContain("librepatch-agent.exe install --server");
   await shot(page, "03-token");
@@ -217,6 +216,15 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
       await expect(row).toBeVisible({ timeout: 30_000 });
       await expect(row.getByText("online")).toBeVisible({ timeout: 30_000 });
       await shot(page, "04-devices");
+      // Regression: the select-all checkbox must work for ACTIVE devices (it used to select revoked devices only).
+      const selectAll = page.getByRole("checkbox", { name: "Select all rows on this page" });
+      await expect(selectAll).toBeEnabled();
+      await selectAll.check();
+      await expect(page.getByText(/^\d+ selected$/)).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Refresh \d+ active$/ })).toBeEnabled();
+      await expect(page.getByRole("button", { name: /^Delete\s*revoked$/ })).toBeDisabled(); // nothing selected is revoked
+      await page.getByRole("button", { name: "Clear selection" }).click();
+      await expect(page.getByText(/^\d+ selected$/)).toHaveCount(0);
       await row.click();
       await expect(page).toHaveURL(/\/devices\/[0-9a-f-]{36}$/);
       await expect(page.getByRole("tab", { name: "Hardware" })).toBeVisible();
@@ -539,6 +547,13 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
         descriptions: [{ lang: "en", value: "A made-up entry that names no versions, known as &quot;NoVersions&quot;." }], metrics: { cvssMetricV31: [{ cvssData: { baseScore: 7.5, baseSeverity: "HIGH" } }] },
         configurations: [{ nodes: [{ operator: "OR", cpeMatch: [{ vulnerable: true, criteria: "cpe:2.3:a:gnu:bash:*:*:*:*:*:*:*:*" }] }] }] } }] };
       expect((await post("/vulnerabilities/import", { kind: "nvd", data: JSON.stringify(noVersionsPage) })).status()).toBe(200);
+      // The lookup is off by default: neither the sidebar link nor the device tab exists until it is turned on (Settings, Vulnerability data).
+      await expect(mainNav(page).getByRole("link", { name: "Vulnerabilities", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("tab", { name: "Vulnerabilities", exact: true })).toHaveCount(0);
+      const vsec = (await (await page.request.get("/api/v1/settings/sections/vulnerabilities")).json()) as { revision: number };
+      const putVuln = await page.request.put("/api/v1/settings/sections/vulnerabilities", { data: { revision: vsec.revision, values: { enabled: true } }, headers: { "X-CSRF-Token": csrf, Origin: new URL(page.url()).origin } });
+      expect(putVuln.status()).toBe(200);
+      await page.reload();
       await mainNav(page).getByRole("link", { name: "Vulnerabilities", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Vulnerabilities", exact: true })).toBeVisible();
       await expect(page.getByText("Known exploited", { exact: true })).toBeVisible();

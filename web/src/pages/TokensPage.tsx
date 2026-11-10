@@ -27,33 +27,32 @@ interface AgentDownloads {
 /** Where the installers come from: the server fetches them from the release that matches its version. */
 function AgentDownloadsCard({ d }: { d: AgentDownloads | undefined }) {
   if (!d) return null;
-  const missing = d.items.filter((i) => !i.available);
+  // One installer is offered: the .exe. Site-wide rollouts use a script (the install command shown with a new token), not an MSI.
+  const exe = d.items.find((i) => i.kind === "exe");
   return (
-    <Card title="Agent downloads" description={d.enabled ? `The agent for Windows, version ${d.version}, served by this server. Endpoints download it with the commands shown when you create a token; no sign-in is needed for the download itself.` : "The server does not hand out the agent."}>
-      <Stack gap="xs">
-        {!d.enabled && <Text size="sm">{d.reason || "Agent downloads are not available on this server."} Get the files from the project's release page and copy them to the PCs yourself.</Text>}
-        {d.enabled &&
-          d.items.map((i) => (
-            <Group key={i.kind} justify="space-between" wrap="nowrap" align="flex-start">
-              <div>
-                <Text fw={500}>{i.kind === "msi" ? "MSI installer (GPO, Intune, RMM, or by hand)" : "Executable (single PC)"}</Text>
-                <Text size="sm" c="dimmed" style={{ wordBreak: "break-all" }}>
-                  {i.available ? `${i.file_name}, ${fileSize(i.size)}. SHA-256 ${i.sha256}${i.verified ? " (matches the one published with the release)" : " (computed by this server; the release publishes none for this file)"}` : "Not on this server yet."}
-                </Text>
-              </div>
-              {i.available ? (
-                <Button component="a" href={i.url} download variant="default" size="compact-md" leftSection={<Icons.Download size={14} aria-hidden />}>
-                  Download
-                </Button>
-              ) : null}
-            </Group>
-          ))}
-        {d.enabled && missing.length > 0 && (
-          <Text size="sm" c={d.error ? "red" : "dimmed"} role={d.error ? "alert" : undefined}>
-            {d.error ? `The server could not fetch the agent from the release yet: ${d.error}. It tries again by itself.` : "The server is fetching the agent from the release. This page updates by itself."}
-          </Text>
-        )}
-      </Stack>
+    <Card
+      title="Agent downloads"
+      description={d.enabled ? `The agent for Windows, version ${d.version}, served by this server. Endpoints download it with the commands shown when you create a token; no sign-in is needed for the download itself.` : "The server does not hand out the agent."}
+      actions={
+        d.enabled && exe?.available ? (
+          <Button component="a" href={exe.url} download variant="default" size="compact-md" leftSection={<Icons.Download size={14} aria-hidden />} title={`${exe.file_name}, ${fileSize(exe.size)}. SHA-256 ${exe.sha256}`}>
+            Download
+          </Button>
+        ) : undefined
+      }
+    >
+      {(!d.enabled || !exe?.available) && (
+        <Stack gap="xs">
+          {!d.enabled && (
+            <Text size="sm">{d.reason || "Agent downloads are not available on this server."} Get the file from the project's release page and copy it to the PCs yourself.</Text>
+          )}
+          {d.enabled && (
+            <Text size="sm" c={d.error ? "red" : "dimmed"} role={d.error ? "alert" : undefined}>
+              {d.error ? `The server could not fetch the agent from the release yet: ${d.error}. It tries again by itself.` : "The server is fetching the agent from the release. This page updates by itself."}
+            </Text>
+          )}
+        </Stack>
+      )}
     </Card>
   );
 }
@@ -243,11 +242,9 @@ export function TokensPage() {
             <Alert color="yellow" icon={<Icons.Warning size={18} aria-hidden />}>
               This is the only time the token is shown. Anyone with it can enroll devices until it expires or is used up.
             </Alert>
-            <Text fw={500}>Install with the MSI, silently. Paste this one line into an elevated Command Prompt or PowerShell:</Text>
-            <CommandBlock value={commandText(created.install.msi)} label="Copy MSI install command" />
-            <Text fw={500}>Or install with the exe (the same, one line):</Text>
-            <CommandBlock value={commandText(created.install.exe)} label="Copy exe install command" />
-            {(!created.install.msi.one_liner || !created.install.exe.one_liner) ? (
+            <Text fw={500}>Install silently. Paste this one line into an elevated Command Prompt or PowerShell, or deploy it as a script:</Text>
+            <CommandBlock value={commandText(created.install.exe)} label="Copy install command" />
+            {!created.install.exe.one_liner ? (
               <Text size="sm" c="dimmed">
                 This server does not have the agent files to hand out yet, so the line above assumes the file is already in the current folder. See "Agent downloads" on this page.
               </Text>

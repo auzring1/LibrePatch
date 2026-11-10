@@ -32,10 +32,12 @@ export const DEVICE_TAB_ALIASES: Readonly<Record<string, DeviceTab>> = {
   "client-certificates": "hardware",
 };
 
-/** Which optional tabs the person may see. Overview, Hardware, Software and Vulnerabilities are always available (they need only access to the device). */
+/** Which optional tabs the person may see. Overview, Hardware and Software are always available (they need only access to the device). */
 export interface DeviceTabAccess {
   /** `updates:read`: the Windows updates tab. */
   hasUpdates: boolean;
+  /** Settings > Vulnerability data > "Look up known vulnerabilities" is on: the Vulnerabilities tab. */
+  hasVulnerabilities: boolean;
   /** `deployments:read`: the Software updates tab (programs that have a newer version in the catalog). */
   hasSoftwareUpdates: boolean;
   /** `deployments:read` */
@@ -48,7 +50,7 @@ export interface DeviceTabAccess {
 
 export function availableDeviceTabs(access: DeviceTabAccess): DeviceTab[] {
   return DEVICE_TABS.filter((t) =>
-    t === "updates" ? access.hasUpdates : t === "software-updates" ? access.hasSoftwareUpdates : t === "jobs" ? access.hasJobs : t === "inspect" ? access.hasInspect : t === "activity" ? access.hasActivity : true,
+    t === "vulnerabilities" ? access.hasVulnerabilities : t === "updates" ? access.hasUpdates : t === "software-updates" ? access.hasSoftwareUpdates : t === "jobs" ? access.hasJobs : t === "inspect" ? access.hasInspect : t === "activity" ? access.hasActivity : true,
   );
 }
 

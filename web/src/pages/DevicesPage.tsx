@@ -1,3 +1,4 @@
+import { bulkTargets } from "./deviceSelection";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -58,6 +59,15 @@ export function DevicesPage() {
   const refresh = useMutation({
     mutationFn: (id: string) => api("POST", `/devices/${id}/refresh`, {}),
     onSuccess: () => toast.info("Refresh requested. The device reports back within a minute."),
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+
+  const refreshMany = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(ids.map((id) => api("POST", `/devices/${id}/refresh`, {})));
+      return { asked: results.filter((r) => r.status === "fulfilled").length, failed: results.filter((r) => r.status === "rejected").length };
+    },
+    onSuccess: (r) => (r.failed ? toast.error(`Refresh requested for ${r.asked} device${r.asked === 1 ? "" : "s"}; ${r.failed} could not be asked.`) : toast.info(`Refresh requested for ${r.asked} device${r.asked === 1 ? "" : "s"}. They report back within a minute.`)),
     onError: (e) => toast.error(errorMessage(e)),
   });
 
@@ -226,7 +236,7 @@ export function DevicesPage() {
         exportName="devices"
         initialSort={{ id: "hostname" }}
         preset={preset}
-        selectable={canDelete ? (d) => d.status === "revoked" : false}
+        selectable={canDelete}
         toolbar={
           <SegmentedControl
             aria-label="Show devices by status"
@@ -240,29 +250,50 @@ export function DevicesPage() {
             ]}
           />
         }
-        bulkActions={(rows, clear) => (
-          <Button
-            color="red"
-            variant="light"
-            size="compact-sm"
-            leftSection={<Icons.Trash size={14} aria-hidden />}
-            loading={del.isPending}
-            onClick={async () => {
-              const ok = await confirm({
-                title: `Delete ${rows.length} device${rows.length === 1 ? "" : "s"}?`,
-                message: "Each device and everything stored about it (hardware, software inventory, jobs, certificates) is removed permanently. The audit log keeps the record. Only revoked devices can be deleted.",
-                confirmLabel: "Delete permanently",
-                danger: true,
-              });
-              if (ok) {
-                del.mutate(rows.map((r) => r.id));
-                clear();
-              }
-            }}
-          >
-            Delete selected
-          </Button>
-        )}
+        bulkActions={(rows, clear) => {
+          const { active: activeRows, revoked: revokedRows, others } = bulkTargets(rows);
+          return (
+            <>
+              <Button
+                variant="light"
+                size="compact-sm"
+                leftSection={<Icons.NavAgentUpdates size={14} aria-hidden />}
+                disabled={activeRows.length === 0}
+                loading={refreshMany.isPending}
+                title={activeRows.length === 0 ? "Only active devices can be refreshed" : undefined}
+                onClick={() => {
+                  refreshMany.mutate(activeRows.map((r) => r.id));
+                  clear();
+                }}
+              >
+                Refresh {activeRows.length || ""} active
+              </Button>
+              <Button
+                color="red"
+                variant="light"
+                size="compact-sm"
+                leftSection={<Icons.Trash size={14} aria-hidden />}
+                disabled={revokedRows.length === 0}
+                loading={del.isPending}
+                title={revokedRows.length === 0 ? "Only revoked devices can be deleted" : undefined}
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: `Delete ${revokedRows.length} revoked device${revokedRows.length === 1 ? "" : "s"}?`,
+                    message: `Each device and everything stored about it (hardware, software inventory, jobs, certificates) is removed permanently. The audit log keeps the record. Only revoked devices can be deleted${others > 0 ? `, so the other ${others} you selected are left alone` : ""}.`,
+                    confirmLabel: "Delete permanently",
+                    danger: true,
+                  });
+                  if (ok) {
+                    del.mutate(revokedRows.map((r) => r.id));
+                    clear();
+                  }
+                }}
+              >
+                Delete {revokedRows.length || ""} revoked
+              </Button>
+            </>
+          );
+        }}
         rowActions={(d) =>
           can("devices:write") && d.status === "active" ? (
             <IconButton label={`Refresh ${d.hostname}`} icon={<Icons.NavAgentUpdates size={16} aria-hidden />} size="sm" onClick={() => refresh.mutate(d.id)} />

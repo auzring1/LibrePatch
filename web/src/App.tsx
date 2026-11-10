@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { api } from "./api/client";
 import { useSession } from "./api/session";
+import { useFeatures } from "./settings/features";
 import { Layout } from "./components/Layout";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SettingsShell } from "./settings/SettingsShell";
@@ -34,6 +35,11 @@ const TokensPage = page(() => import("./pages/TokensPage"), "TokensPage");
 const AutomationsPage = page(() => import("./pages/AutomationsPage"), "AutomationsPage");
 const ScriptsPage = page(() => import("./pages/ScriptsPage"), "ScriptsPage");
 const ReportsPage = page(() => import("./pages/ReportsPage"), "ReportsPage");
+/** The Vulnerabilities page exists only while the lookup is on (Settings, Vulnerability data); old links go to the dashboard otherwise. */
+function VulnerabilitiesRoute() {
+  const { vulnerabilities } = useFeatures();
+  return vulnerabilities ? <VulnerabilitiesPage /> : <Navigate to="/" replace />;
+}
 const VulnerabilitiesPage = page(() => import("./pages/VulnerabilitiesPage"), "VulnerabilitiesPage");
 const AgentUpdatesPage = page(() => import("./pages/AgentUpdatesPage"), "AgentUpdatesPage");
 const AccountPage = page(() => import("./pages/AccountPage"), "AccountPage");
@@ -88,7 +94,7 @@ export function App() {
         <Route path="/policies" element={<Navigate to="/automations" replace />} />
         <Route path="/scripts" element={<ScriptsPage />} />
         <Route path="/reports" element={<ReportsPage />} />
-        <Route path="/vulnerabilities" element={<VulnerabilitiesPage />} />
+        <Route path="/vulnerabilities" element={<VulnerabilitiesRoute />} />
         <Route path="/agent-updates" element={<Navigate to="/settings/agent-updates" replace />} />
         <Route path="/account" element={<AccountPage />} />
         <Route path="/users" element={<UsersPage />} />
