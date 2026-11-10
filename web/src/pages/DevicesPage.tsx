@@ -116,7 +116,7 @@ export function DevicesPage() {
         id: "connection",
         header: "Connection",
         value: (d) => (d.status === "active" ? (d.online ? "online" : "offline") : ""),
-        width: 130,
+        width: 170, // columns may shrink to 85% to fit the frame, and the sort arrows take about 40 px: 130 cut the end of "CONNECTION"
         cell: (d) => (d.status === "active" ? <Status value={d.online ? "online" : "offline"} size="sm" /> : <span className="lp-muted">—</span>),
         filter: {
           type: "select",

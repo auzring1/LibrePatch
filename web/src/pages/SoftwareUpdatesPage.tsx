@@ -9,6 +9,7 @@ import { ensurePackage } from "../components/updateDeploy";
 import { dateTime } from "../api/format";
 import { DataTable, EmptyState, Icons, IconButton, Page, PageHeader, StatusPill, toast, type Column } from "../ui";
 import { NewPolicyModal, type PolicyPreset } from "./PoliciesPage";
+import { updatesEmpty } from "./softwareUpdatesEmpty";
 
 const KEY = ["software-updates"];
 
@@ -44,12 +45,33 @@ function DevicesModal({ update, onClose }: { update: FleetUpdate; onClose: () =>
   );
 }
 
+/** The empty list: "up to date" only when something was compared; otherwise it says why nothing was checked. */
+function UpdatesEmpty({ index, catalogCount }: { index?: WingetIndexStatus; catalogCount?: number }) {
+  const r = updatesEmpty({ index, catalogCount });
+  const { canOrg } = useSession();
+  return (
+    <EmptyState
+      icon={r.kind === "current" ? <Icons.Success size={26} /> : <Icons.Warning size={26} />}
+      title={r.title}
+      description={r.description}
+      actions={
+        r.kind === "unchecked" && canOrg("catalog:read") ? (
+          <Button component={Link} to="/catalog">
+            Go to the catalog
+          </Button>
+        ) : undefined
+      }
+    />
+  );
+}
+
 /** Programs from the catalog that are out of date somewhere in the fleet, with a way to update every device at once. */
 export function SoftwareUpdatesPage() {
   const { canOrg } = useSession();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: KEY, queryFn: () => api<{ items: FleetUpdate[] }>("GET", "/software/updates") });
   const index = useQuery({ queryKey: ["catalog", "index"], queryFn: () => api<WingetIndexStatus>("GET", "/catalog/index"), enabled: canOrg("catalog:read") });
+  const catalogCount = useQuery({ queryKey: ["catalog", "packages", "any"], queryFn: () => api<{ items: unknown[] }>("GET", "/catalog/packages?limit=1"), enabled: canOrg("catalog:read") });
   const refresh = useMutation({
     mutationFn: () => api<WingetIndexStatus>("POST", "/catalog/index/refresh", {}),
     onSuccess: () => (toast.success("The winget index is up to date."), void qc.invalidateQueries({ queryKey: ["catalog", "index"] }), void qc.invalidateQueries({ queryKey: KEY })),
@@ -194,7 +216,7 @@ export function SoftwareUpdatesPage() {
         searchPlaceholder="Search packages"
         exportName="software-updates"
         selectable={canAct ? startable : false}
-        empty={<EmptyState icon={<Icons.Success size={26} />} title="Everything is up to date" description="Every installed program that is in your catalog is at its newest allowed version on every device." />}
+        empty={<UpdatesEmpty index={index.data} catalogCount={catalogCount.data?.items.length} />}
         bulkActions={(rows, clr) => (
           <Button size="compact-sm" onClick={() => (setClear(() => clr), setConfirm({ items: rows.filter(startable), force: false }))}>
             Deploy updates

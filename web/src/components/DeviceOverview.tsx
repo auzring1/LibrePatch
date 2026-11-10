@@ -25,19 +25,13 @@ export function OverviewTab({ device: d }: { device: Device }) {
         <StatTile label="Uptime" value={<span style={small}>{duration(d.uptime_s)}</span>} kind="neutral" />
         <StatTile label="Software" value={<span className="lp-num">{d.software_count || "—"}</span>} kind="accent" hint={d.software_updated_at ? `updated ${ago(d.software_updated_at)}` : "not reported yet"} />
       </StatGrid>
+      {/* The tiles above already say OS, build, agent version, last seen, user, uptime and software count; only what they do not is listed here. */}
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
         <Field label="Device ID" value={d.id} />
-        <Field label="Last seen" value={d.online ? "connected now" : ago(d.last_seen_at)} />
-        <Field label="Operating system" value={`${d.os_caption ?? ""} ${hw?.os_display_version ?? ""}`} />
-        <Field label="Build" value={d.os_build} />
-        <Field label="Logged-on user" value={d.logged_on_user} />
-        <Field label="Last logged-on user" value={hw?.last_logged_on_user} />
-        <Field label="Uptime" value={duration(d.uptime_s)} />
-        <Field label="IP (last connection)" value={d.last_ip} />
-        <Field label="Agent version" value={d.agent_version} />
-        <Field label="Shares downloads" value={d.peer_port ? `yes, on port ${d.peer_port}` : "no"} />
         <Field label="Enrolled" value={dateTime(d.enrolled_at)} />
-        <Field label="Software inventory" value={d.software_updated_at ? `${d.software_count} items, updated ${ago(d.software_updated_at)}` : "not reported yet"} />
+        <Field label="Last logged-on user" value={hw?.last_logged_on_user} />
+        <Field label="IP (last connection)" value={d.last_ip} />
+        <Field label="Shares downloads" value={d.peer_port ? `yes, on port ${d.peer_port}` : "no"} />
       </SimpleGrid>
       <RestartCard device={d} />
       <CustomFieldsCard deviceId={d.id} />
