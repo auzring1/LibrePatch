@@ -150,7 +150,7 @@ export function DevicePage() {
           )}
           <Card flush>
             <Tabs value={tab} onChange={(v) => v && selectTab(resolveDeviceTab(v, access))} keepMounted={false} style={{ padding: "var(--lp-space-2) var(--lp-space-4) var(--lp-space-4)" }}>
-              <Tabs.List>
+              <Tabs.List className="lp-tabs-scroll">
                 <Tabs.Tab value="overview">Overview</Tabs.Tab>
                 <Tabs.Tab value="hardware">Hardware</Tabs.Tab>
                 <Tabs.Tab value="software">Installed software{d.software_count ? ` (${d.software_count})` : ""}</Tabs.Tab>

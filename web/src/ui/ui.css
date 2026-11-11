@@ -310,3 +310,7 @@ tr:hover .lp-dt__actions, tr:focus-within .lp-dt__actions, .lp-dt__actions:focus
 .lp-note__title { font-weight: var(--lp-weight-medium); white-space: normal; }
 .lp-note__meta { font-size: var(--lp-text-xs); color: var(--lp-text-muted); white-space: normal; }
 @media (max-width: 62em) { .lp-sitebtn__label { display: none; } .lp-sitebtn { padding: 0 var(--lp-space-2); } }
+
+/* A long tab row scrolls sideways instead of wrapping one lonely tab onto a second line. */
+.lp-tabs-scroll { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.lp-tabs-scroll > button { flex: 0 0 auto; white-space: nowrap; }

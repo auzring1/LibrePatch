@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button, Menu, Tooltip } from "@mantine/core";
+import { Button, Menu } from "@mantine/core";
 import { api, errorMessage, type Device } from "../api/client";
 import { useSession } from "../api/session";
 import { useFeatures } from "../settings/features";
@@ -78,7 +78,9 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
 
   const canReject = d.status === "pending" || d.status === "active";
   const canDelete = d.status === "revoked" || d.status === "retired";
-  const hasMore = canDevices && (canReject || canDelete);
+  const canRefresh = canDevices && d.status === "active";
+  // The everyday actions stay on the page (Approve, Install Windows updates, Restart); the occasional ones sit in More.
+  const hasMore = canWindows || canWake || canRefresh || (canDevices && (canReject || canDelete));
 
   return (
     <>
@@ -88,33 +90,14 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
         </Button>
       )}
       {canWindows && (
-        <>
-          <Button variant="default" onClick={() => scan.mutate()} loading={scan.isPending} leftSection={<Icons.NavAgentUpdates size={16} aria-hidden />}>
-            Scan Windows updates
-          </Button>
-          <Button variant="default" onClick={() => void openInstall()} loading={loadingInstall || install.isPending} leftSection={<Icons.Download size={16} aria-hidden />}>
-            Install Windows updates
-          </Button>
-        </>
+        <Button variant="default" onClick={() => void openInstall()} loading={loadingInstall || install.isPending} leftSection={<Icons.Download size={16} aria-hidden />}>
+          Install Windows updates
+        </Button>
       )}
       {canRestart && (
         <Button variant="default" onClick={() => setRestartOpen(true)} loading={reboot.isPending} leftSection={<Icons.Restart size={16} aria-hidden />}>
           Restart
         </Button>
-      )}
-      {canWake && (
-        <Tooltip label="Another online computer on the same network sends a Wake-on-LAN packet">
-          <Button variant="default" onClick={() => wake.mutate()} loading={wake.isPending} leftSection={<Icons.Play size={16} aria-hidden />}>
-            Wake up
-          </Button>
-        </Tooltip>
-      )}
-      {canDevices && d.status === "active" && (
-        <Tooltip label={d.online ? "Ask the device to send its hardware, software and user information now" : "The device is offline"}>
-          <Button variant="default" onClick={() => refreshDevice.mutate()} loading={refreshDevice.isPending} disabled={!d.online} leftSection={<Icons.NavAgentUpdates size={16} aria-hidden />}>
-            Refresh inventory
-          </Button>
-        </Tooltip>
       )}
       {hasMore && (
         <Menu position="bottom-end" withinPortal>
@@ -124,6 +107,27 @@ export function DeviceActions({ device: d, approve, refreshDevice, onRevoke, onD
             </Button>
           </Menu.Target>
           <Menu.Dropdown>
+            {canWindows && (
+              <Menu.Item leftSection={<Icons.NavAgentUpdates size={16} aria-hidden />} onClick={() => scan.mutate()} disabled={scan.isPending}>
+                Scan Windows updates
+              </Menu.Item>
+            )}
+            {canRefresh && (
+              <Menu.Item
+                leftSection={<Icons.NavAgentUpdates size={16} aria-hidden />}
+                onClick={() => refreshDevice.mutate()}
+                disabled={!d.online || refreshDevice.isPending}
+                title={d.online ? "Ask the device to send its hardware, software and user information now" : "The device is offline"}
+              >
+                Refresh inventory
+              </Menu.Item>
+            )}
+            {canWake && (
+              <Menu.Item leftSection={<Icons.Play size={16} aria-hidden />} onClick={() => wake.mutate()} disabled={wake.isPending} title="Another online computer on the same network sends a Wake-on-LAN packet">
+                Wake up
+              </Menu.Item>
+            )}
+            {(canWindows || canRefresh || canWake) && (canReject || canDelete) && <Menu.Divider />}
             {canReject && (
               <Menu.Item color="red" leftSection={<Icons.Danger size={16} aria-hidden />} onClick={onRevoke}>
                 {d.status === "pending" ? "Reject device" : "Revoke device"}
