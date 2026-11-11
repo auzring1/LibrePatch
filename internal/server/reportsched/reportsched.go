@@ -217,14 +217,6 @@ func reportTitle(kind string) string {
 	return "Device inventory"
 }
 
-// CSVSafe neutralizes spreadsheet formula injection in a cell (the same rule as the console's CSV exports).
-func CSVSafe(s string) string {
-	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
-		return "'" + s
-	}
-	return s
-}
-
 type table struct {
 	cols []pdf.Column
 	rows [][]string
@@ -350,7 +342,7 @@ func (s *Service) Build(ctx context.Context, org uuid.UUID, kind, savedID, forma
 		for _, r := range t.rows {
 			out := make([]string, len(r))
 			for i, c := range r {
-				out[i] = CSVSafe(c)
+				out[i] = text.CSVSafe(c)
 			}
 			_ = w.Write(out)
 		}

@@ -33,11 +33,3 @@ func TestLastSlot(t *testing.T) {
 		t.Errorf("time zone: %v", got)
 	}
 }
-
-func TestCSVSafe(t *testing.T) {
-	for in, want := range map[string]string{"=SUM(A1)": "'=SUM(A1)", "+1": "'+1", "-1": "'-1", "@x": "'@x", "plain": "plain", "": ""} {
-		if CSVSafe(in) != want {
-			t.Errorf("%q", in)
-		}
-	}
-}

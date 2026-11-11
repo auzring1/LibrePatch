@@ -8,19 +8,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/auzring1/librepatch/internal/server/pdf"
+	"github.com/auzring1/librepatch/internal/shared/text"
 )
 
 // MaxPDFRows keeps a PDF readable; the CSV holds everything.
 const MaxPDFRows = 5000
-
-// CSVSafe neutralizes spreadsheet formula injection (OWASP "CSV Injection"): a cell starting with = + - @ tab or CR is
-// prefixed with an apostrophe so Excel and LibreOffice read it as text.
-func CSVSafe(s string) string {
-	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
-		return "'" + s
-	}
-	return s
-}
 
 // CSV writes the result with the byte-order mark Excel needs to read UTF-8.
 func CSV(r *Result) ([]byte, error) {
@@ -37,7 +29,7 @@ func CSV(r *Result) ([]byte, error) {
 	out := make([]string, len(r.Columns))
 	for _, row := range r.Rows {
 		for i, c := range row {
-			out[i] = CSVSafe(c)
+			out[i] = text.CSVSafe(c)
 		}
 		if err := w.Write(out); err != nil {
 			return nil, err

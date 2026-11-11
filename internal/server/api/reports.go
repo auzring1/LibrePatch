@@ -3,9 +3,9 @@ package api
 import (
 	"encoding/csv"
 	"github.com/auzring1/librepatch/internal/shared/brand"
+	"github.com/auzring1/librepatch/internal/shared/text"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,21 +18,10 @@ import (
 // maxExportRows bounds one CSV download.
 const maxExportRows = 2_000_000
 
-// CSVSafe neutralizes spreadsheet formula injection (OWASP "CSV Injection"):
-// a cell starting with = + - @ tab or CR is prefixed with an apostrophe so
-// Excel and LibreOffice treat it as text. Values come from endpoints and are
-// untrusted.
-func CSVSafe(s string) string {
-	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
-		return "'" + s
-	}
-	return s
-}
-
 func csvRow(cw *csv.Writer, cells ...string) error {
 	out := make([]string, len(cells))
 	for i, c := range cells {
-		out[i] = CSVSafe(c)
+		out[i] = text.CSVSafe(c)
 	}
 	return cw.Write(out)
 }

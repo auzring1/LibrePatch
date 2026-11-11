@@ -39,3 +39,12 @@ func TestTruncateKeepsValidUTF8(t *testing.T) {
 		}
 	}
 }
+
+func TestCSVSafe(t *testing.T) {
+	for in, want := range map[string]string{"=SUM(A1)": "'=SUM(A1)", "+1": "'+1", "-1": "'-1", "@x": "'@x", "\tx": "'\tx", "\rx": "'\rx",
+		"plain": "plain", "a=b": "a=b", "": ""} {
+		if got := CSVSafe(in); got != want {
+			t.Errorf("CSVSafe(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
