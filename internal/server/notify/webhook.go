@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/auzring1/librepatch/gen/dbq"
+	"github.com/auzring1/librepatch/internal/server/safehttp"
 )
 
 // Poster delivers one webhook call (replaced in tests).
@@ -40,15 +41,12 @@ func (s *Service) poster() Poster {
 // reaches the server itself or its host: link-local (cloud metadata services have no legitimate receiver there),
 // loopback and the unspecified address (inside the container these are the server's own listeners). The check runs on the
 // address actually dialled, after name resolution, so a host name cannot be used to get around it.
-func refuseLocalTargets(_, address string, _ syscall.RawConn) error {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return err
-	}
-	if ip := net.ParseIP(host); ip != nil && (ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsLoopback() || ip.IsUnspecified()) {
+func refuseLocalTargets(network, address string, c syscall.RawConn) error {
+	err := safehttp.RefuseLocal(network, address, c)
+	if errors.Is(err, safehttp.ErrLocal) {
 		return errors.New("webhooks cannot target link-local, loopback or unspecified addresses")
 	}
-	return nil
+	return err
 }
 
 func (httpPoster) Post(ctx context.Context, url string, headers map[string]string, body []byte) (int, error) {
