@@ -192,3 +192,22 @@ func TestLimiterKeepsBusyKeysWhenFull(t *testing.T) {
 		t.Fatalf("table grew to %d entries, limit %d", n, l.maxKeys)
 	}
 }
+
+// A stored value that is not a hash (an account without a password) must cost about as much as a real check, so the
+// time a sign-in attempt takes does not tell such accounts apart.
+func TestVerifyPasswordUnusableHashCostsTheSame(t *testing.T) {
+	VerifyPassword("warm-up", "") // builds the dummy hash once
+	took := func(encoded string) time.Duration {
+		start := time.Now()
+		if VerifyPassword("some password", encoded) {
+			t.Fatalf("%q accepted a password", encoded)
+		}
+		return time.Since(start)
+	}
+	unknown := took("")
+	for _, encoded := range []string{"!no-password", "$argon2id$v=19$m=99999999,t=3,p=2$AAAA$AAAA", "not a hash"} {
+		if got := took(encoded); got < unknown/4 {
+			t.Errorf("%q answered in %s, an unknown account in %s", encoded, got, unknown)
+		}
+	}
+}

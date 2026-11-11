@@ -56,42 +56,53 @@ var dummyHash = sync.OnceValue(func() string {
 })
 
 // VerifyPassword checks pw against a PHC string in constant time.
-// Pass encoded == "" for unknown users: it still burns the same CPU.
+// Pass encoded == "" for unknown users: it still burns the same CPU. A stored value that is not a usable hash (an account
+// without a password, a damaged row) costs the same too, so the time taken says nothing about the account.
 func VerifyPassword(pw, encoded string) bool {
-	if encoded == "" {
-		encoded = dummyHash()
+	h, ok := parseHash(encoded)
+	if !ok {
+		h, _ = parseHash(dummyHash())
 		pw += "\x00never-matches"
 	}
+	hashSlots <- struct{}{}
+	got := argon2.IDKey([]byte(pw), h.salt, h.t, h.m, h.p, uint32(len(h.want))) // #nosec G115 -- len(want) <= 64 checked in parseHash
+	<-hashSlots
+	return subtle.ConstantTimeCompare(got, h.want) == 1 && ok
+}
+
+// phc is a parsed argon2id PHC string.
+type phc struct {
+	m, t uint32
+	p    uint8
+	salt []byte
+	want []byte
+}
+
+// parseHash reads an argon2id PHC string. ok is false for anything else, including "".
+func parseHash(encoded string) (h phc, ok bool) {
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
-		return false
+		return h, false
 	}
 	var version int
 	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil || version != argon2.Version {
-		return false
+		return h, false
 	}
-	var m uint32
-	var t uint32
-	var p uint8
-	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &m, &t, &p); err != nil {
-		return false
+	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &h.m, &h.t, &h.p); err != nil {
+		return h, false
 	}
 	// Refuse absurd parameters from a corrupted/hostile row.
-	if m > 1024*1024 || t > 20 || p == 0 || p > 16 {
-		return false
+	if h.m > 1024*1024 || h.t > 20 || h.p == 0 || h.p > 16 {
+		return h, false
 	}
-	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
-	if err != nil {
-		return false
+	var err error
+	if h.salt, err = base64.RawStdEncoding.DecodeString(parts[4]); err != nil {
+		return h, false
 	}
-	want, err := base64.RawStdEncoding.DecodeString(parts[5])
-	if err != nil || len(want) == 0 || len(want) > 64 {
-		return false
+	if h.want, err = base64.RawStdEncoding.DecodeString(parts[5]); err != nil || len(h.want) == 0 || len(h.want) > 64 {
+		return h, false
 	}
-	hashSlots <- struct{}{}
-	got := argon2.IDKey([]byte(pw), salt, t, m, p, uint32(len(want))) // #nosec G115 -- len(want) <= 64 checked above
-	<-hashSlots
-	return subtle.ConstantTimeCompare(got, want) == 1
+	return h, true
 }
 
 // NeedsRehash reports whether a hash uses outdated parameters.
