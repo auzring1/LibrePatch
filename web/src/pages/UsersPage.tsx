@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ActionIcon, Alert, Button, Group, Menu, Modal, Select, Stack, Tabs, Text, TextInput } from "@mantine/core";
 import { api, errorMessage, type ApiToken, type Site, type UserAccount } from "../api/client";
-import { dateTime } from "../api/format";
+import { dateTime, formatDate } from "../api/format";
 import { useSession } from "../api/session";
 import { CopyText } from "../components/common";
 import { RowButtons } from "../ui/admin-kit";
@@ -198,7 +198,7 @@ export function UsersPage() {
         value: (u) => new Date(u.created_at).getTime(),
         width: 150,
         defaultHidden: true,
-        cell: (u) => new Date(u.created_at).toLocaleDateString(),
+        cell: (u) => formatDate(new Date(u.created_at)),
         csv: (u) => u.created_at,
       },
       ...(canWrite

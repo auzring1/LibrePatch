@@ -84,6 +84,7 @@ function VulnerabilitiesContent() {
         id: "severity",
         header: "Severity",
         width: 130,
+        minWidth: 120, // the widest pill ("Important") must not be cut
         value: (v) => v.cvss ?? 0,
         csv: (v) => `${SEVERITY_LABEL[v.severity] ?? v.severity} ${scoreText(v.cvss)}`.trim(),
         cell: (v) => <SeverityPill v={v} />,

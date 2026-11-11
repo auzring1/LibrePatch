@@ -15,7 +15,10 @@ import (
 // ErrLocal is the message for a refused address.
 var ErrLocal = errors.New("addresses on this server itself and link-local addresses are not allowed")
 
-func refuseLocal(_, address string, _ syscall.RawConn) error {
+// RefuseLocal is a net.Dialer Control function: it refuses a connection to a loopback, link-local or unspecified address. It
+// runs on the address actually dialled, after name resolution, so a host name cannot be used to get around it. Every
+// outbound client the server builds for an administrator-supplied address uses it.
+func RefuseLocal(_, address string, _ syscall.RawConn) error {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
 		return err
@@ -32,7 +35,7 @@ func NewClient() *http.Client { return NewClientTimeout(30 * time.Second) }
 
 // NewClientTimeout is NewClient with a chosen total timeout (the vulnerability feeds are large).
 func NewClientTimeout(total time.Duration) *http.Client {
-	d := &net.Dialer{Timeout: 10 * time.Second, Control: refuseLocal}
+	d := &net.Dialer{Timeout: 10 * time.Second, Control: RefuseLocal}
 	return &http.Client{
 		Timeout:   total,
 		Transport: &http.Transport{DialContext: d.DialContext, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 30 * time.Second, DisableKeepAlives: true, Proxy: http.ProxyFromEnvironment},

@@ -98,7 +98,7 @@ export const NAV: NavGroup[] = [
   },
   {
     id: "insights",
-    label: "",
+    label: "Security",
     items: [
       { id: "vulnerabilities", to: "/vulnerabilities", label: "Vulnerabilities", perm: "reports:read", feature: "vulnerabilities", icon: I.Shield, keywords: ["cve", "exploited", "security", "risk", "kev", "nvd"] },
     ],

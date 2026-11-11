@@ -23,6 +23,18 @@ describe("fitScale", () => {
   it("never squeezes below 85%: past that the table scrolls sideways", () => {
     expect(fitScale(200, cols, {}, 0)).toBe(0.85);
   });
+  it("lets the other columns give back what a column with a long header needs, rather than scroll", () => {
+    const c = [
+      { id: "a", width: 100, min: 100 },
+      { id: "b", width: 100, min: 70 },
+      { id: "c", width: 100, min: 70 },
+    ];
+    // 85% of each would fit 260, but "a" keeps all 100: b and c go to about 80%
+    const k = fitScale(260, c, {}, 0);
+    expect(k).toBeLessThan(0.85);
+    expect(k).toBeGreaterThanOrEqual(0.7);
+    expect(100 + 2 * Math.round(100 * k)).toBeLessThanOrEqual(260);
+  });
   it("does nothing when every column was resized by hand", () => {
     expect(fitScale(100, cols, { a: 300, b: 300, c: 300 }, 0)).toBe(1);
   });

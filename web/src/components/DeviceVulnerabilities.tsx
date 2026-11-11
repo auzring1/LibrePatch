@@ -25,7 +25,7 @@ export function VulnerabilitiesTab({ device: d }: { device: Device }) {
           </a>
         ),
       },
-      { id: "severity", header: "Severity", width: 130, value: (v) => v.cvss ?? 0, csv: (v) => `${v.severity} ${v.cvss ?? ""}`, cell: (v) => <SeverityPill v={v} /> },
+      { id: "severity", header: "Severity", width: 130, minWidth: 120, value: (v) => v.cvss ?? 0, csv: (v) => `${v.severity} ${v.cvss ?? ""}`, cell: (v) => <SeverityPill v={v} /> },
       { id: "exploited", header: "Exploited", width: 170, value: (v) => (v.exploited ? "Exploited" : "No"), cell: (v) => <ExploitedPill v={v} /> },
       { id: "software", header: "Software", width: 220, wrap: true, value: (v) => v.product },
       { id: "installed", header: "Installed", width: 150, value: (v) => v.installed, cell: (v) => <span className="lp-mono">{v.installed}</span> },
@@ -43,7 +43,7 @@ export function VulnerabilitiesTab({ device: d }: { device: Device }) {
   }
   const noData = q.data && !q.data.has_data;
   return (
-    <Card title="Known vulnerabilities" description="Matched on this server against the public CISA and NIST lists, for Windows and the programs under Vulnerabilities > Programs that are looked up. Programs that are not on that list are not checked. Entries where the NVD names no versions are left out (they list patched computers too) unless they are known to be exploited.">
+    <Card title="Known vulnerabilities" description={<>Matched on this server against the public CISA and NIST lists. <details style={{ display: "inline" }}><summary style={{ cursor: "pointer", display: "inline" }}>More about what is checked</summary>For Windows and the programs under Vulnerabilities &gt; Programs that are looked up. Programs that are not on that list are not checked. Entries where the NVD names no versions are left out (they list patched computers too) unless they are known to be exploited.</details></>}>
       {noData ? (
         <EmptyState
           icon={<Icons.Info size={26} />}
