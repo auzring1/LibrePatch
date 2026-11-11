@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   LibrePatch Agent MSI: a THIN WRAPPER around `librepatch-agent.exe install` / `uninstall`
-  (docs/DECISIONS.md O6, D67). WiX v7, "v4+ style" schema. Build: installer/windows/build.ps1.
+  (O6, D67). WiX v7, "v4+ style" schema. Build: installer/windows/build.ps1.
 
   What the MSI does
     * installs the (already signed) agent exe into a SETUP directory, [ProgramFiles64Folder]LibrePatchSetup\
