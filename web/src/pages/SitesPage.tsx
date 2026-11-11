@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Group, Modal, Stack, TextInput } from "@mantine/core";
 import { api, errorMessage, type Site } from "../api/client";
+import { formatDate } from "../api/format";
 import { useSession } from "../api/session";
 import { DataTable, EmptyState, Icons, IconButton, Page, PageHeader, toast, useConfirm, type Column } from "../ui";
 import { RowButtons } from "../ui/admin-kit";
@@ -28,7 +29,7 @@ export function SitesPage() {
       { id: "name", header: "Name", value: (s) => s.name, primary: true, required: true, width: 260, wrap: true },
       { id: "timezone", header: "Time zone", value: (s) => s.timezone, width: 200, cell: (s) => <span className="lp-mono">{s.timezone}</span> },
       { id: "devices", header: "Devices", value: (s) => s.devices, align: "right", width: 110, cell: (s) => <span className="lp-num">{s.devices}</span> },
-      { id: "created", header: "Created", value: (s) => (s.created_at ? new Date(s.created_at).getTime() : 0), width: 150, defaultHidden: true, cell: (s) => (s.created_at ? new Date(s.created_at).toLocaleDateString() : "—"), csv: (s) => s.created_at ?? "" },
+      { id: "created", header: "Created", value: (s) => (s.created_at ? new Date(s.created_at).getTime() : 0), width: 150, defaultHidden: true, cell: (s) => (s.created_at ? formatDate(new Date(s.created_at)) : "—"), csv: (s) => s.created_at ?? "" },
       ...(canWrite
         ? [
             {

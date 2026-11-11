@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, Button, Checkbox, Group, Loader, MultiSelect, NumberInput, SegmentedControl, Select, Stack, Table, Text, TextInput } from "@mantine/core";
-import { hhmm, parseHHMM } from "../api/format";
+import { formatDateTime, hhmm, parseHHMM } from "../api/format";
 import { api, errorMessage, type Device, type DeploymentPlan, type DeploymentRequest, type Group as Grp, type PackageDetail, type Pkg } from "../api/client";
 import { Card, Icons, Page, PageHeader, StatGrid, StatTile } from "../ui";
 import { InstallPromptsFields } from "../components/InstallPromptsFields";
@@ -283,7 +283,7 @@ export function NewDeploymentPage() {
                 <dt>Targets</dt>
                 <dd>{hasTargets ? [groupIds.length ? plural(groupIds.length, "group") : "", deviceIds.length ? plural(deviceIds.length, "device") : ""].filter(Boolean).join(", ") : "—"}</dd>
                 <dt>Starts</dt>
-                <dd>{startsAt ? new Date(startsAt).toLocaleString() : "Now"}</dd>
+                <dd>{startsAt ? formatDateTime(new Date(startsAt)) : "Now"}</dd>
                 <dt>Gives up</dt>
                 <dd>after {Number(expiresH) || 72} hours</dd>
                 {promptsApply && toPrompts(prompts) && (

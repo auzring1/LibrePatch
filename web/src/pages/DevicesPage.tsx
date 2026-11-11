@@ -6,7 +6,7 @@ import { Button, SegmentedControl } from "@mantine/core";
 import { useSession } from "../api/session";
 import { useFeatures } from "../settings/features";
 import { api, errorMessage, type Device, type ReportOverview } from "../api/client";
-import { ago } from "../api/format";
+import { ago, formatDateTime } from "../api/format";
 import { complianceSummary } from "../components/compliance";
 import { useSiteScope } from "../ui/SiteScope";
 import { useEffective } from "../settings/useEffective";
@@ -148,7 +148,7 @@ export function DevicesPage() {
         header: "Last seen",
         value: (d) => (d.last_seen_at ? new Date(d.last_seen_at).getTime() : 0),
         width: 130,
-        cell: (d) => <span title={d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : ""}>{d.online ? "now" : ago(d.last_seen_at)}</span>,
+        cell: (d) => <span title={d.last_seen_at ? formatDateTime(new Date(d.last_seen_at)) : ""}>{d.online ? "now" : ago(d.last_seen_at)}</span>,
         csv: (d) => d.last_seen_at ?? "",
       },
       { id: "agent", header: "Agent", value: (d) => d.agent_version ?? "", width: 110, cell: (d) => <span className="lp-mono">{d.agent_version || "—"}</span>, filter: { type: "text" } },

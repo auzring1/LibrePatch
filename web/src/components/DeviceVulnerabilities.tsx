@@ -25,7 +25,7 @@ export function VulnerabilitiesTab({ device: d }: { device: Device }) {
           </a>
         ),
       },
-      { id: "severity", header: "Severity", width: 130, value: (v) => v.cvss ?? 0, csv: (v) => `${v.severity} ${v.cvss ?? ""}`, cell: (v) => <SeverityPill v={v} /> },
+      { id: "severity", header: "Severity", width: 130, minWidth: 120, value: (v) => v.cvss ?? 0, csv: (v) => `${v.severity} ${v.cvss ?? ""}`, cell: (v) => <SeverityPill v={v} /> },
       { id: "exploited", header: "Exploited", width: 170, value: (v) => (v.exploited ? "Exploited" : "No"), cell: (v) => <ExploitedPill v={v} /> },
       { id: "software", header: "Software", width: 220, wrap: true, value: (v) => v.product },
       { id: "installed", header: "Installed", width: 150, value: (v) => v.installed, cell: (v) => <span className="lp-mono">{v.installed}</span> },

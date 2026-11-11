@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { Alert, Anchor, Button, Checkbox, Group, Menu, Modal, SegmentedControl, Select, Stack, Text } from "@mantine/core";
 import { api, errorMessage, type RestartPolicy, type WindowsUpdate } from "../api/client";
-import { dateTime } from "../api/format";
+import { dateTime, formatDate } from "../api/format";
 import { useSession } from "../api/session";
 import { Card, DataTable, Donut, EmptyState, IconButton, Icons, Page, PageHeader, SeverityBadge, StackedBar, StatGrid, StatTile, StatusPill, TileSkeleton, toast, useConfirm, type Column, type PillKind } from "../ui";
 
@@ -122,6 +122,7 @@ export function UpdatesPage() {
         id: "severity",
         header: "Severity",
         width: 130,
+        minWidth: 120, // the widest pill ("Important") must not be cut
         value: (u) => rank(u.severity),
         csv: (u) => u.severity ?? "",
         filter: { type: "select", options: SEVERITY_NAMES.map((n, i) => ({ value: String(i), label: n })) },
@@ -133,7 +134,7 @@ export function UpdatesPage() {
         width: 120,
         value: (u) => (u.release_date ? new Date(u.release_date).getTime() : 0),
         csv: (u) => u.release_date ?? "",
-        cell: (u) => (u.release_date ? new Date(u.release_date).toLocaleDateString() : "—"),
+        cell: (u) => (u.release_date ? formatDate(new Date(u.release_date)) : "—"),
       },
       { id: "missing", header: "Missing", align: "right", width: 90, value: (u) => u.devices_missing ?? 0, cell: (u) => <span className="lp-num">{u.devices_missing ?? 0}</span> },
       { id: "installed", header: "Installed", align: "right", width: 95, defaultHidden: true, value: (u) => u.devices_installed ?? 0, cell: (u) => <span className="lp-num">{u.devices_installed ?? 0}</span> },
@@ -451,7 +452,7 @@ function UpdateDetail({ u, onClose }: { u: WindowsUpdate; onClose: () => void })
             </StatusPill>
           )}
           <Text size="sm" c="dimmed">
-            {u.classification} · released {u.release_date ? new Date(u.release_date).toLocaleDateString() : "unknown"} · first seen {dateTime(u.first_seen_at)}
+            {u.classification} · released {u.release_date ? formatDate(new Date(u.release_date)) : "unknown"} · first seen {dateTime(u.first_seen_at)}
           </Text>
         </Group>
         {u.note && <Text size="sm">Note: {u.note}</Text>}

@@ -153,6 +153,18 @@ export function fitScale(frame: number, cols: { id: string; width: number; min: 
   return Math.max(0.85, (frame - pinned) / flex);
 }
 
+/**
+ * The narrowest a column may get. Without an explicit `minWidth` it is the width its own header needs (letters in capitals
+ * plus the sort arrow), never more than the column's width: a table squeezed into its frame used to cut headers like
+ * "CLASSIFICATIO" and status pills like "Critical ..." in half.
+ */
+export function minWidthOf(c: { header?: unknown; minWidth?: number; width?: number; sortable?: boolean; value?: unknown }): number {
+  if (c.minWidth !== undefined) return c.minWidth;
+  const label = typeof c.header === "string" ? c.header : "";
+  const need = label ? Math.ceil(label.length * 8.5 + ((c.sortable ?? !!c.value) ? 34 : 18)) : 0;
+  return Math.max(70, Math.min(need, c.width ?? 160));
+}
+
 const text = (v: unknown) => (v === null || v === undefined ? "" : v instanceof Date ? v.toISOString() : String(v));
 
 export function DataTable<T>(p: DataTableProps<T>) {
@@ -201,7 +213,7 @@ export function DataTable<T>(p: DataTableProps<T>) {
     return () => ro.disconnect();
   }, [box]);
   const fit = useMemo(
-    () => fitScale(boxW, columns.filter((c) => visibility[c.id] !== false).map((c) => ({ id: c.id, width: c.width ?? 160, min: c.minWidth ?? 70 })), sizes, (p.selectable ? 44 : 0) + (p.rowActions ? 132 : 0)),
+    () => fitScale(boxW, columns.filter((c) => visibility[c.id] !== false).map((c) => ({ id: c.id, width: c.width ?? 160, min: minWidthOf(c) })), sizes, (p.selectable ? 44 : 0) + (p.rowActions ? 132 : 0)),
     [boxW, columns, visibility, sizes, p.selectable, p.rowActions],
   );
 
@@ -246,8 +258,8 @@ export function DataTable<T>(p: DataTableProps<T>) {
         header: c.header,
         accessorFn: (row) => (c.value ? (c.value(row) ?? "") : ""),
         cell: (ctx) => (c.cell ? c.cell(ctx.row.original) : text(c.value?.(ctx.row.original)) || "—"),
-        size: Math.max(c.minWidth ?? 70, Math.round((c.width ?? 160) * fit)),
-        minSize: c.minWidth ?? 70,
+        size: Math.max(minWidthOf(c), Math.round((c.width ?? 160) * fit)),
+        minSize: minWidthOf(c),
         enableSorting: c.sortable ?? !!c.value,
         enableHiding: !c.required,
         sortingFn: "auto",
@@ -375,7 +387,7 @@ export function DataTable<T>(p: DataTableProps<T>) {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
     const col = columns.find((c) => c.id === id);
-    setSizes((s) => ({ ...s, [id]: Math.max(col?.minWidth ?? 70, width + (e.key === "ArrowRight" ? 16 : -16)) }));
+    setSizes((s) => ({ ...s, [id]: Math.max(col ? minWidthOf(col) : 70, width + (e.key === "ArrowRight" ? 16 : -16)) }));
   };
 
   const empty = !p.loading && !p.error && (p.data?.length ?? 0) === 0;
@@ -583,7 +595,7 @@ export function DataTable<T>(p: DataTableProps<T>) {
                                 role="separator" /* NOSONAR: a focusable separator with a value is the WAI-ARIA splitter widget; it is a button so it can be focused and dragged */
                                 aria-orientation="vertical"
                                 aria-valuenow={h.getSize()}
-                                aria-valuemin={meta?.minWidth ?? 70}
+                                aria-valuemin={meta ? minWidthOf(meta) : 70}
                                 aria-valuemax={800}
                                 aria-label={`Resize ${meta?.header ?? h.id} column (arrow keys)`}
                                 data-active={h.column.getIsResizing() ? "true" : "false"}
