@@ -150,7 +150,22 @@ export function fitScale(frame: number, cols: { id: string; width: number; min: 
     else flex += c.width;
   }
   if (flex <= 0 || pinned + flex <= frame) return 1;
-  return Math.max(0.85, (frame - pinned) / flex);
+  const scale = Math.max(0.85, (frame - pinned) / flex);
+  // A column whose own minimum is wider than 85% of its width (a long header) takes more than its share. When the table
+  // would have fitted without that, the other columns give the difference back (down to 70%) instead of making it scroll.
+  const flexCols = cols.filter((c) => sizes[c.id] === undefined);
+  const used = (k: number) => flexCols.reduce((n, c) => n + Math.max(c.min, Math.round(c.width * k)), 0);
+  const room = frame - pinned;
+  if (used(scale) <= room || flexCols.reduce((n, c) => n + Math.round(c.width * 0.85), 0) > room) return scale;
+  let lo = 0.7;
+  let hi = scale;
+  if (used(lo) > room) return lo;
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    if (used(mid) <= room) lo = mid;
+    else hi = mid;
+  }
+  return lo;
 }
 
 /**
