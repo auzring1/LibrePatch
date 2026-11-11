@@ -188,7 +188,7 @@ a.lp-tile:hover, button.lp-tile:hover { border-color: var(--lp-border-strong); b
 .lp-chip--static { padding-right: 0.625rem; }
 .lp-chip button { display: grid; place-items: center; width: 20px; height: 20px; border: 0; border-radius: var(--lp-radius-pill); background: transparent; color: inherit; cursor: pointer; }
 .lp-chip button:hover { background: var(--lp-surface-hover); }
-.lp-dt__bulk { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lp-space-3); padding: var(--lp-space-2) var(--lp-space-3); background: var(--lp-accent-subtle); color: var(--lp-accent-subtle-text); border: 1px solid var(--lp-accent-border); border-radius: var(--lp-radius-lg); font-weight: var(--lp-weight-medium); }
+.lp-dt__bulk { position: sticky; top: var(--lp-space-2); z-index: 5; box-shadow: var(--lp-shadow-1); display: flex; flex-wrap: wrap; align-items: center; gap: var(--lp-space-3); padding: var(--lp-space-2) var(--lp-space-3); background: var(--lp-accent-subtle); color: var(--lp-accent-subtle-text); border: 1px solid var(--lp-accent-border); border-radius: var(--lp-radius-lg); font-weight: var(--lp-weight-medium); }
 .lp-dt__frame { background: var(--lp-surface); border: 1px solid var(--lp-border); border-radius: var(--lp-radius-lg); box-shadow: var(--lp-shadow-1); overflow: hidden; }
 .lp-dt__scroll { overflow: auto; max-height: var(--lp-dt-max-h, calc(100vh - 300px)); min-height: 0; }
 .lp-dt__table { border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: var(--lp-text-sm); }

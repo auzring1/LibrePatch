@@ -309,6 +309,8 @@ export function DataTable<T>(p: DataTableProps<T>) {
   const filteredRows = table.getPrePaginationRowModel().rows;
   const selected = table.getSelectedRowModel().rows.map((r) => r.original);
   const clearSelection = useCallback(() => setRowSelection({}), []);
+  const selectableFiltered = filteredRows.filter((r) => r.getCanSelect());
+  const selectAllMatching = () => setRowSelection(Object.fromEntries(selectableFiltered.map((r) => [r.id, true])));
   const onVisible = useRef(p.onVisibleRows);
   onVisible.current = p.onVisibleRows;
   useEffect(() => onVisible.current?.(filteredRows.map((r) => r.original)), [filteredRows]);
@@ -537,6 +539,11 @@ export function DataTable<T>(p: DataTableProps<T>) {
       {selected.length > 0 && (
         <div className="lp-dt__bulk" role="region" aria-label="Bulk actions" aria-live="polite">
           <span>{selected.length} selected</span>
+          {selectableFiltered.length > selected.length && (
+            <Button variant="subtle" size="compact-sm" onClick={selectAllMatching}>
+              Select all {selectableFiltered.length} {filters.length || search ? "matching" : "rows"}
+            </Button>
+          )}
           {p.bulkActions?.(selected, clearSelection)}
           <Button variant="subtle" size="compact-sm" onClick={clearSelection} leftSection={<I.Close size={14} aria-hidden />}>
             Clear selection
