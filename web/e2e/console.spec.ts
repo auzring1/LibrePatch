@@ -733,7 +733,8 @@ test("first-run setup, MFA login, enrollment, live device, revoke, audit", async
 
       // On the device page already: refresh, missing updates, uninstall from the inventory, then revoke and delete.
       await shot(page, "05-device-detail");
-      await page.getByRole("button", { name: /Refresh/ }).click();
+      await page.getByRole("button", { name: "More actions" }).click();
+      await page.getByRole("menuitem", { name: "Refresh inventory" }).click();
       await expect(page.getByText("Device information refreshed.")).toBeVisible({ timeout: 30_000 });
       await page.getByRole("tab", { name: "Software updates" }).click();
       await expect(page.getByText(/No missing updates/)).toBeVisible();
