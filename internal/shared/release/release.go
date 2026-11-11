@@ -51,7 +51,7 @@ var RequireAuthenticode = ""
 // a release may pin. Release builds set it with -ldflags -X. Without it the pinned subject is whatever the
 // vendor-signed manifest says, so whoever holds the release key could pin a certificate of their own;
 // with it, a stolen release key alone is not enough (the attacker would also need our code-signing
-// certificate). Development builds leave it empty (docs/DECISIONS.md D83).
+// certificate). Development builds leave it empty (D83).
 var AuthenticodeSubjects = ""
 
 // Manifest describes one agent binary. Unknown fields are rejected so a newer vendor cannot

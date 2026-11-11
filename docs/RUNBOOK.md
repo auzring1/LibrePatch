@@ -166,7 +166,7 @@ in-place upgrade.** A stack and its agents are installed fresh. This is quick fo
 3. **Get the new files** into a new, empty folder (the `librepatch-deploy-<version>.zip` of a release, or the repository), copy
    your old `deploy/.env` over `deploy/.env.example`'s place, and rename the variables:
    `sed -i 's/CURRENT_/LIBREPATCH_/g' deploy/.env` (the previous prefix was `CURRENT_`; for the older prefixes see the table
-   in docs/DECISIONS.md D101). <!-- old-name -->
+   in D101). <!-- old-name -->
 4. **Start fresh** as in section 2 (`docker compose ... up -d`; the passwords and a new master key are created for you), and finish the first-run
    setup (section 3). In a graphical container manager, create a new stack named `librepatch` from the new compose file.
 5. **Reinstall each agent.** Remove the old one (see "Removing an agent with an earlier name" below) and install the new one with a new enrollment string from **Enrollment**. The MSI has a new upgrade code and
@@ -714,7 +714,7 @@ Fresh installs create `librepatch_owner` as a non-superuser and keep the bootstr
 
 ## 9. Release manager (vendor side)
 
-This section is for the people who ship LibrePatch, not for operators of an installation. Customers verify releases with `docs/VERIFYING_RELEASES.md`. The design is `docs/DECISIONS.md` D79-D84. **Owner decisions O5 (code-signing certificate) and O7 (release-key custody) are still open**; this section describes the options and what the pipeline expects of whichever is chosen. Nothing below has run against real GitHub, Azure, AWS or a certificate yet: do the dry runs first and expect to fix small things.
+This section is for the people who ship LibrePatch, not for operators of an installation. Customers verify releases with `docs/VERIFYING_RELEASES.md`. The design is decisions D79-D84 (private decision log). **Owner decisions O5 (code-signing certificate) and O7 (release-key custody) are still open**; this section describes the options and what the pipeline expects of whichever is chosen. Nothing below has run against real GitHub, Azure, AWS or a certificate yet: do the dry runs first and expect to fix small things.
 
 ### 9.1 What the pipeline does
 

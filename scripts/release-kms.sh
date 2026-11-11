@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The KMS signing contract for the vendor release manifest (docs/DECISIONS.md D68, D81; docs/RUNBOOK.md).
+# The KMS signing contract for the vendor release manifest (D68, D81; docs/RUNBOOK.md).
 #
 #   scripts/release-kms.sh <provider> sign   --in tosign.bin --out sig.bin
 #   scripts/release-kms.sh <provider> pubkey [--out public.hex]

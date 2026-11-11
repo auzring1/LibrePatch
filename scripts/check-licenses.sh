@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fails if any shipped dependency is not under an allow-listed permissive
-# license (docs/DECISIONS.md O1: closed source, no GPL/AGPL).
+# license (O1: closed source, no GPL/AGPL).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 allowed_go="Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT,ISC,MPL-2.0"

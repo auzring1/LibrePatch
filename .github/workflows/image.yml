@@ -1,5 +1,5 @@
 # Publishes the three container images (server, web proxy "caddy", database "postgres") to GitHub's registry (ghcr.io)
-# so installs can PULL them instead of building from source, and the one compose file that starts them (decision D110). See docs/DECISIONS.md D102 and docs/RUNBOOK.md, "Install from the published image".
+# so installs can PULL them instead of building from source, and the one compose file that starts them (decision D110). See D102 and docs/RUNBOOK.md, "Install from the published image".
 #
 #   Push to main            -> :edge and :edge-<commit>   (the newest main; for testing, not for production)
 #   Run workflow by hand    -> :<version> and :latest     (a release; type the version, for example 1.0.0)
