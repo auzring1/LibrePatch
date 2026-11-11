@@ -35,3 +35,18 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+  # The web proxy and database images have their own Dockerfiles in sub-folders, which the entry above does not look at.
+  # Their base images are pinned by digest, so without these entries they would never receive a patched base image.
+  - package-ecosystem: docker
+    directory: /deploy/caddy
+    schedule: { interval: weekly }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: docker
+    directory: /deploy/postgres
+    schedule: { interval: weekly }
+    # A new PostgreSQL major needs a dump and restore of the data: take it deliberately, by hand.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
