@@ -1,7 +1,7 @@
 # LibrePatch web proxy: Caddy with both Caddyfiles built in, so an install needs no files next to the compose file
 # (decision D110). Published as ghcr.io/<owner>/librepatch-caddy. The base image is pinned by digest; Dependabot
 # proposes the updates.
-FROM caddy:2-alpine@sha256:78bd35025c7ba85961dd149ae670315129954e77abe2383ac47c89106b35ade9
+FROM caddy:2-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
 LABEL org.opencontainers.image.source="https://github.com/auzring1/LibrePatch" \
       org.opencontainers.image.description="LibrePatch web proxy (Caddy) for the console and REST API" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later"
